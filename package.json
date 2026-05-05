@@ -1,0 +1,12 @@
+{
+  "name": "toni-dashboard-lernreisen-design",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel --prod"
+  },
+  "devDependencies": {
+    "vercel": "^53.1.0"
+  }
+}
