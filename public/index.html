@@ -359,7 +359,163 @@ body { font-family:'Inter',sans-serif; background:#f8fafc; font-size:13px; color
 .profile-select:focus{border-color:#93c5fd;box-shadow:0 0 0 3px #dbeafe66}
 @media(max-width:768px){.profile-switcher-label{display:none}.profile-select{max-width:135px}}
 
+
+/* =========================================================
+   TONI – AUTH / LOGIN V3
+   ========================================================= */
+.auth-status {
+  display:flex;
+  align-items:center;
+  gap:8px;
+  background:#fff;
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:5px 8px;
+  flex-shrink:0;
+}
+.auth-user {
+  display:flex;
+  flex-direction:column;
+  line-height:1.15;
+  min-width:110px;
+}
+.auth-user-name {
+  font-size:11px;
+  font-weight:800;
+  color:#0f172a;
+  white-space:nowrap;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  max-width:155px;
+}
+.auth-user-role {
+  font-size:9px;
+  color:#64748b;
+  font-weight:700;
+}
+.auth-btn {
+  border:1px solid #bfdbfe;
+  background:#eff6ff;
+  color:#1d4ed8;
+  border-radius:8px;
+  font-family:inherit;
+  font-size:11px;
+  font-weight:800;
+  padding:6px 9px;
+  cursor:pointer;
+}
+.auth-btn:hover { background:#dbeafe; }
+.auth-btn.logout {
+  border-color:#fecaca;
+  background:#fef2f2;
+  color:#dc2626;
+}
+.auth-modal-backdrop {
+  display:none;
+  position:fixed;
+  inset:0;
+  background:rgba(15,23,42,.55);
+  z-index:900;
+  align-items:center;
+  justify-content:center;
+  padding:18px;
+}
+.auth-modal-backdrop.open { display:flex; }
+.auth-modal {
+  width:min(460px,100%);
+  background:#fff;
+  border:1px solid var(--border);
+  border-radius:16px;
+  box-shadow:0 20px 60px rgba(15,23,42,.28);
+  overflow:hidden;
+}
+.auth-modal-header {
+  padding:16px 18px;
+  border-bottom:1px solid var(--border);
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+}
+.auth-modal-title {
+  font-size:18px;
+  font-weight:900;
+  color:#0f172a;
+}
+.auth-modal-sub {
+  font-size:12px;
+  color:#64748b;
+  margin-top:4px;
+  line-height:1.5;
+}
+.auth-modal-body {
+  padding:18px;
+}
+.auth-form-label {
+  display:block;
+  font-size:11px;
+  font-weight:800;
+  color:#334155;
+  margin-bottom:6px;
+}
+.auth-input {
+  width:100%;
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:11px 12px;
+  font-family:inherit;
+  font-size:13px;
+  outline:none;
+}
+.auth-input:focus {
+  border-color:#93c5fd;
+  box-shadow:0 0 0 3px #dbeafe66;
+}
+.auth-message {
+  margin-top:12px;
+  padding:10px 12px;
+  border-radius:10px;
+  font-size:12px;
+  line-height:1.5;
+  display:none;
+}
+.auth-message.visible { display:block; }
+.auth-message.ok {
+  background:#f0fdf4;
+  border:1px solid #bbf7d0;
+  color:#166534;
+}
+.auth-message.err {
+  background:#fef2f2;
+  border:1px solid #fecaca;
+  color:#b91c1c;
+}
+.auth-close {
+  border:none;
+  background:#f8fafc;
+  border-radius:9px;
+  padding:7px 9px;
+  cursor:pointer;
+  color:#64748b;
+  font-weight:900;
+}
+.auth-note {
+  margin-top:13px;
+  font-size:11px;
+  line-height:1.5;
+  color:#64748b;
+  background:#f8fafc;
+  border:1px solid var(--border);
+  border-radius:10px;
+  padding:10px;
+}
+@media(max-width:768px){
+  .auth-user{display:none}
+  .auth-btn{padding:6px 8px}
+}
+
 </style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
 <body>
 
@@ -393,11 +549,13 @@ body { font-family:'Inter',sans-serif; background:#f8fafc; font-size:13px; color
   <div class="topbar-icons">
     <button class="icon-btn"><span class="notif-dot"></span>🔔</button>
     <button class="icon-btn">❓</button>
-    <div class="profile-switcher">
-    <span class="profile-switcher-label">Profil</span>
-    <select class="profile-select" id="profile-select" onchange="selectProfile(this.value)">
-      <option value="">Profile laden…</option>
-    </select>
+    <div class="auth-status" id="auth-status">
+    <div class="auth-user">
+      <div class="auth-user-name" id="auth-user-name">Nicht angemeldet</div>
+      <div class="auth-user-role" id="auth-user-role">Student-Ansicht</div>
+    </div>
+    <button class="auth-btn" id="auth-login-btn" onclick="openAuthModal()">Anmelden</button>
+    <button class="auth-btn logout" id="auth-logout-btn" onclick="signOutUser()" style="display:none">Abmelden</button>
   </div>
   <div class="api-badge offline" id="api-badge"><div class="api-dot"></div><span id="api-label">Offline</span></div>
   </div>
@@ -819,6 +977,29 @@ body { font-family:'Inter',sans-serif; background:#f8fafc; font-size:13px; color
         <button class="lr-primary-btn" onclick="startSelectedLearningTask()">Aufgabe starten</button>
         <button class="lr-secondary-btn" onclick="showSelectedTaskHint()">Hinweis von TONI</button>
         <button class="lr-success-btn" onclick="completeSelectedLearningTask()">Als erledigt markieren</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+
+<!-- Auth Login Modal -->
+<div class="auth-modal-backdrop" id="auth-modal">
+  <div class="auth-modal" role="dialog" aria-modal="true">
+    <div class="auth-modal-header">
+      <div>
+        <div class="auth-modal-title">Bei TONI anmelden</div>
+        <div class="auth-modal-sub">Gib deine E-Mail-Adresse ein. Du erhältst einen Magic Link zur Anmeldung.</div>
+      </div>
+      <button class="auth-close" onclick="closeAuthModal()">×</button>
+    </div>
+    <div class="auth-modal-body">
+      <label class="auth-form-label" for="auth-email">E-Mail-Adresse</label>
+      <input class="auth-input" id="auth-email" type="email" placeholder="name@schule.de" onkeydown="if(event.key==='Enter')sendMagicLink()"/>
+      <button class="lr-primary-btn" style="width:100%;margin-top:12px" onclick="sendMagicLink()">Magic Link senden</button>
+      <div class="auth-message" id="auth-message"></div>
+      <div class="auth-note">
+        Hinweis: Für Tutor- oder Admin-Rechte muss das Profil in Supabase entsprechend gesetzt werden. Neue Nutzer starten zunächst als Student.
       </div>
     </div>
   </div>
@@ -1305,6 +1486,264 @@ async function saveTaskProgressToSupabase(task){
     if(typeof setApiBadge==="function") setApiBadge(false);
   }
 }
+</script>
+
+
+<script>
+/* =========================================================
+   TONI – SUPABASE AUTH / LOGIN V3
+   ========================================================= */
+let TONI_SUPABASE = null;
+let TONI_AUTH_SESSION = null;
+let TONI_AUTH_PROFILE = null;
+
+function getSupabaseClient() {
+  if (TONI_SUPABASE) return TONI_SUPABASE;
+  if (!window.supabase || !window.supabase.createClient) {
+    console.error("Supabase JS wurde nicht geladen.");
+    return null;
+  }
+  TONI_SUPABASE = window.supabase.createClient(window.SUPABASE_URL, window.SUPABASE_ANON_KEY, {
+    auth: {
+      persistSession: true,
+      autoRefreshToken: true,
+      detectSessionInUrl: true
+    }
+  });
+  return TONI_SUPABASE;
+}
+
+async function getAuthAccessToken() {
+  const client = getSupabaseClient();
+  if (!client) return null;
+  const { data } = await client.auth.getSession();
+  return data?.session?.access_token || null;
+}
+
+// REST-Zugriffe künftig mit User-JWT ausführen, falls angemeldet.
+window.supabaseRequest = async function(path, options = {}) {
+  const token = await getAuthAccessToken();
+  const bearer = token || window.SUPABASE_ANON_KEY;
+
+  const headers = {
+    "apikey": window.SUPABASE_ANON_KEY,
+    "Authorization": "Bearer " + bearer,
+    "Content-Type": "application/json",
+    ...(options.headers || {})
+  };
+
+  const response = await fetch(`${window.SUPABASE_URL}/rest/v1/${path}`, {
+    ...options,
+    headers
+  });
+
+  if (!response.ok) {
+    const text = await response.text();
+    throw new Error(`Supabase ${response.status}: ${text}`);
+  }
+
+  if (response.status === 204) return null;
+  const body = await response.text();
+  return body ? JSON.parse(body) : null;
+};
+
+function openAuthModal() {
+  document.getElementById("auth-modal").classList.add("open");
+  setTimeout(() => document.getElementById("auth-email")?.focus(), 80);
+}
+
+function closeAuthModal() {
+  document.getElementById("auth-modal").classList.remove("open");
+}
+
+function setAuthMessage(text, type = "ok") {
+  const box = document.getElementById("auth-message");
+  if (!box) return;
+  box.className = "auth-message visible " + (type === "err" ? "err" : "ok");
+  box.innerHTML = text;
+}
+
+async function sendMagicLink() {
+  const client = getSupabaseClient();
+  const email = document.getElementById("auth-email").value.trim();
+
+  if (!email) {
+    setAuthMessage("Bitte gib eine E-Mail-Adresse ein.", "err");
+    return;
+  }
+
+  try {
+    const { error } = await client.auth.signInWithOtp({
+      email,
+      options: {
+        emailRedirectTo: window.location.origin
+      }
+    });
+
+    if (error) throw error;
+
+    setAuthMessage("✅ Magic Link wurde gesendet. Bitte prüfe dein E-Mail-Postfach.");
+  } catch (error) {
+    console.error(error);
+    setAuthMessage("⚠️ Anmeldung konnte nicht gestartet werden:<br>" + escapeHtml(error.message), "err");
+  }
+}
+
+async function signOutUser() {
+  const client = getSupabaseClient();
+  await client.auth.signOut();
+
+  TONI_AUTH_SESSION = null;
+  TONI_AUTH_PROFILE = null;
+  localStorage.setItem("toni_role", "student");
+  window.TONI_ACTIVE_PROFILE_ID = null;
+
+  updateAuthUI(null, null);
+  if (typeof applyRoleUI === "function") applyRoleUI();
+
+  if (typeof appendMsg === "function") {
+    appendMsg("toni", "Du wurdest abgemeldet. TONI zeigt nun wieder die Student-Ansicht.", time(), "desktop");
+  }
+}
+
+async function ensureProfileForUser(user) {
+  if (!user) return null;
+
+  let rows = [];
+  try {
+    rows = await supabaseRequest(`profiles?id=eq.${user.id}&select=id,display_name,email,class_name,role&limit=1`);
+  } catch (error) {
+    console.warn("Profil konnte nicht gelesen werden:", error);
+  }
+
+  if (rows && rows.length) return rows[0];
+
+  const fallbackName = user.email ? user.email.split("@")[0] : "Neuer Nutzer";
+
+  try {
+    const inserted = await supabaseRequest("profiles?on_conflict=id", {
+      method: "POST",
+      headers: { "Prefer": "resolution=merge-duplicates,return=representation" },
+      body: JSON.stringify([{
+        id: user.id,
+        display_name: fallbackName,
+        email: user.email,
+        class_name: "",
+        role: "student"
+      }])
+    });
+    return inserted?.[0] || {
+      id: user.id,
+      display_name: fallbackName,
+      email: user.email,
+      role: "student",
+      class_name: ""
+    };
+  } catch (error) {
+    console.warn("Profil konnte nicht erstellt werden:", error);
+    return {
+      id: user.id,
+      display_name: fallbackName,
+      email: user.email,
+      role: "student",
+      class_name: ""
+    };
+  }
+}
+
+function updateAuthUI(user, profile) {
+  const nameEl = document.getElementById("auth-user-name");
+  const roleEl = document.getElementById("auth-user-role");
+  const loginBtn = document.getElementById("auth-login-btn");
+  const logoutBtn = document.getElementById("auth-logout-btn");
+
+  if (user && profile) {
+    nameEl.textContent = profile.display_name || user.email || "Angemeldet";
+    roleEl.textContent = `${profile.role || "student"}${profile.class_name ? " · " + profile.class_name : ""}`;
+    loginBtn.style.display = "none";
+    logoutBtn.style.display = "";
+  } else {
+    nameEl.textContent = "Nicht angemeldet";
+    roleEl.textContent = "Student-Ansicht";
+    loginBtn.style.display = "";
+    logoutBtn.style.display = "none";
+  }
+}
+
+function applyAuthProfile(profile) {
+  if (!profile) return;
+
+  TONI_AUTH_PROFILE = profile;
+  localStorage.setItem("toni_role", profile.role || "student");
+  localStorage.setItem("toni_profile_id", profile.id);
+  window.TONI_ACTIVE_PROFILE_ID = profile.id;
+
+  const greeting = document.querySelector(".topbar-greeting h2");
+  if (greeting) greeting.innerHTML = `Hallo ${escapeHtml((profile.display_name || "Max").split(" ")[0])}! 👋`;
+
+  const sub = document.querySelector(".topbar-greeting p");
+  if (sub) {
+    const roleLabel = (typeof ROLE_CONFIG !== "undefined" && ROLE_CONFIG[profile.role]) ? ROLE_CONFIG[profile.role].label : profile.role;
+    sub.textContent = `${roleLabel}${profile.class_name ? " · " + profile.class_name : ""}`;
+  }
+
+  const text = document.getElementById("role-info-text");
+  if (text) {
+    const cfg = (typeof ROLE_CONFIG !== "undefined" && ROLE_CONFIG[profile.role]) ? ROLE_CONFIG[profile.role] : null;
+    text.textContent = (cfg ? cfg.text : "Angemeldet.") + " Aktives Profil: " + profile.display_name + ".";
+  }
+
+  if (typeof applyRoleUI === "function") applyRoleUI();
+
+  if (typeof STATE !== "undefined") {
+    STATE.user = STATE.user || {};
+    STATE.user.name = profile.display_name || STATE.user.name;
+    STATE.user.class = profile.class_name || "";
+    if (typeof saveState === "function") saveState(STATE);
+  }
+}
+
+// Rolle künftig aus Auth-Profil lesen.
+window.getCurrentRole = function() {
+  if (TONI_AUTH_PROFILE && TONI_AUTH_PROFILE.role) return TONI_AUTH_PROFILE.role;
+  return localStorage.getItem("toni_role") || "student";
+};
+
+async function handleAuthSession(session) {
+  TONI_AUTH_SESSION = session || null;
+
+  if (!session?.user) {
+    updateAuthUI(null, null);
+    localStorage.setItem("toni_role", "student");
+    if (typeof applyRoleUI === "function") applyRoleUI();
+    return;
+  }
+
+  const profile = await ensureProfileForUser(session.user);
+  applyAuthProfile(profile);
+  updateAuthUI(session.user, profile);
+  closeAuthModal();
+
+  if (typeof appendMsg === "function") {
+    appendMsg("toni", `✅ Angemeldet als <strong>${escapeHtml(profile.display_name)}</strong> (${escapeHtml(profile.role)}).`, time(), "desktop");
+  }
+}
+
+async function initAuthLogin() {
+  const client = getSupabaseClient();
+  if (!client) return;
+
+  const { data } = await client.auth.getSession();
+  await handleAuthSession(data?.session || null);
+
+  client.auth.onAuthStateChange(async (_event, session) => {
+    await handleAuthSession(session);
+  });
+}
+
+window.addEventListener("DOMContentLoaded", () => {
+  setTimeout(initAuthLogin, 950);
+});
 </script>
 
 </body>
