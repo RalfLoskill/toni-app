@@ -1,0 +1,12 @@
+{
+  "name": "toni-dashboard-profile-rollen-v2",
+  "version": "1.0.0",
+  "private": true,
+  "scripts": {
+    "dev": "vercel dev",
+    "deploy": "vercel --prod"
+  },
+  "devDependencies": {
+    "vercel": "^53.1.0"
+  }
+}
