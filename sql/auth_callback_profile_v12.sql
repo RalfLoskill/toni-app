@@ -1,0 +1,110 @@
+-- =========================================================
+-- TONI – Auth V12 / Callback- und Profilvervollständigung-Fix
+-- Bitte komplett in Supabase SQL Editor ausführen.
+-- =========================================================
+
+alter table profiles add column if not exists first_name text;
+alter table profiles add column if not exists last_name text;
+alter table profiles add column if not exists password_set boolean not null default false;
+alter table profiles add column if not exists profile_complete boolean not null default false;
+alter table profiles add column if not exists force_password_change boolean not null default false;
+
+alter table profiles enable row level security;
+
+create or replace function public.get_my_role()
+returns text
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select role
+  from public.profiles
+  where id = auth.uid()
+  limit 1;
+$$;
+
+drop policy if exists "profiles_select_own_or_admin" on profiles;
+create policy "profiles_select_own_or_admin"
+on profiles for select
+to authenticated
+using (
+  id = auth.uid()
+  or public.get_my_role() = 'admin'
+);
+
+drop policy if exists "profiles_insert_own" on profiles;
+create policy "profiles_insert_own"
+on profiles for insert
+to authenticated
+with check (
+  id = auth.uid()
+);
+
+drop policy if exists "profiles_update_own_incomplete" on profiles;
+create policy "profiles_update_own_incomplete"
+on profiles for update
+to authenticated
+using (
+  id = auth.uid()
+)
+with check (
+  id = auth.uid()
+);
+
+drop policy if exists "profiles_anon_check_completed_email" on profiles;
+create policy "profiles_anon_check_completed_email"
+on profiles for select
+to anon
+using (
+  is_active = true
+  and profile_complete = true
+);
+
+create or replace function public.complete_my_profile(
+  p_first_name text,
+  p_last_name text,
+  p_class_name text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_display_name text;
+begin
+  if auth.uid() is null then
+    raise exception 'not_authenticated';
+  end if;
+
+  v_display_name := trim(coalesce(p_first_name, '') || ' ' || coalesce(p_last_name, ''));
+
+  if length(v_display_name) < 2 then
+    raise exception 'name_required';
+  end if;
+
+  update public.profiles
+  set first_name = trim(p_first_name),
+      last_name = trim(p_last_name),
+      display_name = v_display_name,
+      class_name = coalesce(trim(p_class_name), ''),
+      password_set = true,
+      profile_complete = true,
+      force_password_change = false,
+      updated_at = now()
+  where id = auth.uid();
+
+  if not found then
+    raise exception 'profile_not_found';
+  end if;
+
+  return jsonb_build_object(
+    'ok', true,
+    'profile_id', auth.uid(),
+    'display_name', v_display_name
+  );
+end;
+$$;
+
+grant execute on function public.complete_my_profile(text,text,text) to authenticated;
