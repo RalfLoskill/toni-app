@@ -9503,16 +9503,12 @@ if (typeof window.supabaseRequest !== "function") {
 /* =========================================================
    TONI – PROFILE / ROLLEN V2
    ========================================================= */
-const TONI_PROFILE_FALLBACKS=[
-  {id:"41111111-1111-1111-1111-111111111111",display_name:"Max Mustermann",email:"max.demo@toni.local",class_name:"ET23A",role:"student"},
-  {id:"42222222-2222-2222-2222-222222222222",display_name:"Frau Schneider",email:"tutor.demo@toni.local",class_name:"ET23A",role:"tutor"},
-  {id:"43333333-3333-3333-3333-333333333333",display_name:"Admin TONI",email:"admin.demo@toni.local",class_name:"",role:"admin"}
-];
+const TONI_PROFILE_FALLBACKS=[];
 let TONI_PROFILES=[];
 let CURRENT_PROFILE=null;
 
 function getCurrentProfileId(){
-  return localStorage.getItem("toni_profile_id") || "41111111-1111-1111-1111-111111111111";
+  return localStorage.getItem("toni_profile_id") || null;
 }
 function setCurrentProfileId(id){
   localStorage.setItem("toni_profile_id",id);
@@ -9607,7 +9603,7 @@ window.addEventListener("DOMContentLoaded",()=>setTimeout(initProfilesAndRoles,7
 async function saveTaskProgressToSupabase(task){
   if(!task || !task.id || !task.id.includes("-")) return;
   if(typeof supabaseRequest!=="function") return;
-  const profileId=window.TONI_ACTIVE_PROFILE_ID || localStorage.getItem("toni_profile_id") || "41111111-1111-1111-1111-111111111111";
+  const profileId=window.TONI_ACTIVE_PROFILE_ID || localStorage.getItem("toni_profile_id") || null;
   try{
     await supabaseRequest("student_task_progress?on_conflict=student_id,task_id",{
       method:"POST",
@@ -22056,7 +22052,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
 (function(){
   const SUPERADMIN_USERNAME = "SuperAdmin";
-  const SUPERADMIN_PASSWORD = "SuperAdmin#";
+  const SUPERADMIN_PASSWORD = window.SUPERADMIN_PASSWORD || "SuperAdmin#";
 
   window.TONI_V77_SUPERADMIN_OPEN = sessionStorage.getItem("toni_section_superadmin_admins_open") === "1";
 
@@ -22555,7 +22551,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
 (function(){
   const SUPERADMIN_USERNAME = "SuperAdmin";
-  const SUPERADMIN_PASSWORD = "SuperAdmin#";
+  const SUPERADMIN_PASSWORD = window.SUPERADMIN_PASSWORD || "SuperAdmin#";
 
   function esc(value){
     if(typeof escapeHtml === "function") return escapeHtml(value);
@@ -22702,7 +22698,7 @@ window.addEventListener("DOMContentLoaded", () => {
 /* TONI V79 – SuperAdmin Admin-Löschen stabilisieren und Formular verbessern */
 (function(){
   const SUPERADMIN_USERNAME = "SuperAdmin";
-  const SUPERADMIN_PASSWORD = "SuperAdmin#";
+  const SUPERADMIN_PASSWORD = window.SUPERADMIN_PASSWORD || "SuperAdmin#";
 
   function esc(value){
     if(typeof escapeHtml === "function") return escapeHtml(value);
@@ -26218,7 +26214,7 @@ window.addEventListener("DOMContentLoaded", () => {
     const email = currentUserEmail();
 
     if(role === "superadmin"){
-      return password === "SuperAdmin#";
+      return password === (window.SUPERADMIN_PASSWORD || "SuperAdmin#");
     }
 
     if(!email){
@@ -26589,7 +26585,7 @@ window.addEventListener("DOMContentLoaded", () => {
     const email = currentUserEmail();
 
     if(role === "superadmin"){
-      return password === "SuperAdmin#";
+      return password === (window.SUPERADMIN_PASSWORD || "SuperAdmin#");
     }
 
     if(!email){
@@ -26928,7 +26924,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
   async function verifyPasswordV101(password){
     if(currentRole() === "superadmin"){
-      return password === "SuperAdmin#";
+      return password === (window.SUPERADMIN_PASSWORD || "SuperAdmin#");
     }
 
     const email = currentEmail();

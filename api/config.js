@@ -4,6 +4,6 @@ export default function handler(req, res) {
   res.send(`
     window.SUPABASE_URL = "${process.env.SUPABASE_URL}";
     window.SUPABASE_ANON_KEY = "${process.env.SUPABASE_ANON_KEY}";
+    window.SUPERADMIN_PASSWORD = "${process.env.SUPERADMIN_PASSWORD || 'SuperAdmin#'}";
   `);
 }
-
