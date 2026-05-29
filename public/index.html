@@ -8469,42 +8469,32 @@ input.youtube-force-invalid-v105{
         </div>
       </div>
 
-      <!-- Zusammenarbeit -->
-      <div class="card">
-        <div class="card-header"><span class="card-title">Zusammenarbeit &amp; Verbindlichkeiten</span><span class="card-link">Zur Gruppe</span></div>
-        <div class="collab-list">
-          <div class="collab-item">
-            <div class="c-avatar" style="background:#ec4899">L</div>
-            <div class="c-info">
-              <div class="c-name">Lena</div>
-              <div class="c-task">Sensorik testen · <span class="c-due">fällig Freitag</span></div>
-            </div>
-            <div class="c-pct pct-g">75%</div>
+      <!-- Offene Aufgaben + TONI-Hinweis -->
+      <div style="display:flex;flex-direction:column;gap:12px">
+
+        <!-- Offene Aufgaben -->
+        <div class="card" style="flex:1">
+          <div class="card-header">
+            <span class="card-title">Offene Aufgaben</span>
+            <span class="card-link" onclick="loadProjects()">Aktualisieren</span>
           </div>
-          <div class="collab-item">
-            <div class="c-avatar" style="background:#3b82f6">Mx</div>
-            <div class="c-info">
-              <div class="c-name">Maximilian</div>
-              <div class="c-task">Präsentation vorbereiten</div>
-            </div>
-            <div class="c-pct pct-b">40%</div>
-          </div>
-          <div class="collab-item">
-            <div class="c-avatar" style="background:#8b5cf6">J</div>
-            <div class="c-info">
-              <div class="c-name">Julia</div>
-              <div class="c-task">Dokumentation &amp; Schaltplan</div>
-            </div>
-            <div class="c-pct pct-v">60%</div>
+          <div id="toni-open-tasks-list">
+            <div style="color:var(--color-text-tertiary);font-size:13px;padding:8px 0">Wird geladen…</div>
           </div>
         </div>
-        <div class="blocker-box">
-          <div class="blocker-icon">⚠️</div>
-          <div>
-            <div class="blocker-label">Blocker sichtbar:</div>
-            <div class="blocker-text">Max wartet auf die Kalibrierwerte des Feuchtigkeitssensors. TONI schlägt vor, Lena direkt einzubinden.</div>
+
+        <!-- TONI-Hinweis -->
+        <div class="card" style="flex:1">
+          <div class="card-header">
+            <span class="card-title">TONI-Hinweis</span>
+          </div>
+          <div id="toni-project-hint">
+            <div style="background:#E6F1FB;border-radius:0 10px 10px 10px;padding:10px 13px;font-size:13px;color:#0C447C;line-height:1.5;margin-bottom:10px">
+              Leg dein erstes Projekt an oder öffne ein bestehendes – dann gebe ich dir gezielt Hinweise zu Blockern und nächsten Schritten.
+            </div>
           </div>
         </div>
+
       </div>
     </div>
 

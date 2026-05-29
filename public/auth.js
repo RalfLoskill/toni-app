@@ -4880,7 +4880,7 @@ async function toniV31FetchFreshProfileWithAvatar(){
     }
 
     let rows = null;
-    const select = "id,email,display_name,first_name,last_name,class_name,role,avatar_data_url,avatar_url";
+    const select = "id,email,display_name,first_name,last_name,class_name,role,avatar_data_url";
 
     if(typeof supabaseRequest === "function"){
       if(profile.id){
@@ -5027,79 +5027,61 @@ async function toniV31SaveAvatarPhoto(){
   try{
     toniV31SetAvatarStatus("Profilbild wird gespeichert …");
 
-    const token = typeof toniV27GetAccessToken === "function" ? await toniV27GetAccessToken() : null;
-    const profile = toniV31Profile();
-    if(!token || !profile.id) throw new Error("Keine aktive Sitzung gefunden.");
+    let saved = null;
 
-    // 1. Base64 → Blob konvertieren
-    const dataUrl = window.TONI_V31_AVATAR_DATA_URL;
-    const base64 = dataUrl.split(",")[1];
-    const binary = atob(base64);
-    const bytes = new Uint8Array(binary.length);
-    for(let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
-    const blob = new Blob([bytes], { type: "image/jpeg" });
-
-    // 2. Zu Supabase Storage hochladen (Pfad: avatars/{user_id}/avatar.jpg)
-    const filePath = `${profile.id}/avatar.jpg`;
-    const uploadRes = await fetch(
-      `${window.SUPABASE_URL}/storage/v1/object/avatars/${filePath}`,
-      {
+    if(typeof supabaseRequest === "function"){
+      saved = await supabaseRequest("rpc/update_my_profile_avatar", {
         method: "POST",
-        headers: {
-          "apikey": window.SUPABASE_ANON_KEY,
-          "Authorization": "Bearer " + token,
-          "Content-Type": "image/jpeg",
-          "x-upsert": "true"
-        },
-        body: blob
+        body: JSON.stringify({
+          p_avatar_data_url: window.TONI_V31_AVATAR_DATA_URL
+        })
+      });
+    }else{
+      const token = typeof toniV27GetAccessToken === "function" ? await toniV27GetAccessToken() : null;
+      const profile = toniV31Profile();
+
+      if(!token || !profile.id){
+        throw new Error("Keine aktive Sitzung gefunden.");
       }
-    );
-    if(!uploadRes.ok){
-      const text = await uploadRes.text();
-      throw new Error("Upload fehlgeschlagen: " + text);
-    }
 
-    // 3. Öffentliche URL zusammenbauen
-    const avatarUrl = `${window.SUPABASE_URL}/storage/v1/object/public/avatars/${filePath}?t=${Date.now()}`;
-
-    // 4. avatar_url in profiles speichern (avatar_data_url leeren)
-    const patchRes = await fetch(
-      `${window.SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(profile.id)}`,
-      {
+      const response = await fetch(`${window.SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(profile.id)}`, {
         method: "PATCH",
-        headers: {
+        headers:{
           "apikey": window.SUPABASE_ANON_KEY,
           "Authorization": "Bearer " + token,
           "Content-Type": "application/json",
           "Prefer": "return=representation"
         },
         body: JSON.stringify({
-          avatar_url: avatarUrl,
-          avatar_data_url: null,
+          avatar_data_url: window.TONI_V31_AVATAR_DATA_URL,
           updated_at: new Date().toISOString()
         })
+      });
+
+      if(!response.ok){
+        const text = await response.text();
+        throw new Error(text || "Profilbild konnte nicht gespeichert werden.");
       }
-    );
-    if(!patchRes.ok){
-      const text = await patchRes.text();
-      throw new Error("Profil-Update fehlgeschlagen: " + text);
+
+      const rows = await response.json();
+      saved = rows?.[0] || null;
     }
 
-    // 5. Lokalen Cache aktualisieren
     const updated = {
-      ...profile,
-      avatar_url: avatarUrl,
-      avatar_data_url: null
+      ...toniV31Profile(),
+      ...(saved || {}),
+      avatar_data_url: window.TONI_V31_AVATAR_DATA_URL
     };
+
     window.TONI_AUTH_PROFILE = updated;
     window.TONI_V27_PROFILE_CACHE = updated;
 
     toniV31RenderAvatar(updated);
-    if(typeof toniV32RefreshTopAvatar === "function") toniV32RefreshTopAvatar();
     toniV31SetAvatarStatus("✅ Profilbild wurde gespeichert.", "ok");
 
-    setTimeout(() => { toniV31CloseAvatarCamera(); }, 800);
-
+    setTimeout(() => {
+      toniV31CloseAvatarCamera();
+    }, 800);
   }catch(error){
     console.error("TONI V31 Profilbild speichern:", error);
     toniV31SetAvatarStatus("⚠️ Profilbild konnte nicht gespeichert werden:<br>" + toniV31Escape(error.message), "err");
@@ -5742,7 +5724,12 @@ async function toniV34DeleteProfileAvatar(){
       return;
     }
 
-    {
+    if(typeof supabaseRequest === "function"){
+      await supabaseRequest("rpc/delete_my_profile_avatar", {
+        method: "POST",
+        body: JSON.stringify({})
+      });
+    }else{
       const token = typeof toniV27GetAccessToken === "function" ? await toniV27GetAccessToken() : null;
       if(!token || !profile.id){
         throw new Error("Keine aktive Sitzung gefunden.");
@@ -5758,7 +5745,6 @@ async function toniV34DeleteProfileAvatar(){
         },
         body: JSON.stringify({
           avatar_data_url: null,
-          avatar_url: null,
           updated_at: new Date().toISOString()
         })
       });
@@ -5767,15 +5753,6 @@ async function toniV34DeleteProfileAvatar(){
         const text = await response.text();
         throw new Error(text || "Profilbild konnte nicht gelöscht werden.");
       }
-
-      // Auch aus Storage löschen (kein Fehler wenn nicht vorhanden)
-      await fetch(`${window.SUPABASE_URL}/storage/v1/object/avatars/${profile.id}/avatar.jpg`, {
-        method: "DELETE",
-        headers:{
-          "apikey": window.SUPABASE_ANON_KEY,
-          "Authorization": "Bearer " + token
-        }
-      }).catch(() => {});
     }
 
     const updated = {
@@ -5788,20 +5765,15 @@ async function toniV34DeleteProfileAvatar(){
     window.TONI_V27_PROFILE_CACHE = updated;
     window.TONI_V31_AVATAR_DATA_URL = "";
 
-    // Cache vollständig leeren damit kein altes Bild nachgeladen wird
-    if(window.TONI_V32_TOP_AVATAR_CACHE) window.TONI_V32_TOP_AVATAR_CACHE = null;
-
     if(typeof toniV31RenderAvatar === "function"){
       toniV31RenderAvatar(updated);
     }
 
-    if(typeof toniV32RenderTopAvatar === "function"){
+    if(typeof toniV32RefreshTopAvatar === "function"){
+      await toniV32RefreshTopAvatar();
+    }else if(typeof toniV32RenderTopAvatar === "function"){
       toniV32RenderTopAvatar(updated);
     }
-
-    // Topbar-Avatar direkt leeren
-    const topAvatarImg = document.querySelector(".profile-avatar-top, .topbar-avatar, #top-avatar-img");
-    if(topAvatarImg) topAvatarImg.src = "";
 
     appendMsg?.("toni", "🗑️ Dein Profilbild wurde gelöscht.", typeof time === "function" ? time() : "", "desktop");
   }catch(error){
@@ -6926,65 +6898,26 @@ window.addEventListener("DOMContentLoaded", () => {
 
 
 /* ============================================================
-   Avatar-Löschen: finale Überschreibung (Storage-Migration)
-   Ersetzt alle vorherigen Versionen inkl. V36-Wrapper
+   Projekte nach Login laden
    ============================================================ */
-window.toniV34DeleteProfileAvatar = async function(){
-  const profile = {
-    ...(window.TONI_AUTH_PROFILE || {}),
-    ...(window.TONI_V27_PROFILE_CACHE || {})
+(function(){
+  const _orig = window.applyAuthProfile;
+  window.applyAuthProfile = function(profile) {
+    if (typeof _orig === 'function') _orig(profile);
+    // Projekte laden sobald Profil gesetzt ist
+    if (profile?.id && typeof loadProjects === 'function') {
+      setTimeout(loadProjects, 400);
+    }
   };
 
-  if(!(profile.avatar_data_url || profile.avatar_url)){
-    alert("Es ist kein Profilbild gespeichert.");
-    return;
-  }
-
-  if(!confirm("Profilbild wirklich löschen?")) return;
-
-  try{
-    const token = typeof toniV27GetAccessToken === "function" ? await toniV27GetAccessToken() : null;
-    if(!token || !profile.id) throw new Error("Keine aktive Sitzung gefunden.");
-
-    // 1. DB: avatar_url und avatar_data_url leeren
-    const response = await fetch(
-      `${window.SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(profile.id)}`,
-      {
-        method: "PATCH",
-        headers:{
-          "apikey": window.SUPABASE_ANON_KEY,
-          "Authorization": "Bearer " + token,
-          "Content-Type": "application/json",
-          "Prefer": "return=representation"
-        },
-        body: JSON.stringify({ avatar_data_url: null, avatar_url: null, updated_at: new Date().toISOString() })
-      }
-    );
-    if(!response.ok) throw new Error(await response.text());
-
-    // 2. Storage: Datei löschen
-    await fetch(
-      `${window.SUPABASE_URL}/storage/v1/object/avatars/${profile.id}/avatar.jpg`,
-      {
-        method: "DELETE",
-        headers:{ "apikey": window.SUPABASE_ANON_KEY, "Authorization": "Bearer " + token }
-      }
-    ).catch(() => {});
-
-    // 3. Lokalen Cache aktualisieren
-    const updated = { ...profile, avatar_data_url: null, avatar_url: null };
-    window.TONI_AUTH_PROFILE = updated;
-    window.TONI_V27_PROFILE_CACHE = updated;
-    window.TONI_V31_AVATAR_DATA_URL = "";
-
-    if(typeof toniV31RenderAvatar === "function") toniV31RenderAvatar(updated);
-    if(typeof toniV32RefreshTopAvatar === "function") await toniV32RefreshTopAvatar();
-    else if(typeof toniV32RenderTopAvatar === "function") toniV32RenderTopAvatar(updated);
-
-    appendMsg?.("toni", "🗑️ Dein Profilbild wurde gelöscht.", typeof time === "function" ? time() : "", "desktop");
-
-  }catch(error){
-    console.error("Avatar löschen:", error);
-    alert("Profilbild konnte nicht gelöscht werden:\n" + error.message);
-  }
-};
+  // Fallback: Polling falls applyAuthProfile bereits aufgerufen wurde
+  let attempts = 0;
+  const poll = setInterval(() => {
+    attempts++;
+    if (window.TONI_AUTH_PROFILE?.id && typeof loadProjects === 'function') {
+      clearInterval(poll);
+      loadProjects();
+    }
+    if (attempts > 20) clearInterval(poll); // max 10s
+  }, 500);
+})();
