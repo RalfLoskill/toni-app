@@ -90,6 +90,8 @@ async function loadProjects() {
     const data = await res.json();
     window.TONI_PROJECTS = Array.isArray(data) ? data : [];
     renderProjectsDashboard();
+    renderOpenTasks();
+    renderToniHint();
   } catch (e) { console.warn('TONI Projekte laden:', e); }
 }
 
@@ -147,8 +149,139 @@ function renderProjectsDashboard() {
 }
 
 // ══════════════════════════════════════
-// PROJEKT-MODAL
+// OFFENE AUFGABEN (Dashboard-Kasten)
 // ══════════════════════════════════════
+function renderOpenTasks() {
+  const wrap = document.getElementById('toni-open-tasks-list');
+  if (!wrap) return;
+
+  const projects = window.TONI_PROJECTS;
+  if (!projects.length) {
+    wrap.innerHTML = `<div style="color:var(--color-text-tertiary);font-size:13px;padding:6px 0">Keine Projekte vorhanden.</div>`;
+    return;
+  }
+
+  // Alle offenen Aufgaben aus allen Projekten sammeln
+  // Da project_tasks nicht im Dashboard-State sind, zeigen wir pro Projekt die offene Anzahl
+  // und laden Tasks beim ersten Render nach
+  loadOpenTasksFromProjects();
+}
+
+async function loadOpenTasksFromProjects() {
+  const wrap = document.getElementById('toni-open-tasks-list');
+  if (!wrap) return;
+
+  const projects = window.TONI_PROJECTS;
+  if (!projects.length) return;
+
+  try {
+    const token = await getToken();
+    if (!token) return;
+
+    // Alle offenen Aufgaben aller Projekte laden
+    const projectIds = projects.map(p => `project_id=in.(${projects.map(x=>x.id).join(',')})`)[0];
+    const res = await fetch(
+      `${window.SUPABASE_URL}/rest/v1/project_tasks?${projectIds}&status=neq.done&order=due_date.asc.nullslast,created_at.asc&select=*,assigned_profile:profiles!project_tasks_assigned_to_fkey(id,display_name,first_name,avatar_url)`,
+      { headers: { 'apikey': window.SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + token } }
+    );
+    if (!res.ok) throw new Error(await res.text());
+    const tasks = await res.json();
+
+    if (!tasks.length) {
+      wrap.innerHTML = `<div style="color:var(--color-text-tertiary);font-size:13px;padding:6px 0">Keine offenen Aufgaben – sehr gut! 🎉</div>`;
+      return;
+    }
+
+    wrap.innerHTML = tasks.slice(0, 8).map(t => {
+      const profile = t.assigned_profile;
+      const pal = profile ? getMemberPalette(profile.id) : { bg: 'var(--color-background-secondary)', border: 'var(--color-border-secondary)', text: 'var(--color-text-primary)' };
+      const proj = projects.find(p => p.id === t.project_id);
+      const projName = proj ? escapeHtml(proj.title) : '';
+      const overdue = t.due_date && isOverdue(t.due_date);
+      const dueHtml = t.due_date
+        ? `<span style="font-size:11px;color:${overdue?'#A32D2D':'var(--color-text-tertiary)'};margin-left:4px">${overdue?'⚠ ':''}${formatDate(t.due_date)}</span>`
+        : '';
+      const blockerBadge = t.blocker
+        ? `<span style="font-size:10px;background:#FAECE7;color:#993C1D;padding:1px 6px;border-radius:8px;margin-left:4px">Blockiert</span>`
+        : '';
+      const statusBadge = t.status === 'in_progress'
+        ? `<span style="font-size:10px;background:#FAEEDA;color:#633806;padding:1px 6px;border-radius:8px;margin-left:4px">In Arbeit</span>`
+        : t.status === 'review'
+        ? `<span style="font-size:10px;background:#EEEDFE;color:#3C3489;padding:1px 6px;border-radius:8px;margin-left:4px">Review</span>`
+        : '';
+
+      return `<div onclick="openProjectModal('${t.project_id}')"
+        style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:0.5px solid var(--color-border-tertiary);cursor:pointer"
+        onmouseover="this.style.opacity='.75'" onmouseout="this.style.opacity='1'">
+        ${profile ? avatarHtml(profile, 28) : `<div style="width:28px;height:28px;border-radius:50%;background:var(--color-background-secondary);border:0.5px solid var(--color-border-secondary);flex-shrink:0"></div>`}
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;font-weight:500;color:var(--color-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(t.title)}${statusBadge}${blockerBadge}</div>
+          <div style="display:flex;align-items:center;flex-wrap:wrap;gap:2px;margin-top:1px">
+            ${profile ? `<span style="font-size:11px;color:${pal.text}">${escapeHtml(profile.first_name||profile.display_name||'')}</span>` : '<span style="font-size:11px;color:var(--color-text-tertiary)">Nicht zugewiesen</span>'}
+            ${projName ? `<span style="font-size:11px;color:var(--color-text-tertiary)"> · ${projName}</span>` : ''}
+            ${dueHtml}
+          </div>
+        </div>
+      </div>`;
+    }).join('');
+
+    if (tasks.length > 8) {
+      wrap.innerHTML += `<div style="font-size:12px;color:var(--color-text-tertiary);padding:6px 0;text-align:center">+ ${tasks.length - 8} weitere Aufgaben</div>`;
+    }
+
+    // TONI-Hinweis basierend auf echten Daten aktualisieren
+    renderToniHintFromTasks(tasks);
+
+  } catch (e) {
+    console.warn('TONI offene Aufgaben:', e);
+    wrap.innerHTML = `<div style="color:var(--color-text-tertiary);font-size:13px;padding:6px 0">Aufgaben konnten nicht geladen werden.</div>`;
+  }
+}
+
+// ══════════════════════════════════════
+// TONI-HINWEIS (Dashboard-Kasten)
+// ══════════════════════════════════════
+function renderToniHint() {
+  const projects = window.TONI_PROJECTS;
+  if (!projects.length) return;
+  // Wird durch renderToniHintFromTasks überschrieben sobald Tasks geladen
+}
+
+function renderToniHintFromTasks(tasks) {
+  const wrap = document.getElementById('toni-project-hint');
+  if (!wrap) return;
+
+  const blocked = tasks.filter(t => t.blocker);
+  const overdue = tasks.filter(t => t.due_date && isOverdue(t.due_date));
+  const unassigned = tasks.filter(t => !t.assigned_to && t.status !== 'done');
+
+  let hint = '';
+  let chips = '';
+
+  if (blocked.length) {
+    const b = blocked[0];
+    const proj = window.TONI_PROJECTS.find(p => p.id === b.project_id);
+    hint = `Es gibt ${blocked.length} blockierte Aufgabe${blocked.length>1?'n':''} in deinen Projekten. "${escapeHtml(b.title)}" ist blockiert: <em>${escapeHtml(b.blocker)}</em>. Kläre das zuerst – Blocker bremsen die ganze Gruppe.`;
+    chips = `<span onclick="openProjectModal('${b.project_id}')" style="display:inline-flex;align-items:center;font-size:12px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--color-border-secondary);cursor:pointer;color:var(--color-text-secondary)">Projekt öffnen</span>`;
+  } else if (overdue.length) {
+    hint = `${overdue.length} Aufgabe${overdue.length>1?'n sind':' ist'} überfällig. Am besten heute noch angehen!`;
+    chips = `<span onclick="loadOpenTasksFromProjects()" style="display:inline-flex;align-items:center;font-size:12px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--color-border-secondary);cursor:pointer;color:var(--color-text-secondary)">Aufgaben anzeigen</span>`;
+  } else if (unassigned.length) {
+    hint = `${unassigned.length} Aufgabe${unassigned.length>1?'n sind':' ist'} noch niemandem zugewiesen. Weise sie Gruppenmitgliedern zu damit alle wissen was zu tun ist.`;
+    chips = '';
+  } else if (tasks.length === 0) {
+    hint = 'Alle Aufgaben sind erledigt – fantastisch! 🎉 Zeit für neue Projekte.';
+  } else {
+    hint = `Du hast ${tasks.length} offene Aufgabe${tasks.length>1?'n':''} in deinen Projekten. Schau regelmäßig rein und halte deinen Fortschritt aktuell.`;
+    chips = `<span onclick="agentAction('project_agent','Projektstatus zusammenfassen','desktop')" style="display:inline-flex;align-items:center;font-size:12px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--color-border-secondary);cursor:pointer;color:var(--color-text-secondary)">Projektstatus zusammenfassen</span>`;
+  }
+
+  wrap.innerHTML = `
+    <div style="background:#E6F1FB;border-radius:0 10px 10px 10px;padding:10px 13px;font-size:13px;color:#0C447C;line-height:1.6;margin-bottom:${chips?'10px':'0'}">${hint}</div>
+    ${chips ? `<div style="display:flex;gap:6px;flex-wrap:wrap">${chips}</div>` : ''}`;
+}
+
+// ──────────────────────────────────────
 function openProjectModal(projectId) {
   const p = window.TONI_PROJECTS.find(x => x.id === projectId);
   if (!p) return;
@@ -308,6 +441,7 @@ async function moveProjectTask(taskId, newStatus) {
     });
     if (window.TONI_ACTIVE_PROJECT_ID) loadProjectTasks(window.TONI_ACTIVE_PROJECT_ID);
     loadProjects();
+    loadOpenTasksFromProjects();
   } catch (e) { console.warn('TONI Aufgabe verschieben:', e); }
 }
 
@@ -574,33 +708,48 @@ window.addEventListener('DOMContentLoaded', () => {
 
 // Projekte laden – zuverlässig nach Login
 (function waitForAuth() {
-  let loaded = false;
+  let done = false;
+
   function tryLoad() {
-    if (loaded) return;
-    if (window.TONI_AUTH_PROFILE?.id) { loaded = true; loadProjects(); }
+    if (done) return;
+    if (window.TONI_AUTH_PROFILE?.id) {
+      done = true;
+      loadProjects();
+    }
   }
+
   tryLoad();
+
+  const origApply = window.applyAuthProfile;
+  window.applyAuthProfile = function(profile) {
+    if (typeof origApply === 'function') origApply(profile);
+    if (profile?.id) { done = false; setTimeout(tryLoad, 200); }
+  };
+
   function hookSupabase() {
     const client = window._supabaseClient || window.supabase;
     if (client?.auth?.onAuthStateChange) {
       client.auth.onAuthStateChange((event, session) => {
-        if (event === 'SIGNED_IN' && session) setTimeout(tryLoad, 800);
-        if (event === 'SIGNED_OUT') { loaded = false; window.TONI_PROJECTS = []; renderProjectsDashboard(); }
+        if (event === 'SIGNED_IN' && session) { done = false; setTimeout(tryLoad, 600); }
+        if (event === 'SIGNED_OUT') {
+          done = false;
+          window.TONI_PROJECTS = [];
+          const w1 = document.getElementById('toni-projects-list');
+          const w2 = document.getElementById('toni-open-tasks-list');
+          if (w1) w1.innerHTML = '<div style="color:var(--color-text-tertiary);font-size:13px;padding:12px 0">Projekte werden geladen…</div>';
+          if (w2) w2.innerHTML = '<div style="color:var(--color-text-tertiary);font-size:13px;padding:8px 0">Wird geladen…</div>';
+        }
       });
       return true;
     }
     return false;
   }
-  const origApply = window.applyAuthProfile;
-  window.applyAuthProfile = function(profile) {
-    if (typeof origApply === 'function') origApply(profile);
-    if (profile?.id) { loaded = false; setTimeout(tryLoad, 300); }
-  };
+
   let tries = 0;
   const poll = setInterval(() => {
     tries++;
     hookSupabase();
     tryLoad();
-    if (loaded || tries > 40) clearInterval(poll);
-  }, 500);
+    if (done || tries > 50) clearInterval(poll);
+  }, 400);
 })();
