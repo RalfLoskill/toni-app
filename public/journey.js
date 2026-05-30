@@ -72,8 +72,131 @@ function renderLearningJourneyModal(){
 function taskCardHtml(t){return`<div class="lr-task-card ${t.status}"><div class="lr-task-title">${t.status==='done'?'✅ ':t.status==='in_progress'?'🟡 ':'☐ '}${t.title}</div><div class="lr-task-desc">${t.description}</div><div class="lr-task-tags"><span class="lr-task-tag">${t.type}</span><span class="lr-task-tag ${t.required?'required':'optional'}">${t.required?'Pflicht':'optional'}</span>${t.status==='done'?'<span class="lr-task-tag done">erledigt</span>':''}</div><div class="lr-task-buttons"><button class="lr-secondary-btn" onclick="openLearningTask('${t.id}')">Öffnen</button>${t.status!=='done'?`<button class="lr-success-btn" onclick="completeLearningTask('${t.id}')">Erledigt</button>`:''}</div></div>`;}
 function checkCurrentStation(){const s=currentStep(),missing=s.tasks.filter(t=>t.required&&t.status!=='done');appendMsg('toni',missing.length?`In der aktuellen Station fehlen noch <strong>${missing.length}</strong> Pflichtaufgabe(n):<br>${missing.map(t=>'• '+t.title).join('<br>')}`:'✅ Diese Station ist abgeschlossen. Die nächste Station wurde freigeschaltet.',time(),'desktop');syncJourneyToDashboard();renderLearningJourneyModal();}
 function startNextLearningTask(){const t=nextLearningTask();if(!t){appendMsg('toni','🎉 Alle aktuell verfügbaren Aufgaben sind erledigt. Starte die Reflexion.',time(),'desktop');return;}openLearningTask(t.id);}
-function openLearningTask(id){const f=findTask(id);if(!f)return;STATE.selectedTaskId=id;if(f.task.status==='todo')f.task.status='in_progress';document.getElementById('lr-task-title').textContent=f.task.title;document.getElementById('lr-task-sub').textContent=`${f.step.title} · ${f.task.type}`;document.getElementById('lr-task-content').innerHTML=`<strong>Auftrag:</strong><br>${f.task.content}`;document.getElementById('lr-answer').value=f.task.answer||'';document.getElementById('lr-task-hint').innerHTML=hintForTask(f.task);document.getElementById('lr-task-modal').classList.add('open');appendMsg('toni',`Du hast <strong>${f.task.title}</strong> geöffnet. Bearbeite die Aufgabe Schritt für Schritt.`,time(),'desktop');syncJourneyToDashboard();renderLearningJourneyModal();}
+function openLearningTask(id){
+  const f=findTask(id);
+  if(!f) return;
+  STATE.selectedTaskId=id;
+  if(f.task.status==='todo') f.task.status='in_progress';
+  const task=f.task;
+  const normType=toniNormalizeType(task.type);
+  document.getElementById('lr-task-title').textContent=task.title;
+  document.getElementById('lr-task-sub').textContent=`${f.step.title} · ${toniTypeIcon(normType)}${normType}`;
+  const contentEl=document.getElementById('lr-task-content');
+  const answerEl=document.getElementById('lr-answer');
+  const hintEl=document.getElementById('lr-task-hint');
+  if(answerEl) answerEl.style.display='none';
+  switch(normType){
+    case 'Lerninhalt': toniRenderLerninhalt(task,contentEl); break;
+    case 'Video': toniRenderVideo(task,contentEl); break;
+    case 'Quiz': toniRenderQuiz(task,contentEl); break;
+    case 'Reflexion': toniRenderReflexion(task,contentEl); if(answerEl){answerEl.style.display='';answerEl.value=task.answer||'';answerEl.placeholder='Schreib deine Gedanken auf…';} break;
+    default:
+      contentEl.innerHTML=`<strong>Auftrag:</strong><br>${task.content||task.description||task.title}`;
+      if(answerEl){answerEl.style.display='';answerEl.value=task.answer||'';}
+      break;
+  }
+  if(hintEl) hintEl.innerHTML=hintForTask(task);
+  document.getElementById('lr-task-modal').classList.add('open');
+  appendMsg('toni',`Du hast <strong>${toniEsc(task.title)}</strong> geöffnet. ${toniTaskPrompt(normType)}`,time(),'desktop');
+  syncJourneyToDashboard();
+  renderLearningJourneyModal();
+}
 function closeLearningTask(){saveSelectedTaskAnswer();document.getElementById('lr-task-modal').classList.remove('open');}
+
+// ══════════════════════════════════════════════════════════
+// TONI – Aufgabentyp-System
+// ══════════════════════════════════════════════════════════
+function toniEsc(s){return String(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');}
+function toniNormalizeType(type){
+  const t=String(type||'').toLowerCase();
+  if(['info','erklärung','material','lerninhalt'].includes(t)) return 'Lerninhalt';
+  if(['übung','praxis','aufgabe'].includes(t)) return 'Aufgabe';
+  if(t==='quiz') return 'Quiz';
+  if(t==='video') return 'Video';
+  if(t==='reflexion') return 'Reflexion';
+  return 'Aufgabe';
+}
+function toniTypeIcon(type){return({'Lerninhalt':'📖 ','Aufgabe':'✏️ ','Quiz':'🎯 ','Video':'🎬 ','Reflexion':'💬 '})[type]||'📌 ';}
+function toniTaskPrompt(type){return({'Lerninhalt':'Lies den Inhalt aufmerksam durch und klicke danach auf "Gelesen – weiter".','Aufgabe':'Bearbeite die Aufgabe und gib deine Antwort ein.','Quiz':'Beantworte die Fragen – du bekommst sofort Feedback.','Video':'Schau das Video und notiere dir drei Kernaussagen.','Reflexion':'Nimm dir kurz Zeit zum Nachdenken. Es gibt keine falsche Antwort.'})[type]||'Bearbeite die Aufgabe Schritt für Schritt.';}
+
+function toniRenderLerninhalt(task,el){
+  if(!el) return;
+  let images=[],files=[],links=[];
+  let textHtml=task.content||'';
+  const blocks=task.blocks||task.lerninhalt_blocks;
+  if(Array.isArray(blocks)){
+    blocks.forEach(b=>{
+      if(b.type==='image') images.push(b);
+      else if(b.type==='file') files.push(b);
+      else if(b.type==='link') links.push(b);
+      else if(b.type==='text') textHtml+=(b.html||'');
+    });
+  }
+  if(task.links&&Array.isArray(task.links)) links=[...links,...task.links];
+  const hasMedia=images.length||files.length||links.length;
+  el.innerHTML=`<div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
+    <div style="flex:1;min-width:180px">
+      ${textHtml?`<div style="font-size:14px;line-height:1.75;color:var(--color-text-primary)">${textHtml}</div>`:''}
+      <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
+        <button onclick="completeSelectedLearningTask()" style="padding:10px 20px;background:#639922;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer">✅ Gelesen – weiter</button>
+        <button onclick="showSelectedTaskHint?.()" style="padding:10px 14px;background:none;border:0.5px solid var(--color-border-secondary);border-radius:8px;font-size:13px;cursor:pointer;color:var(--color-text-secondary)">Hinweis von TONI</button>
+      </div>
+    </div>
+    ${hasMedia?`<div style="width:240px;flex-shrink:0;background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);border-radius:10px;padding:12px">
+      <div style="font-size:11px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">📎 Material</div>
+      ${images.map(img=>`<img src="${toniEsc(img.url)}" alt="${toniEsc(img.alt||'Bild')}" style="width:100%;border-radius:8px;margin-bottom:8px;cursor:pointer;border:0.5px solid var(--color-border-tertiary);object-fit:cover;max-height:160px" onclick="window.open('${toniEsc(img.url)}','_blank')">`).join('')}
+      ${files.map(f=>`<a href="${toniEsc(f.url)}" target="_blank" download style="display:flex;align-items:center;gap:6px;padding:7px 9px;background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:7px;margin-bottom:5px;text-decoration:none;color:var(--color-text-primary)"><span>📄</span><span style="font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${toniEsc(f.name||f.url.split('/').pop())}</span><span style="font-size:11px;color:var(--color-text-tertiary)">↓</span></a>`).join('')}
+      ${links.map(l=>`<a href="${toniEsc(l.url)}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;padding:7px 9px;background:#E6F1FB;border:0.5px solid #B5D4F4;border-radius:7px;margin-bottom:5px;text-decoration:none;color:#0C447C"><span>${l.youtube?'▶️':'🔗'}</span><span style="font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${toniEsc(l.title||l.url)}</span><span style="font-size:11px;opacity:.7">→</span></a>`).join('')}
+    </div>`:''}
+  </div>`;
+}
+
+function toniRenderVideo(task,el){
+  if(!el) return;
+  const ytId=task.youtube_video_id||task.video_id;
+  const desc=task.description||task.content||'';
+  if(ytId){
+    el.innerHTML=`<div style="margin-bottom:12px"><div style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:10px;background:#000"><iframe src="https://www.youtube.com/embed/${toniEsc(ytId)}" frameborder="0" allowfullscreen style="position:absolute;top:0;left:0;width:100%;height:100%"></iframe></div></div>${desc?`<div style="font-size:13px;color:var(--color-text-secondary);line-height:1.6;margin-bottom:10px">${toniEsc(desc)}</div>`:''}<div style="background:#FAEEDA;border-radius:8px;padding:8px 12px;font-size:12px;color:#633806">💡 Tipp: Notiere nach dem Video drei Kernaussagen.</div>`;
+  } else {
+    el.innerHTML=`<div style="font-size:14px;color:var(--color-text-primary)">${toniEsc(desc)}</div>`;
+  }
+}
+
+function toniRenderQuiz(task,el){
+  if(!el) return;
+  const qdata=task.quiz_data;
+  if(!qdata?.questions?.length){
+    el.innerHTML=`<div style="font-size:14px;color:var(--color-text-primary)">${toniEsc(task.content||task.description||'')}</div><div style="margin-top:10px;background:#FAEEDA;border-radius:8px;padding:8px 12px;font-size:12px;color:#633806">🎯 Quiz-Fragen werden noch vom Tutor erstellt.</div>`;
+    return;
+  }
+  const idx=task._quizIndex||0;
+  const q=qdata.questions[idx];
+  el.innerHTML=`<div style="font-size:12px;color:var(--color-text-tertiary);margin-bottom:8px">Frage ${idx+1} von ${qdata.questions.length}</div><div style="font-size:14px;font-weight:500;color:var(--color-text-primary);margin-bottom:12px">${toniEsc(q.question)}</div><div id="quiz-options">${q.options.map((opt,i)=>`<button onclick="toniQuizAnswer(${i})" style="display:block;width:100%;text-align:left;padding:10px 14px;margin-bottom:6px;background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);border-radius:8px;font-size:13px;cursor:pointer;color:var(--color-text-primary)">${String.fromCharCode(65+i)}. ${toniEsc(opt)}</button>`).join('')}</div>`;
+}
+window.toniQuizAnswer=function(idx){
+  const task=findTask(STATE.selectedTaskId)?.task;
+  if(!task?.quiz_data) return;
+  const q=task.quiz_data.questions[task._quizIndex||0];
+  document.querySelectorAll('#quiz-options button').forEach((btn,i)=>{
+    btn.style.background=i===q.correct_index?'#EAF3DE':i===idx?'#FCEBEB':'var(--color-background-secondary)';
+    btn.style.borderColor=i===q.correct_index?'#639922':i===idx&&idx!==q.correct_index?'#E24B4A':'var(--color-border-tertiary)';
+    btn.disabled=true;
+  });
+  const fb=document.createElement('div');
+  fb.style.cssText=`margin-top:10px;padding:10px;border-radius:8px;font-size:13px;background:${idx===q.correct_index?'#EAF3DE':'#FCEBEB'};color:${idx===q.correct_index?'#27500A':'#791F1F'}`;
+  fb.innerHTML=idx===q.correct_index?'✅ Richtig! '+toniEsc(q.explanation||''):'❌ Leider falsch. '+toniEsc(q.explanation||'Richtig: '+q.options[q.correct_index]);
+  document.getElementById('quiz-options').appendChild(fb);
+};
+
+function toniRenderReflexion(task,el){
+  if(!el) return;
+  el.innerHTML=`<div style="font-size:14px;color:var(--color-text-primary);line-height:1.7;margin-bottom:12px">${toniEsc(task.reflexion_prompt||task.content||'Was hast du heute gelernt? Was war schwierig?')}</div><div style="margin-bottom:12px"><div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:6px">Wie gut verstehst du das Thema?</div><div style="display:flex;gap:6px" id="reflexion-stars">${[1,2,3,4,5].map(i=>`<button onclick="toniReflexionStar(${i})" style="font-size:22px;background:none;border:none;cursor:pointer;opacity:.35" data-star="${i}">⭐</button>`).join('')}</div></div>`;
+}
+window.toniReflexionStar=function(val){
+  document.querySelectorAll('#reflexion-stars button').forEach((btn,i)=>{btn.style.opacity=i<val?'1':'0.3';});
+  const task=findTask(STATE.selectedTaskId)?.task;
+  if(task) task._reflexionStars=val;
+};
 function saveSelectedTaskAnswer(){const f=findTask(STATE.selectedTaskId);if(!f)return;f.task.answer=document.getElementById('lr-answer')?.value||f.task.answer||'';saveState(STATE);}
 function startSelectedLearningTask(){const f=findTask(STATE.selectedTaskId);if(!f)return;f.task.status='in_progress';syncJourneyToDashboard();renderLearningJourneyModal();showXPToast(5);}
 function completeSelectedLearningTask(){saveSelectedTaskAnswer();completeLearningTask(STATE.selectedTaskId);closeLearningTask();}
@@ -11452,12 +11575,18 @@ window.addEventListener("resize", () => {
     const task = found?.task;
     const v = videoData(task);
 
+    // TONI: Lerninhalt, Quiz, Reflexion werden von toniRender* verwaltet – nicht überschreiben
+    const normType = typeof toniNormalizeType === 'function' ? toniNormalizeType(task?.type) : '';
+    if(['Lerninhalt','Quiz','Reflexion'].includes(normType)) return;
+
     const body = normalizeTaskModalBody();
     if(!body) return;
 
     // Auftrag bereinigen: Bei Video-Aufgaben nur den eigentlichen Auftrag zeigen, nicht den Link.
     const content = document.getElementById("lr-task-content");
     if(content && task){
+      // TONI: Video wird von toniRenderVideo verwaltet
+      if(normType === 'Video') return;
       content.innerHTML = `<strong>Auftrag:</strong><br>${esc(task.description || task.content || task.title || "")}`;
     }
 
@@ -12002,6 +12131,18 @@ window.addEventListener("resize", () => {
       task.content = description || yt.url;
     }
 
+    // TONI: blocks für Lerninhalt direkt einbauen
+    if(toniNormalizeType(type)==='Lerninhalt'){
+      const blocks=[...(window.TONI_LERNINHALT_IMAGES||[]),...(window.TONI_LERNINHALT_FILES||[]),...(window.TONI_LERNINHALT_LINKS||[])];
+      if(blocks.length){
+        task.blocks=blocks;
+        window.TONI_LERNINHALT_IMAGES=[];window.TONI_LERNINHALT_FILES=[];window.TONI_LERNINHALT_LINKS=[];
+        const s=document.getElementById('lerninhalt-save-status');
+        if(s){s.innerHTML=`✅ ${blocks.length} Medium/Medien gespeichert`;setTimeout(()=>s.innerHTML='',3000);}
+        console.log('✅ TONI blocks in Task:',task.title,blocks.length);
+      }
+    }
+
     return task;
   }
 
@@ -12188,3 +12329,67 @@ window.addEventListener("resize", () => {
   });
 })();
 
+
+/* ============================================================
+   TONI – Upload + Builder-Extras (Lerninhalt)
+   ============================================================ */
+(function(){
+  window.TONI_LERNINHALT_IMAGES=window.TONI_LERNINHALT_IMAGES||[];
+  window.TONI_LERNINHALT_FILES=window.TONI_LERNINHALT_FILES||[];
+  window.TONI_LERNINHALT_LINKS=window.TONI_LERNINHALT_LINKS||[];
+  async function gt(){return typeof toniV27GetAccessToken==='function'?await toniV27GetAccessToken():null;}
+  window.toniHandleImgUpload=async function(input){
+    const file=input.files?.[0];if(!file)return;
+    const p=document.getElementById('lerninhalt-img-preview');
+    if(p)p.innerHTML='<span style="font-size:11px;color:var(--color-text-tertiary)">Wird hochgeladen…</span>';
+    try{
+      const token=await gt();
+      const path=`tasks/img_${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
+      const res=await fetch(`${window.SUPABASE_URL}/storage/v1/object/learning-content/${path}`,{method:'POST',headers:{'apikey':window.SUPABASE_ANON_KEY,'Authorization':'Bearer '+token,'Content-Type':file.type,'x-upsert':'true'},body:file});
+      if(!res.ok)throw new Error(await res.text());
+      const url=`${window.SUPABASE_URL}/storage/v1/object/public/learning-content/${path}`;
+      window.TONI_LERNINHALT_IMAGES.push({type:'image',url,alt:file.name});
+      if(p)p.innerHTML=`<img src="${url}" style="max-height:80px;border-radius:6px;border:0.5px solid var(--color-border-tertiary);margin-top:4px"><div style="font-size:11px;color:#27500A;margin-top:2px">✅ Hochgeladen</div>`;
+    }catch(e){if(p)p.innerHTML=`<span style="color:#A32D2D;font-size:11px">Fehler: ${e.message}</span>`;}
+  };
+  window.toniHandleFileUpload=async function(input){
+    const file=input.files?.[0];if(!file)return;
+    const l=document.getElementById('lerninhalt-file-list');
+    if(l)l.innerHTML='<span style="font-size:11px;color:var(--color-text-tertiary)">Wird hochgeladen…</span>';
+    try{
+      const token=await gt();
+      const path=`tasks/files/${Date.now()}_${file.name.replace(/[^a-zA-Z0-9._-]/g,'_')}`;
+      const res=await fetch(`${window.SUPABASE_URL}/storage/v1/object/learning-content/${path}`,{method:'POST',headers:{'apikey':window.SUPABASE_ANON_KEY,'Authorization':'Bearer '+token,'Content-Type':file.type,'x-upsert':'true'},body:file});
+      if(!res.ok)throw new Error(await res.text());
+      const url=`${window.SUPABASE_URL}/storage/v1/object/public/learning-content/${path}`;
+      window.TONI_LERNINHALT_FILES.push({type:'file',url,name:file.name});
+      if(l)l.innerHTML=`<span style="font-size:11px;color:#27500A">✅ ${file.name}</span>`;
+    }catch(e){if(l)l.innerHTML=`<span style="color:#A32D2D;font-size:11px">Fehler: ${e.message}</span>`;}
+  };
+  window.toniAddLink=function(){
+    const url=document.getElementById('lerninhalt-link-url')?.value.trim();
+    const title=document.getElementById('lerninhalt-link-title')?.value.trim();
+    if(!url)return;
+    window.TONI_LERNINHALT_LINKS.push({type:'link',url,title:title||url});
+    document.getElementById('lerninhalt-link-url').value='';
+    document.getElementById('lerninhalt-link-title').value='';
+    const l=document.getElementById('lerninhalt-links-list');
+    if(l)l.innerHTML=window.TONI_LERNINHALT_LINKS.map(x=>`<div style="font-size:11px;color:var(--color-text-secondary);padding:2px 0">🔗 ${x.title}</div>`).join('');
+  };
+  function enhance(){
+    const sel=document.getElementById('task-type');
+    if(!sel||sel.__toniEnh)return;
+    sel.__toniEnh=true;
+    const c=sel.closest('form')||sel.closest('[class*="modal"]')||sel.parentElement?.parentElement;
+    if(!c)return;
+    const ex=document.createElement('div');
+    ex.id='lerninhalt-extras';ex.style.display='none';
+    ex.innerHTML=`<div style="background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);border-radius:8px;padding:12px;margin-top:8px"><div style="font-size:12px;font-weight:500;color:#185FA5;margin-bottom:10px">📖 Medien für Lerninhalt</div><div style="margin-bottom:8px"><label style="font-size:11px;color:var(--color-text-tertiary);display:block;margin-bottom:3px">Bild hinzufügen</label><input type="file" accept="image/*" onchange="toniHandleImgUpload(this)" style="font-size:12px;width:100%"><div id="lerninhalt-img-preview" style="margin-top:4px"></div></div><div style="margin-bottom:8px"><label style="font-size:11px;color:var(--color-text-tertiary);display:block;margin-bottom:3px">Datei-Anhang (PDF, Word…)</label><input type="file" accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx" onchange="toniHandleFileUpload(this)" style="font-size:12px;width:100%"><div id="lerninhalt-file-list" style="margin-top:4px"></div></div><div><label style="font-size:11px;color:var(--color-text-tertiary);display:block;margin-bottom:3px">Link hinzufügen</label><div style="display:flex;gap:5px"><input type="url" id="lerninhalt-link-url" placeholder="https://…" style="flex:2;padding:5px 8px;border:0.5px solid var(--color-border-secondary);border-radius:6px;font-size:12px;background:var(--color-background-primary);color:var(--color-text-primary)"><input type="text" id="lerninhalt-link-title" placeholder="Titel" style="flex:1;padding:5px 8px;border:0.5px solid var(--color-border-secondary);border-radius:6px;font-size:12px;background:var(--color-background-primary);color:var(--color-text-primary)"><button type="button" onclick="toniAddLink()" style="padding:5px 10px;background:#185FA5;color:#fff;border:none;border-radius:6px;font-size:12px;cursor:pointer">+</button></div><div id="lerninhalt-links-list" style="margin-top:4px"></div></div><div id="lerninhalt-save-status" style="font-size:11px;color:#27500A;margin-top:6px;min-height:16px"></div></div>`;
+    const d=c.querySelector('#task-description')?.closest('.lr-form-group');
+    if(d)d.after(ex);else c.appendChild(ex);
+    sel.addEventListener('change',()=>{ex.style.display=toniNormalizeType(sel.value)==='Lerninhalt'?'block':'none';});
+    ex.style.display=toniNormalizeType(sel.value)==='Lerninhalt'?'block':'none';
+  }
+  new MutationObserver(()=>{if(document.getElementById('task-type')&&!document.getElementById('task-type').__toniEnh)enhance();}).observe(document.body,{childList:true,subtree:true});
+  if(document.readyState!=='loading')enhance();else document.addEventListener('DOMContentLoaded',enhance);
+})();
