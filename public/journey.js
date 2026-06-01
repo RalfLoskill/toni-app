@@ -878,6 +878,10 @@ async function sendMagicLink() {
 
 async function signOutUser() {
   const client = getSupabaseClient();
+  // Kurz das Gif über dem (noch sichtbaren) abgedunkelten Dashboard zeigen
+  const loader = document.getElementById("toni-loading-screen-v69");
+  if (loader) loader.classList.remove("hidden");
+
   await client.auth.signOut();
 
   TONI_AUTH_SESSION = null;
@@ -888,8 +892,14 @@ async function signOutUser() {
   updateAuthUI(null, null);
   if (typeof applyRoleUI === "function") applyRoleUI();
 
+  // Nach kurzer Gif-Anzeige zum Startbildschirm wechseln und Gif ausblenden
+  setTimeout(() => {
+    if (typeof window.toniShowStartScreen === "function") window.toniShowStartScreen();
+    if (loader) loader.classList.add("hidden");
+  }, 1400);
+
   if (typeof appendMsg === "function") {
-    appendMsg("toni", "Du wurdest abgemeldet. TONI zeigt nun wieder die Student-Ansicht.", time(), "desktop");
+    appendMsg("toni", "Du wurdest abgemeldet.", time(), "desktop");
   }
 }
 
@@ -1031,6 +1041,7 @@ async function handleAuthSession(session) {
     updateAuthUI(null, null);
     localStorage.setItem("toni_role", "student");
     if (typeof applyRoleUI === "function") applyRoleUI();
+    if (typeof window.toniShowStartScreen === "function") window.toniShowStartScreen();
     return;
   }
 
@@ -1038,6 +1049,7 @@ async function handleAuthSession(session) {
   applyAuthProfile(profile);
   updateAuthUI(session.user, profile);
   closeAuthModal();
+  if (typeof window.toniHideStartScreen === "function") window.toniHideStartScreen();
 
   if (typeof appendMsg === "function") {
     appendMsg("toni", `✅ Angemeldet als <strong>${escapeHtml(profile.display_name)}</strong> (${escapeHtml(profile.role)}).`, time(), "desktop");
@@ -1059,6 +1071,79 @@ async function initAuthLogin() {
 window.addEventListener("DOMContentLoaded", () => {
   setTimeout(initAuthLogin, 950);
 });
+
+/* TONI Startbildschirm – weißer Vollbild-Layer mit Gif + Anmeldeformular vor dem Login */
+(function(){
+  // Verschiebt das bestehende Auth-Formular in den Startbildschirm (einmalig)
+  function moveLoginIntoStartScreen(){
+    const slot = document.getElementById("toni-startscreen-login");
+    const modal = document.querySelector("#auth-modal .auth-modal");
+    if(slot && modal && modal.parentElement !== slot){
+      slot.appendChild(modal);
+    }
+  }
+  function showStartScreen(){
+    const ss = document.getElementById("toni-startscreen");
+    if(!ss) return;
+    moveLoginIntoStartScreen();
+    ss.classList.remove("hidden");
+  }
+  function hideStartScreen(){
+    const ss = document.getElementById("toni-startscreen");
+    if(ss) ss.classList.add("hidden");
+  }
+  window.toniShowStartScreen = showStartScreen;
+  window.toniHideStartScreen = hideStartScreen;
+
+  // Schlanker Einschritt-Login: löst intern die bestehende zweistufige Logik aus
+  // (continueLogin prüft E-Mail/Rolle, signInWithPassword meldet mit Passwort an).
+  window.toniSlimLogin = function(){
+    const email = document.getElementById("auth-email")?.value.trim();
+    const pw = document.getElementById("auth-password")?.value;
+    if(!email){ const m=document.getElementById("auth-message"); if(m) m.textContent="Bitte E-Mail eingeben."; return; }
+    if(!pw){ const m=document.getElementById("auth-message"); if(m) m.textContent="Bitte Passwort eingeben."; return; }
+    // Schritt 1: E-Mail prüfen (macht intern u.a. die Rolle/Passwortbereich bereit)
+    try{ if(typeof continueLogin === "function") continueLogin(); }catch(e){ /* weiter zu Passwort */ }
+    // Schritt 2: nach kurzer Pause mit Passwort anmelden
+    setTimeout(function(){
+      try{ if(typeof signInWithPassword === "function") signInWithPassword(); }catch(e){ console.warn("Slim-Login:", e); }
+    }, 350);
+  };
+
+  // Zuverlässiger eigener Auth-Listener: blendet Startbildschirm nach Login sicher aus.
+  // (handleAuthSession kann im Moment des SIGNED_IN je nach Timing nicht durchlaufen.)
+  function attachStartScreenAuthListener(){
+    try{
+      const client = (typeof getSupabaseClient === "function") ? getSupabaseClient() : null;
+      if(client?.auth?.onAuthStateChange && !window.TONI_STARTSCREEN_LISTENER){
+        window.TONI_STARTSCREEN_LISTENER = true;
+        client.auth.onAuthStateChange(function(event, session){
+          if(session && session.user){
+            hideStartScreen();
+          } else if(event === "SIGNED_OUT"){
+            showStartScreen();
+          }
+        });
+        return true;
+      }
+    }catch(e){ console.warn("TONI Startscreen-Listener:", e); }
+    return false;
+  }
+  // Mehrfach versuchen, bis der Supabase-Client bereit ist
+  window.addEventListener("DOMContentLoaded", function(){
+    let tries = 0;
+    const iv = setInterval(function(){
+      tries++;
+      if(attachStartScreenAuthListener() || tries > 30){ clearInterval(iv); }
+    }, 200);
+  });
+
+  // Beim Laden: Formular schon einhängen, Startbildschirm bleibt sichtbar bis Login geklärt
+  window.addEventListener("DOMContentLoaded", function(){
+    setTimeout(moveLoginIntoStartScreen, 200);
+    setTimeout(moveLoginIntoStartScreen, 1000);
+  });
+})();
 
 /* =========================================================
    TONI – LERNGRUPPEN / QR-BEITRITT V4
