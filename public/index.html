@@ -51,6 +51,15 @@ body { font-family:'Inter',sans-serif; background:#f8fafc; font-size:13px; color
 .icon-btn { width:32px; height:32px; border-radius:8px; border:none; background:none; cursor:pointer; display:flex; align-items:center; justify-content:center; color:#64748b; position:relative; transition:background .15s; font-size:16px; }
 .icon-btn:hover { background:var(--slate-100); }
 .notif-dot { position:absolute; top:4px; right:4px; width:7px; height:7px; background:#ef4444; border-radius:50%; border:1.5px solid #fff; }
+.topbar.topbar-v26{display:flex!important;align-items:center!important;gap:22px!important;flex-wrap:nowrap!important;grid-template-columns:none!important}
+.topbar.topbar-v26 .toni-logo{flex-shrink:0}
+.topbar-field{display:flex;flex-direction:column;justify-content:center;min-width:0}
+.topbar-field .tb-line1{font-size:15px;font-weight:700;color:var(--color-text-primary,#0f172a);line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.topbar-field .tb-line2{font-size:12px;color:var(--color-text-tertiary,#64748b);line-height:1.25;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.topbar-institution-v26{padding-left:22px;border-left:1px solid var(--color-border-tertiary,#e2e8f0)}
+.topbar-v26 .topbar-right-v26{margin-left:auto!important;flex-shrink:0;max-width:none!important}
+@media(max-width:860px){.topbar.topbar-v26{gap:14px!important}.topbar-institution-v26{display:none!important}}
+@media(max-width:600px){.topbar.topbar-v26{gap:10px!important}.topbar-greeting-v26 .tb-line1{font-size:14px}}
 .toni-chat-trigger {
   display:flex; align-items:center; gap:8px;
   background:var(--slate-100); border:1px solid var(--border);
@@ -323,7 +332,7 @@ body { font-family:'Inter',sans-serif; background:#f8fafc; font-size:13px; color
 .lr-close-btn,.lr-secondary-btn,.lr-primary-btn,.lr-success-btn{border:none;border-radius:9px;padding:8px 12px;font-family:inherit;font-size:12px;font-weight:700;cursor:pointer}
 .lr-close-btn{background:#f1f5f9;color:#334155}.lr-secondary-btn{background:#f8fafc;color:var(--blue);border:1px solid #bfdbfe}.lr-primary-btn{background:var(--blue);color:#fff}.lr-success-btn{background:#16a34a;color:#fff}
 .lr-modal-body{padding:16px;overflow:auto;background:#f8fafc}
-.lr-detail-grid{display:grid;grid-template-columns:280px 1fr;gap:14px}
+.lr-detail-grid{display:grid;grid-template-columns:1fr;gap:14px}
 .lr-side-card,.lr-main-card{background:#fff;border:1px solid var(--border);border-radius:14px;box-shadow:0 1px 3px rgba(0,0,0,.04);padding:14px}
 .lr-side-title,.lr-section-title{font-size:13px;font-weight:800;color:#0f172a;margin-bottom:10px}
 .lr-progress-big{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px}
@@ -338,16 +347,55 @@ body { font-family:'Inter',sans-serif; background:#f8fafc; font-size:13px; color
 .lr-station-status{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#e2e8f0;color:#64748b;font-size:12px;font-weight:800;margin-bottom:8px}
 .lr-station-card.done .lr-station-status{background:var(--blue);color:#fff}.lr-station-card.current .lr-station-status{background:var(--blue);color:#fff;box-shadow:0 0 0 4px #dbeafe}
 .lr-station-name{font-size:12px;font-weight:800;color:#0f172a;margin-bottom:3px}.lr-station-sub{font-size:10px;color:#64748b;line-height:1.25}.lr-station-progress{font-size:10px;color:#64748b;margin-top:7px}
-.lr-task-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(230px,1fr));gap:10px}
+.lr-task-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+@media(max-width:560px){.lr-task-grid{grid-template-columns:1fr}}
+.lr-top-split{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
+@media(max-width:760px){.lr-top-split{grid-template-columns:1fr}}
+.lr-side-cover-card{border-radius:14px;padding:18px;min-height:200px;background-size:cover;background-position:center;display:flex;flex-direction:column;justify-content:flex-end;color:#fff;box-shadow:0 6px 20px rgba(15,23,42,.18)}
+.lr-side-cover-label{font-size:11px;font-weight:600;letter-spacing:.04em;opacity:.9;margin-bottom:6px}
+.lr-side-cover-title{font-size:19px;font-weight:800;line-height:1.2;margin-bottom:4px}
+.lr-side-cover-subject{font-size:12px;opacity:.9;margin-bottom:12px}
+.lr-side-cover-goal-label{font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;opacity:.85;margin-bottom:2px}
+.lr-side-cover-goal{font-size:13px;line-height:1.45}
+.lr-side-progress{margin-top:12px}
+.lr-side-progress-head{display:flex;justify-content:space-between;align-items:center;font-size:12px;color:#475569;margin-bottom:6px}
+.lr-side-progress-pct{font-size:15px;font-weight:800;color:var(--blue,#185FA5)}
+.lr-side-progress-track{height:12px;background:#e2e8f0;border-radius:6px;overflow:hidden}
+.lr-side-progress-fill{height:100%;background:linear-gradient(90deg,#185FA5,#3B82C4);border-radius:6px;transition:width .4s}
 .lr-task-card{border:1px solid var(--border);border-radius:12px;padding:12px;background:#fff}.lr-task-card.done{background:#f0fdf4;border-color:#bbf7d0}.lr-task-card.in_progress{background:#eff6ff;border-color:#bfdbfe}
 .lr-task-title{font-size:13px;font-weight:800;color:#0f172a;line-height:1.35;margin-bottom:7px}.lr-task-desc{font-size:11px;color:#64748b;line-height:1.45;margin-bottom:9px}
 .lr-task-tags{display:flex;flex-wrap:wrap;gap:5px;margin-bottom:9px}.lr-task-tag{display:inline-flex;align-items:center;border-radius:999px;padding:2px 7px;font-size:10px;font-weight:800;background:var(--blue-light);color:var(--blue)}
 .lr-task-tag.required{background:#fef2f2;color:#dc2626}.lr-task-tag.optional{background:#f8fafc;color:#64748b;border:1px solid var(--border)}.lr-task-tag.done{background:#dcfce7;color:#16a34a}
 .lr-task-buttons{display:flex;flex-wrap:wrap;gap:7px}.lr-task-buttons button{flex:1 1 auto;min-width:90px}
+.lr-task-buttons-v15{display:flex;gap:10px;flex-wrap:wrap}
+.lr-iconbtn{flex:1 1 0;min-width:84px;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:4px;padding:11px 8px;border-radius:12px;border:1px solid transparent;font-size:11px;font-weight:600;cursor:pointer;transition:transform .05s,box-shadow .15s,background .15s}
+.lr-iconbtn:active{transform:scale(.97)}
+.lr-iconbtn span{line-height:1}
+.lr-iconbtn-start{background:#E6F1FB;color:#0C447C;border-color:#B5D4F4}
+.lr-iconbtn-start:hover{background:#d3e6f9}
+#lr-task-modal .lr-iconbtn-start.is-active{background:#639922 !important;color:#fff !important;border-color:#639922 !important}
+#lr-task-modal .lr-iconbtn-start.is-active:hover{box-shadow:0 4px 12px rgba(99,153,34,.3)}
+.lr-iconbtn-reset{background:#fff;color:#64748b;border-color:#e2e8f0}
+.lr-iconbtn-reset:hover{background:#f8fafc;color:#334155}
+.lr-iconbtn-done{background:#E6F1FB;color:#0C447C;border-color:#B5D4F4}
+.lr-iconbtn-done:hover{background:#d3e6f9}
+#lr-task-modal .lr-iconbtn-done.is-active{background:#639922 !important;color:#fff !important;border-color:#639922 !important}
+#lr-task-modal .lr-iconbtn-done.is-active:hover{box-shadow:0 4px 12px rgba(99,153,34,.3)}
+.lr-iconbtn-toni{background:#E6F1FB;color:#0C447C;border-color:#B5D4F4}
+.lr-iconbtn-toni:hover{background:#d3e6f9}
+.lr-toni-word{font-size:16px;font-weight:800;letter-spacing:.01em;line-height:1}
+.lr-modal-header.lr-typed-head{border-left:5px solid var(--lr-type-color,#185FA5);background:var(--lr-type-bg,#E6F1FB)}
+.lr-typed-head .lr-modal-title{color:var(--lr-type-text,#0C447C)}
+.lr-typed-head .lr-modal-sub{color:var(--lr-type-color,#185FA5)}
 .lr-task-modal{width:min(820px,100%)}.lr-task-content-box{background:#f8fafc;border:1px solid var(--border);border-radius:12px;padding:13px;font-size:13px;line-height:1.6;color:#334155;margin:12px 0}
 .lr-answer-label{display:block;font-size:12px;font-weight:800;margin-bottom:6px;color:#0f172a}.lr-answer{width:100%;min-height:110px;border:1px solid var(--border);border-radius:10px;padding:10px;font-family:inherit;font-size:13px;resize:vertical;outline:none}
 .lr-answer:focus{border-color:#93c5fd;box-shadow:0 0 0 3px #dbeafe66}.lr-toni-hint{background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a8a;border-radius:10px;padding:10px 12px;font-size:12px;line-height:1.55;margin-top:10px}
 @media(max-width:900px){.lr-detail-grid{grid-template-columns:1fr}.lr-stations{grid-template-columns:repeat(7,120px)}}
+.lr-header-progress{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.lr-header-goal{font-size:12px;color:#475569;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.lr-header-progress .lr-track{width:120px;height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden}
+.lr-header-progress .lr-track-fill{height:100%;background:var(--blue,#185FA5);border-radius:3px;transition:width .3s}
+.lr-header-pct{font-size:13px;font-weight:700;color:var(--blue,#185FA5)}
 @media(max-width:560px){.lr-modal-backdrop{padding:0}.lr-modal{max-height:100vh;height:100vh;border-radius:0}.lr-modal-header{flex-direction:column}.lr-modal-actions{width:100%}.lr-modal-actions button{flex:1}}
 
 
@@ -8212,7 +8260,7 @@ input.youtube-force-invalid-v105{
 <div class="xp-toast" id="xp-toast">+50 XP ⭐</div>
 
 <!-- ═══════ TOPBAR ═══════ -->
-<header class="topbar">
+<header class="topbar topbar-v26">
   <div class="toni-logo">
     <div class="toni-logo-icon toni-logo-icon-v66 toni-logo-unified-v70"><img src="./assets/toni-logo-face.png" alt="TONI Logo"/></div>
     <div class="toni-logo-text">
@@ -8221,22 +8269,15 @@ input.youtube-force-invalid-v105{
     </div>
   </div>
   <div class="topbar-divider"></div>
-  <div class="topbar-greeting">
-    <h2>Hallo Max! 👋</h2>
-    <p>Schön, dass du da bist. Hier siehst du deinen Lern- und Projektstand.</p>
+  <div class="topbar-field topbar-greeting-v26">
+    <div class="tb-line1" id="hdr-user-name">Nicht angemeldet</div>
+    <div class="tb-line2" id="hdr-user-role">Student</div>
   </div>
-  <div class="topbar-goal">
-    <div>
-      <div class="goal-label">Dein aktuelles Ziel</div>
-      <div class="goal-title">Ohmsches Gesetz sicher anwenden</div>
-    </div>
-    <span class="goal-edit">Ziel bearbeiten</span>
+  <div class="topbar-field topbar-institution-v26">
+    <div class="tb-line1" id="hdr-institution">Institution</div>
+    <div class="tb-line2" id="hdr-class">Klasse</div>
   </div>
-  <div class="topbar-week">
-    <div class="week-kw">KW 20</div>
-    <div class="week-date">13.05. – 19.05.2024</div>
-  </div>
-  <div class="topbar-icons">
+  <div class="topbar-icons topbar-right-v26">
     <button class="icon-btn"><span class="notif-dot"></span>🔔</button>
     <div class="auth-status" id="auth-status">
     <div class="auth-user">
@@ -8246,29 +8287,11 @@ input.youtube-force-invalid-v105{
     <button class="auth-btn" id="auth-login-btn" onclick="openAuthModal()">Anmelden</button>
     <button class="auth-btn logout" id="auth-logout-btn" onclick="signOutUser()" style="display:none">Abmelden</button>
   </div>
-  <div class="api-badge offline" id="api-badge"><div class="api-dot"></div><span id="api-label">Offline</span></div>
+  <div class="api-badge offline" id="api-badge" style="display:none"><div class="api-dot"></div><span id="api-label">Offline</span></div>
   </div>
 </header>
 
-<!-- ═══════ STATS BAR ═══════ -->
-<div class="stats-bar">
-  <div class="stat-item">
-    <div class="stat-label">Offene Aufgaben</div>
-    <div class="stat-value" id="stat-open">7</div>
-  </div>
-  <div class="stat-item done-stat">
-    <div class="stat-label">Erledigt diese Woche</div>
-    <div class="stat-value">5</div>
-  </div>
-  <div class="stat-item group-stat">
-    <div class="stat-label">Gruppenaufgaben</div>
-    <div class="stat-value">4</div>
-  </div>
-  <div class="stat-item blocked">
-    <div class="stat-label">Blockiert</div>
-    <div class="stat-value" id="stat-blocked">1</div>
-  </div>
-</div>
+<!-- ═══════ STATS BAR entfernt (für alle Rollen ausgeblendet) ═══════ -->
 
 <div class="join-banner" id="join-banner"></div>
 <div class="recovery-banner" id="recovery-banner"></div>
@@ -8974,30 +8997,24 @@ input.youtube-force-invalid-v105{
     </div>
     <div class="lr-modal-body">
       <div class="lr-detail-grid">
-        <aside class="lr-side-card">
-          <div class="lr-side-title">Fortschritt</div>
-          <div class="lr-progress-big">
-            <div>
-              <div class="wz-label">Aktuelles Ziel</div>
-              <div class="wz-title" id="lr-goal">–</div>
-              <div class="lr-track"><div class="lr-track-fill" id="lr-progress-fill"></div></div>
-            </div>
-            <div class="lr-progress-number" id="lr-progress-number">0%</div>
-          </div>
-          <div class="lr-side-title">Stationen</div>
-          <div class="lr-mini-list" id="lr-mini-list"></div>
-        </aside>
         <section class="lr-main-card">
           <div class="card-header">
             <span class="card-title">Stationen der Lernreise</span>
             <span class="card-link" onclick="renderLearningJourneyModal()">Aktualisieren</span>
           </div>
-          <div class="lr-stations" id="lr-stations"></div>
+          <div class="lr-top-split">
+            <div class="lr-stations" id="lr-stations"></div>
+            <div class="lr-side-cover" id="lr-side-cover"></div>
+          </div>
           <div class="card-header" style="margin-top:14px">
             <span class="card-title" id="lr-current-title">Aufgaben der aktuellen Station</span>
             <span class="card-link" onclick="checkCurrentStation()">Station prüfen</span>
           </div>
           <div class="lr-task-grid" id="lr-task-grid"></div>
+          <div class="lr-mini-list" id="lr-mini-list" style="display:none"></div>
+          <div id="lr-goal" style="display:none"></div>
+          <div id="lr-progress-fill" style="display:none"></div>
+          <div id="lr-progress-number" style="display:none"></div>
         </section>
       </div>
     </div>
@@ -9021,10 +9038,23 @@ input.youtube-force-invalid-v105{
       <label class="lr-answer-label" for="lr-answer">Meine Lösung / Notiz</label>
       <textarea class="lr-answer" id="lr-answer" placeholder="Schreibe hier deine Lösung, deinen Rechenweg oder deine Reflexion…"></textarea>
       <div class="lr-toni-hint" id="lr-task-hint"></div>
-      <div class="lr-task-buttons" style="margin-top:12px">
-        <button class="lr-primary-btn" onclick="startSelectedLearningTask()">Aufgabe starten</button>
-        <button class="lr-secondary-btn" onclick="showSelectedTaskHint()">Hinweis von TONI</button>
-        <button class="lr-success-btn" onclick="completeSelectedLearningTask()">Als erledigt markieren</button>
+      <div class="lr-task-buttons lr-task-buttons-v15" style="margin-top:14px">
+        <button class="lr-iconbtn lr-iconbtn-start" onclick="startSelectedLearningTask()" title="Aufgabe starten">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="currentColor" aria-hidden="true"><path d="M8 5v14l11-7z"/></svg>
+          <span>Starten</span>
+        </button>
+        <button class="lr-iconbtn lr-iconbtn-reset" onclick="resetSelectedLearningTask()" title="Aufgabe auf offen zurücksetzen">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7L3 8"/><path d="M3 3v5h5"/></svg>
+          <span>Zurücksetzen</span>
+        </button>
+        <button class="lr-iconbtn lr-iconbtn-done" onclick="completeSelectedLearningTask()" title="Als erledigt markieren">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20 6 9 17l-5-5"/></svg>
+          <span>Erledigt</span>
+        </button>
+        <button class="lr-iconbtn lr-iconbtn-toni" onclick="showSelectedTaskHint()" title="Hinweis von TONi">
+          <span class="lr-toni-word">TONi</span>
+          <span>Hinweis</span>
+        </button>
       </div>
     </div>
   </div>
@@ -9123,8 +9153,8 @@ input.youtube-force-invalid-v105{
 
 <script src="/chat.js"></script>
 
-<script src="/journey.js"></script>
-<script src="/journey_editor_v111.js?v=11"></script>
+<script src="/journey.js?v=31"></script>
+<script src="/journey_editor_v111.js?v=31"></script>
 <script src="/admin.js"></script>
 <script src="/ui.js"></script>
 

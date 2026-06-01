@@ -66,8 +66,125 @@ function renderLearningJourneyModal(){
   const j=activeJourney(),pct=journeyProgress(j),cur=currentStep(j);
   document.getElementById('lr-modal-title').textContent=j.title;document.getElementById('lr-modal-sub').textContent=j.description;document.getElementById('lr-goal').textContent=j.goal;document.getElementById('lr-progress-number').textContent=pct+'%';document.getElementById('lr-progress-fill').style.width=pct+'%';document.getElementById('lr-current-title').textContent='Aufgaben der aktuellen Station: '+cur.title;
   document.getElementById('lr-mini-list').innerHTML=j.steps.map((s,i)=>{const st=stepStatus(s,i,j),icon=st==='done'?'✓':st==='current'?i+1:'–';return`<div class="lr-mini-item"><div class="lr-mini-dot ${st}">${icon}</div><div><strong>${s.title}</strong><br><span class="wz-label">${s.subtitle}</span></div></div>`;}).join('');
-  document.getElementById('lr-stations').innerHTML=j.steps.map((s,i)=>{const st=stepStatus(s,i,j),req=s.tasks.filter(t=>t.required),done=req.filter(t=>t.status==='done').length;return`<div class="lr-station-card ${st}"><div class="lr-station-status">${st==='done'?'✓':st==='locked'?'🔒':i+1}</div><div class="lr-station-name">${s.title}</div><div class="lr-station-sub">${s.subtitle}</div><div class="lr-station-progress">${done}/${req.length} Pflichtaufgaben</div></div>`;}).join('');
-  document.getElementById('lr-task-grid').innerHTML=cur.tasks.filter(t=>t.status!=='locked').map(taskCardHtml).join('');
+  document.getElementById('lr-stations').innerHTML=toniRenderJourneyTimeline(j);
+  const grid=document.getElementById('lr-task-grid'); if(grid) grid.innerHTML='';
+  toniRenderJourneySidePanel(j,pct);
+}
+
+// Rechtes Panel: Cover-Optik (Bild, Titel, Fach, Lernziel) + dicker Fortschrittsbalken
+function toniRenderJourneySidePanel(j,pct){
+  const host=document.getElementById('lr-side-cover'); if(!host) return;
+  const img=j.cover_image||j.cover_image_embedded||'';
+  const hasImg=!!img;
+  const bg=hasImg?`background-image:linear-gradient(180deg,rgba(15,23,42,.18),rgba(15,23,42,.72)),url('${String(img).replace(/'/g,'%27')}')`:'background:linear-gradient(135deg,#185FA5,#0C447C)';
+  host.innerHTML=`
+    <div class="lr-side-cover-card ${hasImg?'has-image':'no-image'}" style="${bg}">
+      <div class="lr-side-cover-inner">
+        <div class="lr-side-cover-label">📘 Lernreise</div>
+        <div class="lr-side-cover-title">${toniEsc(j.title||'Lernreise')}</div>
+        <div class="lr-side-cover-subject">${toniEsc(j.subject||'Ohne Fach / Bereich')}</div>
+        <div class="lr-side-cover-goal-label">Lernziel</div>
+        <div class="lr-side-cover-goal">${toniEsc(j.goal||'Kein Lernziel hinterlegt.')}</div>
+      </div>
+    </div>
+    <div class="lr-side-progress">
+      <div class="lr-side-progress-head"><span>Fortschritt</span><span class="lr-side-progress-pct">${pct}%</span></div>
+      <div class="lr-side-progress-track"><div class="lr-side-progress-fill" style="width:${pct}%"></div></div>
+    </div>`;
+}
+
+// Senkrechte Reiseroute als Stations-Navigation (Säule 3).
+// Klick auf eine Etappe wählt die Station; die Aufgaben erscheinen darunter (V98).
+function toniRenderJourneyTimeline(j){
+  if(!toniInjectTimelineStyles.__done){ toniInjectTimelineStyles(); }
+  const steps=j.steps||[];
+  return `<div class="toni-tl">`+steps.map((s,i)=>{
+    const st=stepStatus(s,i,j);
+    const isLast=i===steps.length-1;
+    const req=(s.tasks||[]).filter(t=>t.required);
+    const done=req.filter(t=>t.status==='done').length;
+    let dotCls,dotContent;
+    if(st==='done'){ dotCls='done'; dotContent='✓'; }
+    else if(st==='current'){ dotCls='current'; dotContent=String(i+1); }
+    else if(isLast){ dotCls='trophy'; dotContent='🏆'; }
+    else { dotCls='locked'; dotContent='🔒'; }
+    const lineCls=(st==='done')?'done':'';
+    const connector=isLast?'':`<div class="toni-tl-line ${lineCls}"></div>`;
+    const meta = st==='locked'
+      ? `${(s.tasks||[]).length} Aufgabe(n) · gesperrt`
+      : (s.subtitle?toniEsc(s.subtitle):'') + (req.length?` · ${done}/${req.length}`:'');
+    return `<div class="toni-tl-step toni-tl-nav ${st}" data-step-index="${i}" role="button" tabindex="0" onclick="toniTimelineSelect(${i})" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();toniTimelineSelect(${i});}">
+      <div class="toni-tl-rail">
+        <div class="toni-tl-dot ${dotCls}">${dotContent}</div>
+        ${connector}
+      </div>
+      <div class="toni-tl-body">
+        <div class="toni-tl-head ${st}">${toniEsc(s.title)}</div>
+        <div class="toni-tl-sub">${meta}</div>
+      </div>
+    </div>`;
+  }).join('')+`</div>`;
+}
+
+// Brücke zur V98-Auswahl: wählt die Station und rendert ihre Aufgaben unten
+window.toniTimelineSelect=function(index){
+  if(typeof window.toniV98SelectStep==='function'){ window.toniV98SelectStep(index); }
+  // aktive Etappe markieren
+  document.querySelectorAll('#lr-stations .toni-tl-nav').forEach(el=>{
+    el.classList.toggle('selected', String(el.dataset.stepIndex)===String(index));
+  });
+};
+
+function toniInjectTimelineStyles(){
+  if(document.getElementById('toni-tl-styles')) { toniInjectTimelineStyles.__done=true; return; }
+  const css=document.createElement('style');
+  css.id='toni-tl-styles';
+  css.textContent=`
+    .toni-tl{display:flex;flex-direction:column}
+    .toni-tl-step{display:flex;gap:12px}
+    .toni-tl-rail{display:flex;flex-direction:column;align-items:center}
+    .toni-tl-dot{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:500;flex-shrink:0;background:var(--color-background-secondary,#f0f0f0);color:var(--color-text-tertiary,#888)}
+    .toni-tl-dot.done{background:#639922;color:#fff}
+    .toni-tl-dot.current{background:#185FA5 !important;color:#fff !important;width:40px !important;height:40px !important;box-shadow:0 0 0 4px #E6F1FB !important;font-size:16px !important}
+    .toni-tl-line{width:2px;flex:1;min-height:22px;background:var(--color-border-tertiary,#ddd)}
+    .toni-tl-line.done{background:#639922}
+    .toni-tl-body{flex:1;padding-bottom:16px;min-width:0}
+    .toni-tl-head{font-size:14px;font-weight:500;color:var(--color-text-primary,#1a1a18)}
+    .toni-tl-head.current{color:#0C447C}
+    .toni-tl-head.locked,.toni-tl-head.trophy{color:var(--color-text-secondary,#5f5e5a)}
+    .toni-tl-count{font-size:11px;font-weight:400;color:var(--color-text-tertiary,#888);margin-left:4px}
+    .toni-tl-sub{font-size:12px;color:var(--color-text-tertiary,#888);margin-top:1px;margin-bottom:6px}
+    .toni-tl-tasks{display:flex;flex-direction:column;gap:5px;margin-top:6px}
+    .toni-tl-task{display:flex;align-items:center;gap:8px;padding:8px 10px;border-radius:8px;font-size:13px;cursor:pointer;background:var(--color-background-secondary,#f7f6f2);border:0.5px solid transparent;transition:background .15s,border-color .15s}
+    .toni-tl-task:hover{background:var(--color-background-primary,#fff);border-color:var(--color-border-secondary,#ccc)}
+    .toni-tl-task.current{border-color:#185FA5;background:var(--color-background-primary,#fff)}
+    .toni-tl-task.locked{cursor:not-allowed;opacity:.5;background:none}
+    .toni-tl-task.locked:hover{background:none;border-color:transparent}
+    .toni-tl-tname{flex:1;color:var(--color-text-primary,#1a1a18);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .toni-tl-tname.done{color:var(--color-text-secondary,#5f5e5a)}
+    .toni-tl-meta{font-size:11px;color:var(--color-text-tertiary,#888);flex-shrink:0}
+    .toni-tl-meta.cur{color:#185FA5;font-weight:500}
+    .toni-tl-arr{color:var(--color-text-tertiary,#888);opacity:0;transition:opacity .15s;flex-shrink:0}
+    .toni-tl-task:hover .toni-tl-arr{opacity:1}
+    .toni-tl-nav{cursor:pointer;border-radius:8px;transition:background .15s}
+    .toni-tl-nav:hover .toni-tl-head{color:#185FA5}
+    .toni-tl-nav.selected .toni-tl-body{background:var(--color-background-secondary,#f0f4f8);border-radius:8px;margin:-2px -6px;padding:2px 6px}
+    .toni-tl-nav .toni-tl-body{padding-bottom:14px}
+    .toni-slim-task{display:flex;align-items:center;gap:8px;padding:9px 11px;border-radius:8px;font-size:13px;border:0.5px solid transparent;margin-bottom:0;transition:box-shadow .15s,transform .05s}
+    .toni-slim-task[onclick]{cursor:pointer}
+    .toni-slim-task[onclick]:hover{box-shadow:0 2px 8px rgba(15,23,42,.12)}
+    .toni-slim-task.current{box-shadow:0 0 0 2px #185FA5 inset}
+    .toni-slim-task.started{box-shadow:0 0 0 2px #639922 inset}
+    .toni-slim-task.locked{opacity:.5;cursor:not-allowed}
+    .toni-slim-name{flex:1;color:var(--color-text-primary,#1a1a18);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+    .toni-slim-name.done{color:var(--color-text-secondary,#5f5e5a)}
+    .toni-slim-meta{font-size:11px;color:var(--color-text-tertiary,#888);flex-shrink:0}
+    .toni-slim-meta.cur{color:#185FA5;font-weight:500}
+    .toni-slim-arr{color:var(--color-text-tertiary,#888);opacity:0;transition:opacity .15s;flex-shrink:0}
+    .toni-slim-task[onclick]:hover .toni-slim-arr{opacity:1}
+  `;
+  document.head.appendChild(css);
+  toniInjectTimelineStyles.__done=true;
 }
 function taskCardHtml(t){return`<div class="lr-task-card ${t.status}"><div class="lr-task-title">${t.status==='done'?'✅ ':t.status==='in_progress'?'🟡 ':'☐ '}${t.title}</div><div class="lr-task-desc">${t.description}</div><div class="lr-task-tags"><span class="lr-task-tag">${t.type}</span><span class="lr-task-tag ${t.required?'required':'optional'}">${t.required?'Pflicht':'optional'}</span>${t.status==='done'?'<span class="lr-task-tag done">erledigt</span>':''}</div><div class="lr-task-buttons"><button class="lr-secondary-btn" onclick="openLearningTask('${t.id}')">Öffnen</button>${t.status!=='done'?`<button class="lr-success-btn" onclick="completeLearningTask('${t.id}')">Erledigt</button>`:''}</div></div>`;}
 function checkCurrentStation(){const s=currentStep(),missing=s.tasks.filter(t=>t.required&&t.status!=='done');appendMsg('toni',missing.length?`In der aktuellen Station fehlen noch <strong>${missing.length}</strong> Pflichtaufgabe(n):<br>${missing.map(t=>'• '+t.title).join('<br>')}`:'✅ Diese Station ist abgeschlossen. Die nächste Station wurde freigeschaltet.',time(),'desktop');syncJourneyToDashboard();renderLearningJourneyModal();}
@@ -76,20 +193,22 @@ function openLearningTask(id){
   const f=findTask(id);
   if(!f) return;
   STATE.selectedTaskId=id;
-  if(f.task.status==='todo') f.task.status='in_progress';
   const task=f.task;
   const normType=toniNormalizeType(task.type);
   document.getElementById('lr-task-title').textContent=task.title;
   document.getElementById('lr-task-sub').textContent=`${f.step.title} · ${toniTypeIcon(normType)}${normType}`;
+  // Typabhängige Einfärbung der Kopfzeile
+  toniApplyTaskHeaderColor(normType);
   const contentEl=document.getElementById('lr-task-content');
   const answerEl=document.getElementById('lr-answer');
   const hintEl=document.getElementById('lr-task-hint');
   if(answerEl) answerEl.style.display='none';
   switch(normType){
-    case 'Lerninhalt': toniRenderLerninhalt(task,contentEl); break;
-    case 'Video': toniRenderVideo(task,contentEl); break;
+    case 'Lerninhalt': toniRenderLerninhalt(task,contentEl); if(answerEl){answerEl.style.display='';answerEl.value=task.answer||'';answerEl.placeholder='Notiere dir, was du Neues gelernt hast…';} break;
+    case 'Video': toniRenderVideo(task,contentEl); if(answerEl){answerEl.style.display='';answerEl.value=task.answer||'';answerEl.placeholder='Notiere dir Kernaussagen aus dem Video…';} break;
     case 'Quiz': task._quizIndex=0; task._quizCorrect=0; (task.quiz_data?.questions||[]).forEach(q=>{delete q._answered;}); toniRenderQuiz(task,contentEl); break;
     case 'Reflexion': toniRenderReflexion(task,contentEl); if(answerEl){answerEl.style.display='';answerEl.value=task.answer||'';answerEl.placeholder='Schreib deine Gedanken auf…';} break;
+    case 'Aufgabe': toniRenderAufgabe(task,contentEl); if(answerEl){answerEl.style.display='';answerEl.value=task.answer||'';answerEl.placeholder='Schreibe deinen Rechenweg oder deine Antwort…';} break;
     default:
       contentEl.innerHTML=`<strong>Auftrag:</strong><br>${task.content||task.description||task.title}`;
       if(answerEl){answerEl.style.display='';answerEl.value=task.answer||'';}
@@ -97,11 +216,49 @@ function openLearningTask(id){
   }
   if(hintEl) hintEl.innerHTML=hintForTask(task);
   document.getElementById('lr-task-modal').classList.add('open');
+  toniSetTaskButtonStates({
+    started: task.status==='in_progress'||task.status==='done',
+    done: task.status==='done'
+  });
   appendMsg('toni',`Du hast <strong>${toniEsc(task.title)}</strong> geöffnet. ${toniTaskPrompt(normType)}`,time(),'desktop');
   syncJourneyToDashboard();
   renderLearningJourneyModal();
 }
 function closeLearningTask(){saveSelectedTaskAnswer();document.getElementById('lr-task-modal').classList.remove('open');}
+
+// Typabhängige Farbe der Aufgaben-Fenster-Kopfzeile
+function toniApplyTaskHeaderColor(normType){
+  const header=document.querySelector('#lr-task-modal .lr-modal-header');
+  if(!header) return;
+  const palette={
+    'Lerninhalt':{color:'#185FA5',bg:'#E6F1FB',text:'#0C447C'},
+    'Aufgabe':{color:'#854F0B',bg:'#FAEEDA',text:'#633806'},
+    'Quiz':{color:'#0F6E56',bg:'#E1F5EE',text:'#085041'},
+    'Video':{color:'#993C1D',bg:'#FAECE7',text:'#712B13'},
+    'Reflexion':{color:'#534AB7',bg:'#EEEDFE',text:'#3C3489'}
+  };
+  const c=palette[normType]||palette['Aufgabe'];
+  header.classList.add('lr-typed-head');
+  header.style.setProperty('--lr-type-color',c.color);
+  header.style.setProperty('--lr-type-bg',c.bg);
+  header.style.setProperty('--lr-type-text',c.text);
+}
+
+// Aufgabe auf "offen" zurücksetzen (nur diese eine Aufgabe)
+function resetSelectedLearningTask(){
+  const f=findTask(STATE.selectedTaskId);
+  if(!f) return;
+  if(!confirm(`Aufgabe „${f.task.title}" auf offen zurücksetzen? Dein Fortschritt bei dieser Aufgabe geht verloren.`)) return;
+  f.task.status='todo';
+  // typ-spezifische Fortschrittsdaten zurücksetzen
+  delete f.task._quizIndex; delete f.task._quizCorrect;
+  (f.task.quiz_data?.questions||[]).forEach(q=>{delete q._answered;});
+  toniSetTaskButtonStates({started:false,done:false});
+  if(typeof syncJourneyToDashboard==='function') syncJourneyToDashboard();
+  closeLearningTask();
+  if(typeof renderLearningJourneyModal==='function') renderLearningJourneyModal();
+}
+window.resetSelectedLearningTask=resetSelectedLearningTask;
 
 // ══════════════════════════════════════════════════════════
 // TONI – Aufgabentyp-System
@@ -137,10 +294,6 @@ function toniRenderLerninhalt(task,el){
   el.innerHTML=`<div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
     <div style="flex:1;min-width:180px">
       ${textHtml?`<div style="font-size:14px;line-height:1.75;color:var(--color-text-primary)">${textHtml}</div>`:''}
-      <div style="display:flex;gap:8px;margin-top:16px;flex-wrap:wrap">
-        <button onclick="completeSelectedLearningTask()" style="padding:10px 20px;background:#639922;color:#fff;border:none;border-radius:8px;font-size:14px;font-weight:500;cursor:pointer">✅ Gelesen – weiter</button>
-        <button onclick="showSelectedTaskHint?.()" style="padding:10px 14px;background:none;border:0.5px solid var(--color-border-secondary);border-radius:8px;font-size:13px;cursor:pointer;color:var(--color-text-secondary)">Hinweis von TONI</button>
-      </div>
     </div>
     ${hasMedia?`<div style="width:240px;flex-shrink:0;background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);border-radius:10px;padding:12px">
       <div style="font-size:11px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">📎 Material</div>
@@ -173,8 +326,16 @@ function toniRenderTaskMedia(task){
   blocks.forEach(b=>{
     if(b.type==='image'&&b.url) parts.push(`<img src="${toniEsc(b.url)}" alt="${toniEsc(b.alt||'')}" style="max-width:100%;border-radius:10px;margin-bottom:10px;display:block">`);
     else if(b.type==='link'&&b.youtube&&b.url){const m=String(b.url).match(/[A-Za-z0-9_-]{11}/);if(m)parts.push(`<div style="position:relative;padding-bottom:56.25%;height:0;overflow:hidden;border-radius:10px;background:#000;margin-bottom:10px"><iframe src="https://www.youtube.com/embed/${m[0]}" frameborder="0" allowfullscreen style="position:absolute;top:0;left:0;width:100%;height:100%"></iframe></div>`);}
+    else if(b.type==='link'&&b.url) parts.push(`<a href="${toniEsc(b.url)}" target="_blank" rel="noopener" style="display:inline-flex;align-items:center;gap:6px;padding:8px 12px;background:#E6F1FB;border-radius:8px;font-size:13px;color:#0C447C;text-decoration:none;margin-bottom:10px">🔗 ${toniEsc(b.title||b.url)}</a>`);
     else if(b.type==='file'&&b.url) parts.push(`<a href="${toniEsc(b.url)}" target="_blank" rel="noopener" style="display:inline-block;padding:8px 12px;background:#E6F1FB;border-radius:8px;font-size:13px;color:#0C447C;text-decoration:none;margin-bottom:10px">📄 ${toniEsc(b.name||'Datei öffnen')}</a>`);
   });
+  // Legacy-Felder: einzelne Bild-/Material-URLs, falls nicht in blocks
+  if(!parts.length){
+    const legacyImg=task.image_url||task.imageUrl||task.material_image||task.image;
+    if(legacyImg && /^https?:\/\//.test(String(legacyImg))) parts.push(`<img src="${toniEsc(legacyImg)}" alt="" style="max-width:100%;border-radius:10px;margin-bottom:10px;display:block">`);
+    const legacyAtt=Array.isArray(task.attachments)?task.attachments:[];
+    legacyAtt.forEach(a=>{ const u=a&&(a.url||a); if(u && /^https?:\/\//.test(String(u))){ if(/\.(png|jpe?g|gif|webp|svg)(\?|$)/i.test(u)) parts.push(`<img src="${toniEsc(u)}" alt="" style="max-width:100%;border-radius:10px;margin-bottom:10px;display:block">`); else parts.push(`<a href="${toniEsc(u)}" target="_blank" rel="noopener" style="display:inline-block;padding:8px 12px;background:#E6F1FB;border-radius:8px;font-size:13px;color:#0C447C;text-decoration:none;margin-bottom:10px">📄 Material öffnen</a>`); } });
+  }
   return parts.join('');
 }
 
@@ -268,7 +429,176 @@ window.toniReflexionStar=function(scaleIdx,val){
   if(task){ task._reflexionStars=Array.isArray(task._reflexionStars)?task._reflexionStars:[]; task._reflexionStars[scaleIdx]=val; }
 };
 function saveSelectedTaskAnswer(){const f=findTask(STATE.selectedTaskId);if(!f)return;f.task.answer=document.getElementById('lr-answer')?.value||f.task.answer||'';saveState(STATE);}
-function startSelectedLearningTask(){const f=findTask(STATE.selectedTaskId);if(!f)return;f.task.status='in_progress';syncJourneyToDashboard();renderLearningJourneyModal();showXPToast(5);}
+
+// Aufgabe-Typ: optionale Ergebnisprüfung + optionale Musterlösung + Selbsteinschätzung
+function toniRenderAufgabe(task,el){
+  if(!el) return;
+  const media=toniRenderTaskMedia(task);
+  const prompt=task.content||task.description||task.title||'';
+  const hasCheck=String(task.expected_answer||'').trim()!=='';
+  const hasSolution=String(task.solution||'').trim()!=='';
+  const unit=task.expected_unit?`<span style="color:var(--color-text-secondary);font-size:14px;font-weight:500">${toniEsc(task.expected_unit)}</span>`:'';
+  task._aufgabeTries=task._aufgabeTries||0;
+
+  // Auftrag + Material nebeneinander (Material rechts), wenn Medien vorhanden
+  let topHtml;
+  if(media){
+    topHtml=`<div class="toni-auf-top">
+      <div class="toni-auf-prompt">${toniEsc(prompt).replace(/\n/g,'<br>')}</div>
+      <div class="toni-auf-media"><div class="toni-auf-media-label">📎 Material</div>${media}</div>
+    </div>`;
+  }else{
+    topHtml=`<div class="toni-auf-prompt" style="margin-bottom:14px">${toniEsc(prompt).replace(/\n/g,'<br>')}</div>`;
+  }
+
+  let html=`<div class="toni-auf">${topHtml}`;
+
+  if(hasCheck){
+    html+=`<div class="toni-auf-card">
+      <div class="toni-auf-card-title">🎯 Dein Ergebnis prüfen</div>
+      <div class="toni-auf-check-row">
+        <input id="aufgabe-answer" inputmode="decimal" placeholder="Ergebnis" class="toni-auf-input" onkeydown="if(event.key==='Enter')toniCheckAufgabe()">
+        ${unit}
+        <button onclick="toniCheckAufgabe()" class="toni-auf-btn-check">Prüfen</button>
+        <span id="aufgabe-feedback" class="toni-auf-feedback"></span>
+      </div>
+    </div>`;
+  }
+
+  if(hasSolution){
+    html+=`<div class="toni-auf-card" id="aufgabe-solution-wrap" style="padding:0;overflow:hidden">
+      <div id="aufgabe-solution-toggle" onclick="toniToggleSolution()" class="toni-auf-sol-toggle">
+        <span>💡 Musterlösung anzeigen</span><span id="aufgabe-solution-hint" class="toni-auf-sol-hint">erst nach einem Versuch</span>
+      </div>
+      <div id="aufgabe-solution-body" class="toni-auf-sol-body" style="display:none">
+        ${toniEsc(task.solution).replace(/\n/g,'<br>')}
+        <div id="aufgabe-selfcheck" class="toni-auf-self">
+          <div class="toni-auf-self-title">Wie gut passt deine Lösung?</div>
+          <div class="toni-auf-self-row">
+            <button onclick="toniAufgabeSelfAssess('stimmt')" class="toni-auf-self-btn stimmt">✅ Stimmt</button>
+            <button onclick="toniAufgabeSelfAssess('teilweise')" class="toni-auf-self-btn teilweise">🟡 Teilweise</button>
+            <button onclick="toniAufgabeSelfAssess('nochmal')" class="toni-auf-self-btn nochmal">🔁 Nochmal ansehen</button>
+          </div>
+          <div id="aufgabe-selfcheck-fb" class="toni-auf-self-fb"></div>
+        </div>
+      </div>
+    </div>`;
+  }
+
+  html+=`</div>`;
+  el.innerHTML=html;
+  if(!toniInjectAufgabeStyles.__done) toniInjectAufgabeStyles();
+}
+
+function toniInjectAufgabeStyles(){
+  if(document.getElementById('toni-auf-styles')){toniInjectAufgabeStyles.__done=true;return;}
+  const css=document.createElement('style');
+  css.id='toni-auf-styles';
+  css.textContent=`
+    .toni-auf-top{display:flex;gap:16px;align-items:flex-start;margin-bottom:14px;flex-wrap:wrap}
+    .toni-auf-prompt{flex:1;min-width:200px;font-size:14px;color:var(--color-text-primary,#1a1a18);line-height:1.7}
+    .toni-auf-media{width:260px;flex-shrink:0;background:var(--color-background-secondary,#f7f6f2);border:0.5px solid var(--color-border-tertiary,#e2e8f0);border-radius:12px;padding:12px}
+    .toni-auf-media-label{font-size:11px;font-weight:600;letter-spacing:.04em;color:var(--color-text-tertiary,#888);margin-bottom:8px}
+    .toni-auf-media img{max-width:100%;border-radius:8px;display:block}
+    .toni-auf-card{background:var(--color-background-secondary,#f7f6f2);border:0.5px solid var(--color-border-tertiary,#e2e8f0);border-radius:12px;padding:14px;margin-bottom:12px}
+    .toni-auf-card-title{font-size:13px;font-weight:600;color:var(--color-text-secondary,#5f5e5a);margin-bottom:10px}
+    .toni-auf-check-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+    .toni-auf-input{width:120px;padding:9px 12px;border:0.5px solid var(--color-border-secondary,#cbd5e1);border-radius:8px;font-size:14px;text-align:center;background:var(--color-background-primary,#fff)}
+    .toni-auf-btn-check{padding:9px 18px;background:#185FA5;color:#fff;border:none;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer;transition:background .15s}
+    .toni-auf-btn-check:hover{background:#0C447C}
+    .toni-auf-feedback{font-size:13px;font-weight:600}
+    .toni-auf-sol-toggle{padding:13px 16px;background:#FAEEDA;font-size:13px;font-weight:600;color:#854F0B;cursor:pointer;display:flex;justify-content:space-between;align-items:center;transition:background .15s}
+    .toni-auf-sol-toggle:hover{background:#f5e4c8}
+    .toni-auf-sol-hint{font-size:11px;font-weight:400;color:#A06A2C}
+    .toni-auf-sol-body{padding:14px 16px;font-size:13px;color:var(--color-text-primary,#1a1a18);line-height:1.7;border-top:0.5px solid var(--color-border-tertiary,#e2e8f0);background:var(--color-background-primary,#fff)}
+    .toni-auf-self{margin-top:14px;padding-top:13px;border-top:0.5px solid var(--color-border-tertiary,#e2e8f0)}
+    .toni-auf-self-title{font-size:12px;font-weight:600;color:var(--color-text-secondary,#5f5e5a);margin-bottom:9px}
+    .toni-auf-self-row{display:flex;gap:8px;flex-wrap:wrap}
+    .toni-auf-self-btn{padding:8px 15px;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;transition:transform .05s}
+    .toni-auf-self-btn:active{transform:scale(.96)}
+    .toni-auf-self-btn.stimmt{border:0.5px solid #639922;background:#EAF3DE;color:#27500A}
+    .toni-auf-self-btn.teilweise{border:0.5px solid #B5841F;background:#FAEEDA;color:#633806}
+    .toni-auf-self-btn.nochmal{border:0.5px solid #C0563A;background:#FAECE7;color:#712B13}
+    .toni-auf-self-fb{font-size:12px;color:var(--color-text-secondary,#5f5e5a);margin-top:9px;line-height:1.5}
+    @media(max-width:620px){.toni-auf-media{width:100%}}
+  `;
+  document.head.appendChild(css);
+  toniInjectAufgabeStyles.__done=true;
+}
+
+// Ergebnis tolerant vergleichen (Komma/Punkt, Leerzeichen, kleine Rundung)
+function toniNormalizeAnswer(s){
+  return String(s==null?'':s).trim().toLowerCase().replace(/\s+/g,'').replace(',','.');
+}
+window.toniCheckAufgabe=function(){
+  const f=findTask(STATE.selectedTaskId); if(!f) return;
+  const task=f.task;
+  const inp=document.getElementById('aufgabe-answer');
+  const fb=document.getElementById('aufgabe-feedback');
+  if(!inp||!fb) return;
+  const given=toniNormalizeAnswer(inp.value);
+  if(!given){ fb.textContent=''; return; }
+  const expected=toniNormalizeAnswer(task.expected_answer);
+  // numerischer Vergleich mit kleiner Toleranz, sonst Textvergleich
+  let correct=false;
+  const gn=parseFloat(given), en=parseFloat(expected);
+  if(!isNaN(gn)&&!isNaN(en)){ correct=Math.abs(gn-en)<1e-9||Math.abs(gn-en)/Math.max(1,Math.abs(en))<1e-6; }
+  else { correct=given===expected; }
+  task._aufgabeTries=(task._aufgabeTries||0)+1;
+  // Versuch zählt als "Bemühung" -> Lösung freischalten
+  toniUnlockSolution();
+  if(correct){
+    fb.textContent='✅ Richtig!'; fb.style.color='#27500A';
+  }else if(task._aufgabeTries>=3){
+    fb.textContent='❌ Noch nicht. Schau dir am besten die Musterlösung an.'; fb.style.color='#791F1F';
+  }else{
+    const left=3-task._aufgabeTries;
+    fb.textContent=`❌ Noch nicht richtig. Noch ${left} Versuch${left===1?'':'e'}.`; fb.style.color='#791F1F';
+  }
+};
+// Musterlösung freischaltbar machen (nach Versuch oder Notiz)
+function toniUnlockSolution(){
+  const toggle=document.getElementById('aufgabe-solution-toggle');
+  const hint=document.getElementById('aufgabe-solution-hint');
+  if(toggle){ toggle.dataset.unlocked='1'; if(hint) hint.textContent='aufklappen ▾'; }
+}
+window.toniToggleSolution=function(){
+  const toggle=document.getElementById('aufgabe-solution-toggle');
+  const body=document.getElementById('aufgabe-solution-body');
+  const hint=document.getElementById('aufgabe-solution-hint');
+  if(!toggle||!body) return;
+  // Freischalten, wenn schon eine Notiz geschrieben wurde
+  const note=(document.getElementById('lr-answer')?.value||'').trim();
+  if(note) toggle.dataset.unlocked='1';
+  if(toggle.dataset.unlocked!=='1'){
+    if(hint){ hint.textContent='Bitte erst einen Versuch oder eine Notiz machen'; setTimeout(()=>{ if(hint&&toggle.dataset.unlocked!=='1') hint.textContent='erst nach einem Versuch'; },2500); }
+    return;
+  }
+  const open=body.style.display!=='none';
+  body.style.display=open?'none':'block';
+  if(hint) hint.textContent=open?'aufklappen ▾':'einklappen ▴';
+};
+window.toniAufgabeSelfAssess=function(level){
+  const f=findTask(STATE.selectedTaskId); if(!f) return;
+  f.task._selfAssess=level;
+  const fb=document.getElementById('aufgabe-selfcheck-fb');
+  if(fb){
+    const msg={stimmt:'Super – du kannst die Aufgabe als erledigt markieren.',teilweise:'Gut – schau dir die Abweichungen nochmal an, dann markiere sie als erledigt.',nochmal:'Kein Problem – nimm dir die Musterlösung in Ruhe vor und versuch es erneut.'};
+    fb.textContent=msg[level]||'';
+  }
+};
+function startSelectedLearningTask(){const f=findTask(STATE.selectedTaskId);if(!f)return;f.task.status='in_progress';syncJourneyToDashboard();renderLearningJourneyModal();showXPToast(5);toniSetTaskButtonStates({started:true,done:f.task.status==='done'});}
+
+// Button-Zustände im Aufgaben-Fenster setzen (grün = aktiv, sonst hellblau)
+function toniSetTaskButtonStates(opts){
+  opts=opts||{};
+  const startBtn=document.querySelector('#lr-task-modal .lr-iconbtn-start');
+  const doneBtn=document.querySelector('#lr-task-modal .lr-iconbtn-done');
+  if(startBtn) startBtn.classList.toggle('is-active',!!opts.started);
+  if(doneBtn) doneBtn.classList.toggle('is-active',!!opts.done);
+}
+// Rückwärtskompatibler Alias
+function toniSetStartButtonState(started){ toniSetTaskButtonStates({started:started, done:false}); }
 function completeSelectedLearningTask(){
   const f=findTask(STATE.selectedTaskId);
   if(f && toniNormalizeType(f.task.type)==='Reflexion'){
@@ -608,6 +938,39 @@ async function ensureProfileForUser(user) {
   }
 }
 
+function toniUpdateHeaderFields(profile, user){
+  const hdrName = document.getElementById("hdr-user-name");
+  const hdrRole = document.getElementById("hdr-user-role");
+  const hdrInst = document.getElementById("hdr-institution");
+  const hdrClass = document.getElementById("hdr-class");
+  const roleLabelMap = { superadmin:"SuperAdmin", admin:"Admin", tutor:"Tutor", student:"Student" };
+  // Unvollständiges Profil (z. B. direkt nach Login, Name/Rolle fehlen noch) nicht anzeigen –
+  // sonst erscheint kurz "Hallo Angemeldet". Der Polling-Listener fasst nach, sobald es vollständig ist.
+  if (profile && !(profile.role && (profile.display_name || profile.first_name))) {
+    return;
+  }
+  if (profile) {
+    const fullName = profile.display_name || (user && user.email) || "Angemeldet";
+    const roleLabel = roleLabelMap[profile.role] || (profile.role || "Student");
+    const first = profile.first_name || fullName.split(" ")[0] || "";
+    const last = profile.last_name || fullName.split(" ").slice(1).join(" ") || "";
+    const fullNameClean = (first + " " + last).trim() || fullName;
+    let greeting;
+    if (profile.role === "superadmin") greeting = "Hallo SuperAdmin";
+    else if (profile.role === "admin" || profile.role === "tutor") greeting = `Hallo ${fullNameClean}`;
+    else greeting = `Hallo ${first}`;
+    if (hdrName) hdrName.textContent = `${greeting}! 👋`;
+    if (hdrRole) hdrRole.textContent = roleLabel;
+    if (hdrInst) hdrInst.textContent = profile.institution_name || "Institution";
+    if (hdrClass) hdrClass.textContent = profile.class_name || "—";
+  } else {
+    if (hdrName) hdrName.textContent = "Nicht angemeldet";
+    if (hdrRole) hdrRole.textContent = "—";
+    if (hdrInst) hdrInst.textContent = "Institution";
+    if (hdrClass) hdrClass.textContent = "—";
+  }
+}
+
 function updateAuthUI(user, profile) {
   const nameEl = document.getElementById("auth-user-name");
   const roleEl = document.getElementById("auth-user-role");
@@ -615,7 +978,8 @@ function updateAuthUI(user, profile) {
   const logoutBtn = document.getElementById("auth-logout-btn");
 
   if (user && profile) {
-    nameEl.textContent = profile.display_name || user.email || "Angemeldet";
+    const fullName = profile.display_name || user.email || "Angemeldet";
+    nameEl.textContent = fullName;
     roleEl.textContent = `${profile.role || "student"}${profile.class_name ? " · " + profile.class_name : ""}`;
     loginBtn.style.display = "none";
     logoutBtn.style.display = "";
@@ -625,6 +989,7 @@ function updateAuthUI(user, profile) {
     loginBtn.style.display = "";
     logoutBtn.style.display = "none";
   }
+  toniUpdateHeaderFields(profile, user);
 }
 
 function applyAuthProfile(profile) {
@@ -634,15 +999,6 @@ function applyAuthProfile(profile) {
   localStorage.setItem("toni_role", profile.role || "student");
   localStorage.setItem("toni_profile_id", profile.id);
   window.TONI_ACTIVE_PROFILE_ID = profile.id;
-
-  const greeting = document.querySelector(".topbar-greeting h2");
-  if (greeting) greeting.innerHTML = `Hallo ${escapeHtml((profile.display_name || "Max").split(" ")[0])}! 👋`;
-
-  const sub = document.querySelector(".topbar-greeting p");
-  if (sub) {
-    const roleLabel = (typeof ROLE_CONFIG !== "undefined" && ROLE_CONFIG[profile.role]) ? ROLE_CONFIG[profile.role].label : profile.role;
-    sub.textContent = `${roleLabel}${profile.class_name ? " · " + profile.class_name : ""}`;
-  }
 
   const text = document.getElementById("role-info-text");
   if (text) {
@@ -658,6 +1014,8 @@ function applyAuthProfile(profile) {
     STATE.user.class = profile.class_name || "";
     if (typeof saveState === "function") saveState(STATE);
   }
+
+  toniUpdateHeaderFields(profile, { email: profile.email });
 }
 
 // Rolle künftig aus Auth-Profil lesen.
@@ -3253,6 +3611,57 @@ window.addEventListener("DOMContentLoaded", () => {
   }
 });
 
+/* TONI v29 – Kopfzeile zuverlässig nach Login aktualisieren (unabhängig vom Profil-Timing) */
+(function(){
+  // Klebrige Inline-Styles (von alten Mobile-Fixes) von der neuen Kopfzeile entfernen
+  function cleanTopbarInlineStyles(){
+    var tb = document.querySelector('.topbar.topbar-v26');
+    if(!tb) return;
+    ['width','maxWidth','minWidth','overflow','overflowX','height','minHeight'].forEach(function(prop){
+      if(tb.style[prop]) tb.style[prop] = '';
+    });
+    tb.querySelectorAll('.topbar-icons, #auth-status, .topbar-field, .toni-logo').forEach(function(el){
+      ['width','maxWidth','minWidth','overflowX'].forEach(function(prop){ if(el.style[prop]) el.style[prop]=''; });
+    });
+  }
+  window.toniCleanTopbarInlineStyles = cleanTopbarInlineStyles;
+  window.addEventListener('resize', function(){
+    clearTimeout(window.TONI_V29_CLEAN_TIMER);
+    window.TONI_V29_CLEAN_TIMER = setTimeout(cleanTopbarInlineStyles, 60);
+  });
+  window.addEventListener('DOMContentLoaded', function(){ setTimeout(cleanTopbarInlineStyles, 100); });
+
+  function syncHeaderFromProfile(){
+    var p = window.TONI_AUTH_PROFILE;
+    // Nur fertig, wenn das Profil vollständig geladen ist (Name + Rolle vorhanden)
+    if(p && p.role && (p.display_name || p.first_name) && typeof toniUpdateHeaderFields === "function"){
+      toniUpdateHeaderFields(p, { email: p.email });
+      return true;
+    }
+    return false;
+  }
+  window.toniSyncHeaderFromProfile = syncHeaderFromProfile;
+  // Eigener Auth-Listener: bei jeder Anmeldung kurz nachfassen, bis das Profil da ist
+  try{
+    var client = (typeof getSupabaseClient === "function") ? getSupabaseClient() : null;
+    if(client?.auth?.onAuthStateChange && !window.TONI_V29_HEADER_LISTENER){
+      window.TONI_V29_HEADER_LISTENER = true;
+      client.auth.onAuthStateChange(function(event){
+        if(event === "SIGNED_OUT"){
+          if(typeof toniUpdateHeaderFields === "function") toniUpdateHeaderFields(null, null);
+          return;
+        }
+        // Profil wird ggf. erst asynchron geladen -> mehrfach nachfassen
+        var tries = 0;
+        var iv = setInterval(function(){
+          tries++;
+          if(syncHeaderFromProfile() || tries > 20){ clearInterval(iv); }
+        }, 150);
+      });
+    }
+  }catch(e){ console.warn("TONI v29 Header-Listener:", e); }
+})();
+
 /* TONI V41 – Admin sieht Bearbeitungsstand je Student und Lernreise */
 
 function toniV41Escape(value){
@@ -3704,11 +4113,13 @@ function toniV45ClampToViewport(){
     const style=getComputedStyle(el);
     if(style.position==='fixed')return;
     if(el.classList.contains('lernreise')||el.closest('.lernreise-wrap'))return;
+    // Neue Kopfzeile (v26) nicht antasten – sie verwaltet ihr Layout selbst
+    if(el.closest('.topbar-v26'))return;
     const rect=el.getBoundingClientRect();
     if(rect.width>vw+4){el.style.maxWidth='100%';el.style.minWidth='0';if(style.display==='grid'||style.display==='flex')el.style.overflowX='hidden';}
   });
   document.querySelectorAll('.lernreise-wrap').forEach(wrap=>{wrap.style.maxWidth='100%';wrap.style.overflowX='auto';wrap.style.overflowY='hidden';});
-  document.querySelectorAll('.topbar,.header,.app-header,.dashboard-header').forEach(header=>{header.style.maxWidth='100vw';header.style.width='100vw';header.style.overflow='visible';});
+  document.querySelectorAll('.topbar,.header,.app-header,.dashboard-header').forEach(header=>{if(header.classList.contains('topbar-v26'))return;header.style.maxWidth='100vw';header.style.width='100vw';header.style.overflow='visible';});
 }
 function toniV45AfterRender(){setTimeout(toniV45ClampToViewport,50);setTimeout(toniV45ClampToViewport,250);}
 ['syncJourneyToDashboard','updateLearningJourneyBar','renderLearningJourneyModal','loadJourneyAssignmentTable','applyRoleUI'].forEach(fnName=>{if(typeof window[fnName]==='function'){const original=window[fnName];window[fnName]=function(...args){const result=original.apply(this,args);toniV45AfterRender();return result;};}});
@@ -3723,6 +4134,8 @@ function toniV46FixMobileHeader(){
 
   const topbar = document.querySelector(".topbar");
   if(!topbar) return;
+  // Neue Kopfzeile (v26) verwaltet ihr Layout selbst – nicht per Inline-Style verändern
+  if(topbar.classList.contains("topbar-v26")) return;
 
   topbar.style.height = "auto";
   topbar.style.minHeight = "0";
@@ -3941,6 +4354,8 @@ window.addEventListener("DOMContentLoaded", () => {
 /* TONI V49 – Elemente der Kopfzeile in links / mitte / rechts gruppieren */
 function toniV49ArrangeTopbar(){
   const topbar = document.querySelector('.topbar');
+  // Neue Kopfzeile (v26) verwaltet ihr Layout selbst – alten Umbau überspringen
+  if(topbar && topbar.classList.contains('topbar-v26')) return;
   const logo = topbar?.querySelector('.toni-logo');
   const divider = topbar?.querySelector('.topbar-divider');
   const greeting = topbar?.querySelector('.topbar-greeting');
@@ -7670,36 +8085,55 @@ window.addEventListener("resize", () => {
     selectedStepByJourneyV98.set(String(journey.id), next);
   }
 
+  function toniSlimTaskRow(task, opts){
+    opts = opts || {};
+    const clickable = !!opts.clickable;
+    const ntype = (typeof toniNormalizeType==="function") ? toniNormalizeType(task.type) : "Aufgabe";
+    const icon = (typeof toniTypeIcon==="function") ? toniTypeIcon(ntype) : "📌";
+    // Typ-Farben (gespiegelt aus dem Editor)
+    const palette = {
+      "Lerninhalt":{bar:"#185FA5",bg:"#E6F1FB"},
+      "Aufgabe":{bar:"#854F0B",bg:"#FAEEDA"},
+      "Quiz":{bar:"#0F6E56",bg:"#E1F5EE"},
+      "Video":{bar:"#993C1D",bg:"#FAECE7"},
+      "Reflexion":{bar:"#534AB7",bg:"#EEEDFE"}
+    };
+    const col = palette[ntype] || palette["Aufgabe"];
+    const reqLabel = task.required ? 'Pflicht' : 'optional';
+    let statusIcon, metaHtml, cls="", extraStyle="";
+    const isDone = task.status==="done"||task.done||task.completed;
+    const isStarted = task.status==="in_progress";
+    if(isDone){
+      statusIcon='<span style="color:#639922">✅</span>';
+      metaHtml=`<span class="toni-slim-meta">erledigt · ${reqLabel}</span>`;
+    }else if(!clickable){
+      statusIcon='<span>🔒</span>';
+      metaHtml=`<span class="toni-slim-meta">gesperrt · ${reqLabel}</span>`;
+      cls="locked";
+    }else if(isStarted){
+      // gestartet/in Bearbeitung -> grüner Rand an der Kachel
+      statusIcon=`<span>${icon}</span>`;
+      metaHtml=`<span class="toni-slim-meta cur" style="color:#639922">in Bearbeitung · ${reqLabel}</span>`;
+      cls="started";
+      extraStyle=";box-shadow:0 0 0 2px #639922 inset";
+    }else if(opts.current){
+      statusIcon=`<span>${icon}</span>`;
+      metaHtml=`<span class="toni-slim-meta cur">jetzt dran · ${reqLabel}</span>`;
+      cls="current";
+    }else{
+      statusIcon=`<span>${icon}</span>`;
+      metaHtml=`<span class="toni-slim-meta">${reqLabel}</span>`;
+    }
+    const tname=`<span class="toni-slim-name ${isDone?'done':''}">${esc(task.title||'Aufgabe')}</span>`;
+    const styleAttr=`style="border-left:4px solid ${col.bar};background:${col.bg}${extraStyle}"`;
+    if(clickable){
+      return `<div class="toni-slim-task ${cls}" ${styleAttr} onclick="openLearningTask('${esc(task.id)}')">${statusIcon}${tname}${metaHtml}<span class="toni-slim-arr">→</span></div>`;
+    }
+    return `<div class="toni-slim-task ${cls}" ${styleAttr}>${statusIcon}${tname}${metaHtml}</div>`;
+  }
+
   function readonlyTaskCard(task, stepStatusValue){
-    const titleIcon =
-      task.status === "done" || task.done || task.completed ? "✅ " :
-      task.status === "in_progress" ? "🟡 " :
-      task.status === "locked" || stepStatusValue === "locked" ? "🔒 " :
-      "☐ ";
-
-    const doneTag = task.status === "done" || task.done || task.completed
-      ? '<span class="lr-task-tag done">erledigt</span>'
-      : "";
-
-    const lockedTag = task.status === "locked" || stepStatusValue === "locked"
-      ? '<span class="lr-task-tag optional">gesperrt</span>'
-      : "";
-
-    const hintClass = task.status === "done" || task.done || task.completed ? "done" : "";
-
-    return `
-      <div class="lr-task-card v97-readonly ${esc(task.status || "")}">
-        <div class="lr-task-title">${titleIcon}${esc(task.title || "Aufgabe")}</div>
-        <div class="lr-task-desc">${esc(task.description || "")}</div>
-        <div class="lr-task-tags">
-          <span class="lr-task-tag">${esc(task.type || "Aufgabe")}</span>
-          <span class="lr-task-tag ${task.required ? "required" : "optional"}">${task.required ? "Pflicht" : "optional"}</span>
-          ${doneTag}
-          ${lockedTag}
-        </div>
-        <div class="lr-readonly-hint-v97 ${hintClass}">Diese Station liegt nach der aktuellen Station und kann daher nur angesehen werden.</div>
-      </div>
-    `;
+    return toniSlimTaskRow(task, {clickable:false});
   }
 
   function renderSelectedStepTasksV98(){
@@ -7731,15 +8165,13 @@ window.addEventListener("resize", () => {
 
       if(!tasks.length){
         grid.innerHTML = `<div class="assignment-empty">Diese Station enthält keine Aufgaben.</div>`;
-      }else if(isEditable && typeof taskCardHtml === "function"){
+      }else if(isEditable){
+        const actualCur = actual;
         grid.innerHTML = tasks
-          .filter(task => task.status !== "locked" || selected < actual)
           .map(task => {
-            // Bei abgeschlossenen Stationen alte gesperrte Einträge ebenfalls ansehen/bearbeiten lassen.
-            if(selected < actual && task.status === "locked"){
-              return taskCardHtml({...task, status:"todo"});
-            }
-            return taskCardHtml(task);
+            const eff = (selected < actual && task.status === "locked") ? {...task, status:"todo"} : task;
+            const isCurrentTask = (selected === actualCur && eff.status !== "done");
+            return toniSlimTaskRow(eff, {clickable:true, current:isCurrentTask});
           })
           .join("");
       }else{
@@ -7754,39 +8186,17 @@ window.addEventListener("resize", () => {
   function decorateStationCardsV98(){
     const journey = activeJ();
     if(!journey?.steps?.length) return;
-
     const selected = selectedIndex(journey);
-    const actual = actualCurrentIndex(journey);
-
+    // Timeline-Navigation: aktive Etappe markieren (Klicks laufen über toniTimelineSelect)
+    document.querySelectorAll("#lr-stations .toni-tl-nav").forEach(el=>{
+      el.classList.toggle("selected", String(el.dataset.stepIndex)===String(selected));
+    });
+    // Alt-Pfad: falls noch klassische Karten existieren, ebenfalls verdrahten
     document.querySelectorAll("#lr-stations .lr-station-card").forEach((card, index) => {
+      if(card.dataset.v98ClickInstalled === "1") return;
+      card.dataset.v98ClickInstalled = "1";
       card.dataset.v98StepIndex = String(index);
-      card.setAttribute("role", "button");
-      card.setAttribute("tabindex", "0");
-      card.setAttribute("title", index <= actual ? "Station anzeigen und bearbeiten" : "Station ansehen");
-
-      card.classList.toggle("v97-selected", index === selected);
-      card.classList.toggle("v98-editable-past", index <= actual);
-      card.classList.toggle("v98-future-readonly", index > actual);
-
-      if(card.dataset.v98ClickInstalled !== "1"){
-        card.dataset.v98ClickInstalled = "1";
-
-        card.addEventListener("click", event => {
-          event.preventDefault();
-          event.stopPropagation();
-          const j = activeJ();
-          setSelectedIndex(j, index);
-          renderSelectedStepTasksV98();
-        });
-
-        card.addEventListener("keydown", event => {
-          if(event.key !== "Enter" && event.key !== " ") return;
-          event.preventDefault();
-          const j = activeJ();
-          setSelectedIndex(j, index);
-          renderSelectedStepTasksV98();
-        });
-      }
+      card.addEventListener("click", () => { const j=activeJ(); setSelectedIndex(j, index); renderSelectedStepTasksV98(); });
     });
   }
 
@@ -7908,6 +8318,18 @@ window.addEventListener("resize", () => {
     replaceStationCheckWithRestart();
     renderSelectedStepTasksV98();
   }
+
+  // Öffentliche Brücke: von der Timeline aufgerufen, um eine Station zu wählen
+  window.toniV98SelectStep = function(index){
+    const j = activeJ();
+    setSelectedIndex(j, index);
+    renderSelectedStepTasksV98();
+  };
+  // Aktuell gewählten Index für die Timeline-Markierung verfügbar machen
+  window.toniV98GetSelectedIndex = function(){
+    const j = activeJ();
+    return selectedIndex(j);
+  };
 
   if(typeof window.renderLearningJourneyModal === "function" && !window.renderLearningJourneyModal.__toniV98Wrapped){
     const originalRender = window.renderLearningJourneyModal;
@@ -11665,9 +12087,9 @@ window.addEventListener("resize", () => {
     const task = found?.task;
     const v = videoData(task);
 
-    // TONI: Lerninhalt, Quiz, Reflexion werden von toniRender* verwaltet – nicht überschreiben
+    // TONI: Lerninhalt, Quiz, Reflexion, Aufgabe werden von toniRender* verwaltet – nicht überschreiben
     const normType = typeof toniNormalizeType === 'function' ? toniNormalizeType(task?.type) : '';
-    if(['Lerninhalt','Quiz','Reflexion'].includes(normType)) return;
+    if(['Lerninhalt','Quiz','Reflexion','Aufgabe'].includes(normType)) return;
 
     const body = normalizeTaskModalBody();
     if(!body) return;

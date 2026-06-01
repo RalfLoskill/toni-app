@@ -351,7 +351,34 @@
     if(type==="Reflexion"){
       return reflexionEditorHtml(t,si,ti);
     }
+    if(type==="Aufgabe"){
+      return aufgabeEditorHtml(t,si,ti);
+    }
     return "";
+  }
+
+  // Aufgabe-Editor: optionale Ergebnisprüfung (Ergebnis + Einheit) und Musterlösung
+  function aufgabeEditorHtml(t,si,ti){
+    return `<div class="v111-aufgabe">
+      <div class="v111-rxcard">
+        <div class="v111-flabel" style="margin-bottom:8px">🎯 Automatische Ergebnisprüfung (optional)</div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <input class="v111-inp" style="flex:2;margin:0" value="${E.esc(t.expected_answer||"")}"
+            placeholder="Erwartetes Ergebnis, z. B. 12"
+            oninput="TONI_EDITOR_V111_UI.editTask(${si},${ti},'expected_answer',this.value)">
+          <input class="v111-inp" style="flex:1;margin:0" value="${E.esc(t.expected_unit||"")}"
+            placeholder="Einheit, z. B. Ω"
+            oninput="TONI_EDITOR_V111_UI.editTask(${si},${ti},'expected_unit',this.value)">
+        </div>
+        <div style="font-size:11px;color:var(--v111-t3);margin-top:6px">Leer lassen für offene Aufgaben ohne automatische Prüfung. Nach 3 Fehlversuchen wird die Musterlösung empfohlen.</div>
+      </div>
+      <div class="v111-rxcard">
+        <div class="v111-flabel" style="margin-bottom:8px">💡 Musterlösung (optional)</div>
+        <textarea class="v111-inp" style="min-height:90px;resize:vertical" placeholder="Musterlösung oder Bewertungskriterien – wird dem Schüler nach einem Versuch aufklappbar angezeigt."
+          oninput="TONI_EDITOR_V111_UI.editTask(${si},${ti},'solution',this.value)">${E.esc(t.solution||"")}</textarea>
+        <div style="font-size:11px;color:var(--v111-t3);margin-top:6px">Nach dem Aufklappen kann sich der Schüler selbst einschätzen (stimmt / teilweise / nochmal).</div>
+      </div>
+    </div>`;
   }
 
   // Reflexions-Editor: Leitfrage, mehrere Sterne-Skalen, Hilfsfragen,
