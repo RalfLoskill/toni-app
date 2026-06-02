@@ -110,7 +110,7 @@ body { font-family:'Inter',sans-serif; background:#f8fafc; font-size:13px; color
 ═══════════════════════════════ */
 .page-wrap { display:flex; flex:1; overflow:hidden; }
 .left-panel { flex:1; overflow-y:auto; padding:14px 16px; display:flex; flex-direction:column; gap:13px; min-width:0; }
-.right-panel { width:280px; min-width:280px; background:#fff; border-left:1px solid var(--border); display:flex; flex-direction:column; height:calc(100vh - var(--topbar-h) - 57px); position:sticky; top:calc(var(--topbar-h) + 57px); overflow:hidden; }
+.right-panel { width:280px; min-width:280px; background:#fff; border-left:1px solid var(--border); display:flex; flex-direction:column; height:calc(100vh - var(--topbar-h)); position:sticky; top:var(--topbar-h); overflow:hidden; }
 
 /* ═══════════════════════════════
    CARDS
@@ -354,7 +354,8 @@ body { font-family:'Inter',sans-serif; background:#f8fafc; font-size:13px; color
 .lr-mini-list{display:flex;flex-direction:column;gap:8px}.lr-mini-item{display:flex;align-items:flex-start;gap:7px;font-size:12px;color:#334155;line-height:1.35}
 .lr-mini-dot{width:16px;height:16px;border-radius:50%;flex-shrink:0;background:#e2e8f0;color:#64748b;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:800;margin-top:1px}
 .lr-mini-dot.done{background:#dcfce7;color:#16a34a}.lr-mini-dot.current{background:var(--blue);color:#fff}
-.lr-stations{display:grid;grid-template-columns:repeat(7,minmax(110px,1fr));gap:8px;overflow-x:auto;padding-bottom:8px}
+.lr-stations{display:block;overflow:visible;padding-bottom:8px}
+.lr-top-split .lr-stations{background:var(--color-background-secondary,#f7f6f2);border-radius:14px;padding:14px 14px 8px}
 .lr-station-card{border:1px solid var(--border);border-radius:12px;padding:10px;background:#fff;min-height:105px}
 .lr-station-card.done{background:#f0fdf4;border-color:#bbf7d0}.lr-station-card.current{background:#eff6ff;border-color:#bfdbfe}.lr-station-card.locked{background:#f8fafc;opacity:.72}
 .lr-station-status{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#e2e8f0;color:#64748b;font-size:12px;font-weight:800;margin-bottom:8px}
@@ -362,9 +363,11 @@ body { font-family:'Inter',sans-serif; background:#f8fafc; font-size:13px; color
 .lr-station-name{font-size:12px;font-weight:800;color:#0f172a;margin-bottom:3px}.lr-station-sub{font-size:10px;color:#64748b;line-height:1.25}.lr-station-progress{font-size:10px;color:#64748b;margin-top:7px}
 .lr-task-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 @media(max-width:560px){.lr-task-grid{grid-template-columns:1fr}}
-.lr-top-split{display:grid;grid-template-columns:1fr 1fr;gap:16px;align-items:start}
-@media(max-width:760px){.lr-top-split{grid-template-columns:1fr}}
-.lr-side-cover-card{border-radius:14px;padding:18px;min-height:200px;background-size:cover;background-position:center;display:flex;flex-direction:column;justify-content:flex-end;color:#fff;box-shadow:0 6px 20px rgba(15,23,42,.18)}
+.lr-top-split{display:grid;grid-template-columns:240px 1fr;grid-template-areas:"stations right";gap:20px;align-items:start}
+.lr-top-split .lr-stations{grid-area:stations}
+.lr-top-split .lr-right-col{grid-area:right;min-width:0}
+@media(max-width:760px){.lr-top-split{grid-template-columns:1fr;grid-template-areas:"right" "stations"}}
+.lr-side-cover-card{border-radius:14px;padding:18px;min-height:160px;background-size:cover;background-position:center;display:flex;flex-direction:column;justify-content:flex-end;color:#fff;box-shadow:0 6px 20px rgba(15,23,42,.18)}
 .lr-side-cover-label{font-size:11px;font-weight:600;letter-spacing:.04em;opacity:.9;margin-bottom:6px}
 .lr-side-cover-title{font-size:19px;font-weight:800;line-height:1.2;margin-bottom:4px}
 .lr-side-cover-subject{font-size:12px;opacity:.9;margin-bottom:12px}
@@ -403,7 +406,7 @@ body { font-family:'Inter',sans-serif; background:#f8fafc; font-size:13px; color
 .lr-task-modal{width:min(820px,100%)}.lr-task-content-box{background:#f8fafc;border:1px solid var(--border);border-radius:12px;padding:13px;font-size:13px;line-height:1.6;color:#334155;margin:12px 0}
 .lr-answer-label{display:block;font-size:12px;font-weight:800;margin-bottom:6px;color:#0f172a}.lr-answer{width:100%;min-height:110px;border:1px solid var(--border);border-radius:10px;padding:10px;font-family:inherit;font-size:13px;resize:vertical;outline:none}
 .lr-answer:focus{border-color:#93c5fd;box-shadow:0 0 0 3px #dbeafe66}.lr-toni-hint{background:#eff6ff;border:1px solid #bfdbfe;color:#1e3a8a;border-radius:10px;padding:10px 12px;font-size:12px;line-height:1.55;margin-top:10px}
-@media(max-width:900px){.lr-detail-grid{grid-template-columns:1fr}.lr-stations{grid-template-columns:repeat(7,120px)}}
+@media(max-width:900px){.lr-detail-grid{grid-template-columns:1fr}}
 .lr-header-progress{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .lr-header-goal{font-size:12px;color:#475569;max-width:240px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .lr-header-progress .lr-track{width:120px;height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden}
@@ -8425,116 +8428,40 @@ input.youtube-force-invalid-v105{
           </div>
         </div>
       </div>
-
-      <!-- Kanban -->
-      <div class="card">
-        <div class="card-header">
-          <span class="card-title">Wochenplanung – persönliches &amp; gemeinsames Kanban</span>
-          <span class="card-link" onclick="addTask('todo')">+ Aufgabe hinzufügen</span>
-        </div>
-        <div class="kanban-outer">
-          <div class="kanban-grid">
-
-            <!-- To Do -->
-            <div class="kanban-col col-todo">
-              <div class="k-header"><span class="k-title t">To Do</span><span class="k-badge b-t" id="cnt-todo">4</span></div>
-              <div id="col-todo">
-                <div class="k-card" onclick="moveCard(this,'todo','wip')">
-                  <div class="k-card-title">Aufgabe 5 lösen</div>
-                  <div class="k-meta"><span class="k-prio-high">⭐ wichtig</span><div class="k-person" style="background:#3b82f6">M</div></div>
-                </div>
-                <div class="k-card" onclick="moveCard(this,'todo','wip')">
-                  <div class="k-card-title">Video: Reihenschaltung</div>
-                  <div class="k-meta"><span class="k-tag lernreise">Lernreise</span><div class="k-person" style="background:#3b82f6">M</div></div>
-                </div>
-                <div class="k-card" onclick="moveCard(this,'todo','wip')">
-                  <div class="k-card-title">Materialliste prüfen</div>
-                  <div class="k-meta"><span class="k-due urgent">fällig morgen</span><div class="k-person" style="background:#8b5cf6">J</div></div>
-                </div>
-              </div>
-              <button class="add-btn" onclick="addTask('todo')">+ Neue Aufgabe</button>
-            </div>
-
-            <!-- In Arbeit -->
-            <div class="kanban-col col-wip">
-              <div class="k-header"><span class="k-title w">In Arbeit</span><span class="k-badge b-w" id="cnt-wip">3</span></div>
-              <div id="col-wip">
-                <div class="k-card" onclick="moveCard(this,'wip','review')">
-                  <div class="k-card-title">Aufgabe 3 lösen</div>
-                  <div class="k-meta"><span class="k-tag">Mathematik</span><div class="k-person" style="background:#3b82f6">M</div></div>
-                </div>
-                <div class="k-card" onclick="moveCard(this,'wip','review')">
-                  <div class="k-card-title">Arduino-Code: Sensorwerte auslesen</div>
-                  <div class="k-meta"><span class="k-tag group">Gruppe</span><div class="k-person" style="background:#ec4899">L</div></div>
-                </div>
-              </div>
-              <button class="add-btn" onclick="addTask('wip')">+ Neue Aufgabe</button>
-            </div>
-
-            <!-- Zur Prüfung -->
-            <div class="kanban-col col-review">
-              <div class="k-header"><span class="k-title r">Zur Prüfung</span><span class="k-badge b-r" id="cnt-review">1</span></div>
-              <div id="col-review">
-                <div class="k-card" onclick="moveCard(this,'review','done')">
-                  <div class="k-card-title">Schaltplan Version 1 hochladen</div>
-                  <div class="k-meta"><span class="k-prio-wait">wartet auf Feedback</span><div class="k-person" style="background:#8b5cf6">J</div></div>
-                </div>
-              </div>
-              <button class="add-btn" onclick="addTask('review')">+ Neue Aufgabe</button>
-            </div>
-
-            <!-- Erledigt -->
-            <div class="kanban-col col-done">
-              <div class="k-header"><span class="k-title d">Erledigt</span><span class="k-badge b-d" id="cnt-done">5</span></div>
-              <div id="col-done">
-                <div class="k-card done-c" onclick="moveCard(this,'done','todo')"><span class="done-chk">✓</span>Aufgabe 1 lösen</div>
-                <div class="k-card done-c" onclick="moveCard(this,'done','todo')"><span class="done-chk">✓</span>Formeln Ohmsches Gesetz lernen</div>
-                <div class="k-card done-c" onclick="moveCard(this,'done','todo')">
-                  <span class="done-chk">✓</span>Projektziel formulieren
-                  <div class="k-meta" style="margin-top:4px"><span class="k-tag group">Gruppe</span></div>
-                </div>
-              </div>
-              <button class="add-btn" onclick="addTask('done')">+ Neue Aufgabe</button>
-            </div>
-
-          </div>
-        </div>
-      </div>
     </div>
 
-    <!-- Projekte + Zusammenarbeit -->
+    <!-- Lernreisen + Projekte (2 Spalten) -->
     <div class="bottom-grid">
 
-      <!-- Aktive Projekte -->
+      <!-- Linke Spalte: Lernreisen (offen zugeordnet + abgeschlossen) -->
       <div class="card">
         <div class="card-header">
-          <span class="card-title">Aktive Projekte</span>
-          <div style="display:flex;gap:8px">
-            <span class="card-link" onclick="openJoinProjectModal()">Beitreten</span>
-            <span class="card-link" onclick="openCreateProjectModal()">+ Neu</span>
-          </div>
+          <span class="card-title">Meine Lernreisen</span>
         </div>
-        <div id="toni-projects-list">
-          <div style="color:var(--color-text-tertiary);font-size:13px;padding:12px 0">Projekte werden geladen…</div>
+        <div id="dashboard-journeys-col">
+          <div style="color:var(--color-text-tertiary);font-size:13px;padding:12px 0">Lernreisen werden geladen…</div>
         </div>
       </div>
 
-      <!-- Offene Aufgaben + TONI-Hinweis -->
+      <!-- Rechte Spalte: Aktive Projekte + TONI-Hinweis -->
       <div style="display:flex;flex-direction:column;gap:12px">
 
-        <!-- Offene Aufgaben -->
-        <div class="card" style="flex:1">
+        <!-- Aktive Projekte -->
+        <div class="card">
           <div class="card-header">
-            <span class="card-title">Offene Aufgaben</span>
-            <span class="card-link" onclick="loadProjects()">Aktualisieren</span>
+            <span class="card-title">Aktive Projekte</span>
+            <div style="display:flex;gap:8px">
+              <span class="card-link" onclick="openJoinProjectModal()">Beitreten</span>
+              <span class="card-link" onclick="openCreateProjectModal()">+ Neu</span>
+            </div>
           </div>
-          <div id="toni-open-tasks-list">
-            <div style="color:var(--color-text-tertiary);font-size:13px;padding:8px 0">Wird geladen…</div>
+          <div id="toni-projects-list">
+            <div style="color:var(--color-text-tertiary);font-size:13px;padding:12px 0">Projekte werden geladen…</div>
           </div>
         </div>
 
         <!-- TONI-Hinweis -->
-        <div class="card" style="flex:1">
+        <div class="card">
           <div class="card-header">
             <span class="card-title">TONI-Hinweis</span>
           </div>
@@ -8545,6 +8472,17 @@ input.youtube-force-invalid-v105{
           </div>
         </div>
 
+      </div>
+    </div>
+
+    <!-- Mein Wochenplan (gespiegelt aus Lernreise + Projekten) -->
+    <div class="card">
+      <div class="card-header">
+        <span class="card-title">Mein Wochenplan</span>
+        <span class="card-link" onclick="renderWeeklyPlan()">Aktualisieren</span>
+      </div>
+      <div id="toni-weekly-plan" class="kanban-outer">
+        <div style="color:var(--color-text-tertiary);font-size:13px;padding:14px 0;text-align:center">Wochenplan wird geladen…</div>
       </div>
     </div>
 
@@ -9024,6 +8962,7 @@ input.youtube-force-invalid-v105{
         <div class="lr-modal-sub" id="lr-modal-sub">Detailansicht der Lernreise</div>
       </div>
       <div class="lr-modal-actions">
+        <button class="lr-secondary-btn" onclick="toniGenerateJournal()">📓 Journal</button>
         <button class="lr-secondary-btn" onclick="startNextLearningTask()">Nächste Aufgabe starten</button>
         <button class="lr-close-btn" onclick="closeLearningJourney()">Schließen</button>
       </div>
@@ -9037,13 +8976,15 @@ input.youtube-force-invalid-v105{
           </div>
           <div class="lr-top-split">
             <div class="lr-stations" id="lr-stations"></div>
-            <div class="lr-side-cover" id="lr-side-cover"></div>
+            <div class="lr-right-col" id="lr-right-col">
+              <div class="lr-side-cover" id="lr-side-cover"></div>
+              <div class="card-header" style="margin-top:14px">
+                <span class="card-title" id="lr-current-title">Aufgaben der aktuellen Station</span>
+                <span class="card-link" onclick="checkCurrentStation()">Station prüfen</span>
+              </div>
+              <div class="lr-task-grid" id="lr-task-grid"></div>
+            </div>
           </div>
-          <div class="card-header" style="margin-top:14px">
-            <span class="card-title" id="lr-current-title">Aufgaben der aktuellen Station</span>
-            <span class="card-link" onclick="checkCurrentStation()">Station prüfen</span>
-          </div>
-          <div class="lr-task-grid" id="lr-task-grid"></div>
           <div class="lr-mini-list" id="lr-mini-list" style="display:none"></div>
           <div id="lr-goal" style="display:none"></div>
           <div id="lr-progress-fill" style="display:none"></div>
@@ -9181,10 +9122,10 @@ input.youtube-force-invalid-v105{
   <div class="footer-links"><a href="#">Datenschutz</a><a href="#">Impressum</a><a href="#">Hilfe</a></div>
 </footer>
 
-<script src="/chat.js"></script>
+<script src="/chat.js?v=7"></script>
 
-<script src="/journey.js?v=44"></script>
-<script src="/journey_editor_v111.js?v=44"></script>
+<script src="/journey.js?v=49"></script>
+<script src="/journey_editor_v111.js?v=49"></script>
 <script src="/admin.js"></script>
 <script src="/ui.js"></script>
 
@@ -9784,6 +9725,6 @@ input.youtube-force-invalid-v105{
   </div>
 </div>
 
-<script src="/projects.js"></script>
+<script src="/projects.js?v=3"></script>
 </body>
 </html>

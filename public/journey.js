@@ -55,6 +55,7 @@ function syncJourneyToDashboard(){
   const p1=document.getElementById('p1'),p1v=document.getElementById('p1v');if(p1&&p1v){p1.style.width=pct+'%';p1v.textContent=pct+'%';}
   document.querySelectorAll('.projekt-item').forEach(row=>{if(row.textContent.includes('Lernreise Elektrotechnik Grundlagen')){const pctEl=row.querySelector('.projekt-pct'),fill=row.querySelector('.projekt-fill');if(pctEl)pctEl.textContent=pct+'%';if(fill)fill.style.width=pct+'%';}});
   updateLearningJourneyBar();saveState(STATE);
+  if(typeof window.renderWeeklyPlan==='function'){try{window.renderWeeklyPlan();}catch(e){}}
 }
 function updateLearningJourneyBar(){
   const j=activeJourney();document.querySelectorAll('.lernreise .step').forEach((el,i)=>{if(!j.steps[i])return;const st=stepStatus(j.steps[i],i,j),c=el.querySelector('.step-circle'),l=el.querySelector('.step-label');if(!c)return;c.className='step-circle';if(st==='done'){c.classList.add('done');c.textContent='✓';}else if(st==='current'){c.classList.add('current');c.textContent=i+1;}else{c.classList.add(i===j.steps.length-1?'trophy':'locked');c.textContent=i===j.steps.length-1?'🏆':i+1;}if(l)l.classList.toggle('cur',st==='current');const b=el.querySelector('.step-badge');if(b)b.style.display=st==='current'?'block':'none';});
@@ -2078,6 +2079,259 @@ async function toniPerformImport(journey){
   }
 }
 
+/* TONI – Lernjournal als PDF (jsPDF) */
+
+// Lädt jsPDF einmalig vom CDN nach. Gibt das jsPDF-Objekt zurück oder wirft einen Fehler.
+function toniLoadJsPDF(){
+  return new Promise((resolve, reject) => {
+    if(window.jspdf && window.jspdf.jsPDF){ resolve(window.jspdf.jsPDF); return; }
+    const s = document.createElement("script");
+    s.src = "https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js";
+    s.onload = () => {
+      if(window.jspdf && window.jspdf.jsPDF) resolve(window.jspdf.jsPDF);
+      else reject(new Error("jsPDF konnte nicht initialisiert werden."));
+    };
+    s.onerror = () => reject(new Error("jsPDF konnte nicht geladen werden (keine Internetverbindung zum CDN?)."));
+    document.head.appendChild(s);
+  });
+}
+
+// Lädt ein Bild (Data-URL oder http) und gibt {dataUrl, w, h} zurück, oder null.
+function toniJournalLoadImage(src){
+  return new Promise(resolve => {
+    try{
+      const img = new Image();
+      img.crossOrigin = "anonymous";
+      img.onload = () => {
+        try{
+          const canvas = document.createElement("canvas");
+          canvas.width = img.naturalWidth; canvas.height = img.naturalHeight;
+          canvas.getContext("2d").drawImage(img, 0, 0);
+          resolve({ dataUrl: canvas.toDataURL("image/jpeg", 0.85), w: img.naturalWidth, h: img.naturalHeight });
+        }catch(e){ resolve(null); }
+      };
+      img.onerror = () => resolve(null);
+      img.src = src;
+    }catch(e){ resolve(null); }
+  });
+}
+
+function toniJournalProfile(){
+  let name = "", klasse = "", institution = "";
+  try{
+    const pid = window.TONI_ACTIVE_PROFILE_ID;
+    const prof = (Array.isArray(window.TONI_PROFILES) ? window.TONI_PROFILES.find(p => p.id === pid) : null) || null;
+    name = (prof && prof.display_name) || (STATE && STATE.user && STATE.user.name) || "";
+    klasse = (prof && prof.class_name) || (STATE && STATE.user && STATE.user.class) || "";
+    institution = (prof && (prof.institution_name || prof.institution)) || "";
+  }catch(e){}
+  return { name, klasse, institution };
+}
+
+async function toniGenerateJournal(){
+  const journey = (typeof activeJourney === "function") ? activeJourney() : null;
+  if(!journey){ alert("Es ist keine Lernreise geöffnet."); return; }
+
+  let jsPDF;
+  try{
+    appendMsg?.("toni", "📓 Lernjournal wird erstellt …", typeof time === "function" ? time() : "", "desktop");
+    jsPDF = await toniLoadJsPDF();
+  }catch(e){
+    alert("Das Lernjournal konnte nicht erstellt werden:\n" + (e.message || e));
+    return;
+  }
+
+  try{
+    const doc = new jsPDF({ unit: "mm", format: "a4" });
+    const pageW = 210, pageH = 297, margin = 18;
+    const contentW = pageW - 2 * margin;
+    let y = margin;
+    const prof = toniJournalProfile();
+
+    const ensureSpace = (need) => { if(y + need > pageH - margin){ doc.addPage(); y = margin; } };
+    const setFont = (size, style="normal", color=[20,40,62]) => {
+      doc.setFont("helvetica", style); doc.setFontSize(size); doc.setTextColor(color[0],color[1],color[2]);
+    };
+    // schreibt umbrochenen Text, gibt neue y zurück
+    const writeText = (text, size=11, style="normal", color=[40,40,40], lineGap=1.4) => {
+      if(!text) return;
+      setFont(size, style, color);
+      const lines = doc.splitTextToSize(String(text), contentW);
+      for(const ln of lines){
+        ensureSpace(size*0.5);
+        doc.text(ln, margin, y);
+        y += size * 0.5 * lineGap;
+      }
+    };
+
+    // ---------- DECKBLATT ----------
+    // Cover-Bild (falls vorhanden) oben
+    const coverSrc = journey.cover_image || journey.cover_image_embedded || "";
+    if(coverSrc){
+      const ci = await toniJournalLoadImage(coverSrc);
+      if(ci){
+        const imgW = contentW;
+        const imgH = Math.min(95, imgW * (ci.h / ci.w));
+        doc.addImage(ci.dataUrl, "JPEG", margin, y, imgW, imgH);
+        y += imgH + 8;
+      }
+    }
+    ensureSpace(60);
+    setFont(24, "bold", [12, 36, 62]);
+    doc.splitTextToSize(journey.title || "Lernreise", contentW).forEach(ln => { ensureSpace(11); doc.text(ln, margin, y); y += 11; });
+    y += 2;
+    setFont(12, "normal", [90,90,90]);
+    if(journey.subject){ doc.text(String(journey.subject), margin, y); y += 8; }
+
+    y += 4;
+    setFont(13, "bold", [12,36,62]); doc.text("Lernjournal", margin, y); y += 8;
+
+    // Metadaten-Box
+    setFont(11, "normal", [40,40,40]);
+    const meta = [
+      ["Name", prof.name || "—"],
+      ["Klasse", prof.klasse || "—"],
+    ];
+    if(prof.institution) meta.push(["Institution", prof.institution]);
+    meta.push(["Erstellt am", new Date().toLocaleDateString("de-DE", { year:"numeric", month:"long", day:"numeric" }) + " " + new Date().toLocaleTimeString("de-DE",{hour:"2-digit",minute:"2-digit"})]);
+    const pct = (typeof journeyProgress === "function") ? journeyProgress(journey) : null;
+    if(pct !== null) meta.push(["Fortschritt", pct + " %"]);
+    for(const [k,v] of meta){
+      ensureSpace(7);
+      setFont(11, "bold", [70,70,70]); doc.text(k + ":", margin, y);
+      setFont(11, "normal", [40,40,40]); doc.text(String(v), margin + 32, y);
+      y += 7;
+    }
+
+    // Lernziel
+    if(journey.goal){
+      y += 4; ensureSpace(10);
+      setFont(11, "bold", [12,36,62]); doc.text("Lernziel", margin, y); y += 6;
+      writeText(journey.goal, 11, "normal", [40,40,40]);
+    }
+    if(journey.description){
+      y += 4; ensureSpace(10);
+      setFont(11, "bold", [12,36,62]); doc.text("Beschreibung", margin, y); y += 6;
+      writeText(journey.description, 11, "normal", [40,40,40]);
+    }
+
+    // ---------- STATIONEN ----------
+    const typeLabel = { Lerninhalt:"Lerninhalt", Aufgabe:"Aufgabe", Quiz:"Quiz", Video:"Video", Reflexion:"Reflexion" };
+    const steps = journey.steps || [];
+    for(let si=0; si<steps.length; si++){
+      const s = steps[si];
+      doc.addPage(); y = margin;
+      // Stationskopf
+      setFont(16, "bold", [12,36,62]);
+      doc.splitTextToSize(`${s.title || ("Station "+(si+1))}`, contentW).forEach(ln => { ensureSpace(9); doc.text(ln, margin, y); y += 9; });
+      if(s.subtitle){ setFont(11, "italic", [110,110,110]); doc.text(String(s.subtitle), margin, y); y += 7; }
+      doc.setDrawColor(200,200,200); doc.line(margin, y, pageW - margin, y); y += 8;
+
+      for(const t of (s.tasks || [])){
+        ensureSpace(16);
+        // Aufgaben-Titel + Typ + Status
+        setFont(12, "bold", [12,36,62]);
+        const head = `${t.title || "Aufgabe"}`;
+        doc.splitTextToSize(head, contentW).forEach(ln => { ensureSpace(7); doc.text(ln, margin, y); y += 6.5; });
+        setFont(9, "normal", [130,130,130]);
+        const statusTxt = t.status === "done" ? "erledigt" : (t.status === "in_progress" ? "in Arbeit" : "offen");
+        doc.text(`${typeLabel[t.type] || t.type || "Aufgabe"} · ${statusTxt}`, margin, y); y += 6;
+
+        // Aufgabentext (description/content)
+        const body = t.description || t.content || "";
+        if(body) writeText(body, 10.5, "normal", [50,50,50]);
+
+        // Quiz-Fragen
+        if(t.type === "Quiz" && t.quiz_data && Array.isArray(t.quiz_data.questions)){
+          y += 1;
+          t.quiz_data.questions.forEach((q, qi) => {
+            writeText(`${qi+1}. ${q.question||""}`, 10.5, "bold", [40,40,40]);
+            (q.options||[]).forEach((opt, oi) => {
+              const correct = oi === q.correct_index;
+              writeText(`   ${String.fromCharCode(97+oi)}) ${opt}${correct ? "  ✓" : ""}`, 10, "normal", correct ? [20,120,70] : [70,70,70]);
+            });
+            if(q.explanation) writeText(`   → ${q.explanation}`, 9.5, "italic", [120,120,120]);
+            y += 1;
+          });
+        }
+
+        // Bilder (klickbar, falls original_url vorhanden)
+        for(const block of (t.blocks || [])){
+          if(block && block.type === "image"){
+            const src = block.embedded || block.url;
+            if(src){
+              const bi = await toniJournalLoadImage(src);
+              if(bi){
+                const imgW = Math.min(contentW, 120);
+                const imgH = imgW * (bi.h / bi.w);
+                ensureSpace(imgH + 4);
+                doc.addImage(bi.dataUrl, "JPEG", margin, y, imgW, imgH);
+                // klickbar machen, wenn eine echte URL existiert
+                const linkUrl = block.original_url || (typeof block.url === "string" && block.url.startsWith("http") ? block.url : null);
+                if(linkUrl) doc.link(margin, y, imgW, imgH, { url: linkUrl });
+                y += imgH + 5;
+              }
+            }
+          }
+        }
+
+        // Links / Dateien als anklickbare Elemente
+        for(const block of (t.blocks || [])){
+          if(block && (block.type === "link" || block.type === "file")){
+            const url = block.url || block.original_url;
+            const label = block.title || block.name || url;
+            if(url){
+              ensureSpace(7);
+              setFont(10.5, "normal", [21,111,178]);
+              const txt = "🔗 " + label;
+              doc.textWithLink(txt, margin, y, { url });
+              y += 6.5;
+            }
+          }
+        }
+
+        // Video-Link
+        if(t.type === "Video" && t.youtube_video_id){
+          ensureSpace(7);
+          const vurl = "https://www.youtube.com/watch?v=" + t.youtube_video_id;
+          setFont(10.5, "normal", [21,111,178]);
+          doc.textWithLink("▶ Video ansehen: " + vurl, margin, y, { url: vurl });
+          y += 6.5;
+        }
+
+        // Schülereingabe
+        const ans = (t.answer && String(t.answer).trim()) ? String(t.answer).trim() : "";
+        y += 1; ensureSpace(10);
+        setFont(10, "bold", [12,36,62]); doc.text("Eingabe des Schülers / der Schülerin:", margin, y); y += 5.5;
+        if(ans){
+          // leicht eingerückter Block
+          writeText(ans, 10.5, "normal", [30,30,30]);
+        }else{
+          setFont(10, "italic", [150,150,150]); ensureSpace(6); doc.text("(keine Eingabe)", margin, y); y += 6;
+        }
+        y += 5;
+        doc.setDrawColor(230,230,230); ensureSpace(2); doc.line(margin, y, pageW - margin, y); y += 6;
+      }
+    }
+
+    // Fußzeile mit Seitenzahlen
+    const total = doc.getNumberOfPages();
+    for(let p=1; p<=total; p++){
+      doc.setPage(p);
+      setFont(8, "normal", [150,150,150]);
+      doc.text(`Lernjournal · ${journey.title || ""}`, margin, pageH - 10);
+      doc.text(`Seite ${p} / ${total}`, pageW - margin, pageH - 10, { align: "right" });
+    }
+
+    const fname = (typeof toniSlugifyTitle === "function" ? toniSlugifyTitle(journey.title) : "lernjournal") + "_lernjournal.pdf";
+    doc.save(fname);
+    appendMsg?.("toni", "✅ Lernjournal wurde als PDF erstellt und heruntergeladen.", typeof time === "function" ? time() : "", "desktop");
+  }catch(error){
+    console.error("Lernjournal:", error);
+    alert("Beim Erstellen des Lernjournals ist ein Fehler aufgetreten:\n" + (error.message || error));
+  }
+}
+
 function showJourneyAdminPanelIfAllowedV16(){
   const panel = document.getElementById("journey-admin-panel");
   if(!panel) return;
@@ -2759,7 +3013,7 @@ function toniV23FindLearningJourneyCard(){
   if(card)return card;
   card=cards.find(c=>{
     const t=(c.querySelector(".card-title")?.textContent)||"";
-    return t.includes("Lernreise")&&!t.includes("verwalten")&&!t.includes("zuordnen");
+    return t.includes("Lernreise")&&!t.includes("verwalten")&&!t.includes("zuordnen")&&!t.includes("Meine Lernreisen")&&!t.includes("zugeordnete");
   });
   return card||null;
 }
@@ -4857,10 +5111,27 @@ function toniV50FindActivityCard(){
 }
 
 function toniV50EnsureActivityContainer(){
+  // Neues Dashboard-Layout: eigene linke Spalte für Lernreisen.
+  // Wenn vorhanden, wird der Lernreise-Block dorthin gehängt.
+  const journeysCol = document.getElementById("dashboard-journeys-col");
+  if(journeysCol){
+    let container = document.getElementById("activity-learning-journeys-v50");
+    if(!container){
+      container = document.createElement("div");
+      container.id = "activity-learning-journeys-v50";
+      journeysCol.innerHTML = "";
+      journeysCol.appendChild(container);
+    } else if(container.parentElement !== journeysCol){
+      journeysCol.innerHTML = "";
+      journeysCol.appendChild(container);
+    }
+    return container;
+  }
+
+  // Fallback: altes Layout (Lernreisen in der "Aktive Projekte"-Karte)
   const card = toniV50FindActivityCard();
   if(!card) return null;
 
-  // Statische alte Lernreise-Einträge entfernen, damit nicht nur eine Beispiel-Lernreise sichtbar bleibt.
   [...card.querySelectorAll(".projekt-item")].forEach(item => {
     const name = item.querySelector(".projekt-name")?.textContent || "";
     if(name.includes("Lernreise")){

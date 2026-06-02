@@ -92,6 +92,8 @@ async function loadProjects() {
     renderProjectsDashboard();
     renderOpenTasks();
     renderToniHint();
+    await loadPersonalTasks();
+    renderWeeklyPlan();
   } catch (e) { console.warn('TONI Projekte laden:', e); }
 }
 
@@ -152,27 +154,275 @@ function renderProjectsDashboard() {
 // OFFENE AUFGABEN (Dashboard-Kasten)
 // ══════════════════════════════════════
 function renderOpenTasks() {
-  const wrap = document.getElementById('toni-open-tasks-list');
-  if (!wrap) return;
-
+  // Das Laden der offenen/erledigten Projektaufgaben (für Wochenplan + KI-Kontext)
+  // läuft unabhängig davon, ob der alte "Offene Aufgaben"-Kasten noch existiert.
   const projects = window.TONI_PROJECTS;
-  if (!projects.length) {
-    wrap.innerHTML = `<div style="color:var(--color-text-tertiary);font-size:13px;padding:6px 0">Keine Projekte vorhanden.</div>`;
+  if (!projects || !projects.length) {
+    const wrap = document.getElementById('toni-open-tasks-list');
+    if (wrap) wrap.innerHTML = `<div style="color:var(--color-text-tertiary);font-size:13px;padding:6px 0">Keine Projekte vorhanden.</div>`;
     return;
   }
-
-  // Alle offenen Aufgaben aus allen Projekten sammeln
-  // Da project_tasks nicht im Dashboard-State sind, zeigen wir pro Projekt die offene Anzahl
-  // und laden Tasks beim ersten Render nach
   loadOpenTasksFromProjects();
 }
 
-async function loadOpenTasksFromProjects() {
-  const wrap = document.getElementById('toni-open-tasks-list');
+// ══════════════════════════════════════
+// EIGENE (FREIE) AUFGABEN – personal_tasks
+// Aufgaben, die der Schüler selbst anlegt (unabhängig von Projekten/Lernreisen).
+// Geräteübergreifend in Supabase gespeichert, RLS schützt sie pro Nutzer.
+// ══════════════════════════════════════
+async function loadPersonalTasks() {
+  try {
+    const token = await getToken();
+    if (!token) { window.TONI_PERSONAL_TASKS = []; return; }
+    const res = await fetch(
+      `${window.SUPABASE_URL}/rest/v1/personal_tasks?order=position.asc,created_at.asc&select=*`,
+      { headers: { 'apikey': window.SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + token } }
+    );
+    window.TONI_PERSONAL_TASKS = res.ok ? (await res.json()) : [];
+  } catch (e) {
+    console.warn('TONI eigene Aufgaben laden:', e);
+    window.TONI_PERSONAL_TASKS = [];
+  }
+}
+
+async function addPersonalTask() {
+  const title = (typeof prompt === 'function') ? prompt('Neue eigene Aufgabe:') : '';
+  if (!title || !title.trim()) return;
+  try {
+    const token = await getToken();
+    if (!token) return;
+    const ownerId = (window.TONI_AUTH_PROFILE && window.TONI_AUTH_PROFILE.id) || window.TONI_ACTIVE_PROFILE_ID;
+    if (!ownerId) { console.warn('Keine Profil-ID für eigene Aufgabe'); return; }
+    await fetch(`${window.SUPABASE_URL}/rest/v1/personal_tasks`, {
+      method: 'POST',
+      headers: { 'apikey': window.SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
+      body: JSON.stringify({ owner_id: ownerId, title: title.trim(), status: 'todo' })
+    });
+    await loadPersonalTasks();
+    renderWeeklyPlan();
+  } catch (e) { console.warn('TONI eigene Aufgabe anlegen:', e); }
+}
+
+// Status der Reihe nach durchschalten: todo -> in_progress -> done (Ende).
+// Erledigte eigene Aufgaben wechseln NICHT zurück – dann lieber neu anlegen.
+async function cyclePersonalTask(taskId) {
+  try {
+    const list = Array.isArray(window.TONI_PERSONAL_TASKS) ? window.TONI_PERSONAL_TASKS : [];
+    const t = list.find(x => x.id === taskId);
+    if (!t) return;
+    if (t.status === 'done') return; // bleibt erledigt
+    const next = t.status === 'todo' ? 'in_progress' : 'done';
+    const token = await getToken();
+    if (!token) return;
+    await fetch(`${window.SUPABASE_URL}/rest/v1/personal_tasks?id=eq.${taskId}`, {
+      method: 'PATCH',
+      headers: { 'apikey': window.SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ status: next, updated_at: new Date().toISOString() })
+    });
+    await loadPersonalTasks();
+    renderWeeklyPlan();
+  } catch (e) { console.warn('TONI eigene Aufgabe ändern:', e); }
+}
+
+async function deletePersonalTask(taskId) {
+  try {
+    const token = await getToken();
+    if (!token) return;
+    await fetch(`${window.SUPABASE_URL}/rest/v1/personal_tasks?id=eq.${taskId}`, {
+      method: 'DELETE',
+      headers: { 'apikey': window.SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + token, 'Prefer': 'return=minimal' }
+    });
+    await loadPersonalTasks();
+    renderWeeklyPlan();
+  } catch (e) { console.warn('TONI eigene Aufgabe löschen:', e); }
+}
+
+// ══════════════════════════════════════
+// MEIN WOCHENPLAN (gespiegelt aus Lernreise + Projekten)
+// Lese-Ansicht: drei Spalten (Offen / In Arbeit / Erledigt), innerhalb
+// nach Dringlichkeit (Blocker/überfällig zuerst). Herkunft farbcodiert:
+// Lernreise = blau, Projekt = amber. Erledigtes klein/ausgegraut.
+// ══════════════════════════════════════
+function wpIsOverdue(d) {
+  if (!d) return false;
+  const due = new Date(d); if (isNaN(due)) return false;
+  const today = new Date(); today.setHours(0,0,0,0);
+  return due < today;
+}
+
+function collectWeeklyPlanItems() {
+  const items = [];
+
+  // --- Lernreise: aktive Lernreise, aktuelle Station ---
+  try {
+    if (typeof window.activeJourney === 'function') {
+      const j = window.activeJourney();
+      if (j && Array.isArray(j.steps) && j.steps.length) {
+        let curIdx = 0;
+        if (typeof window.stepStatus === 'function') {
+          const i = j.steps.findIndex((s, idx) => window.stepStatus(s, idx, j) === 'current');
+          curIdx = i < 0 ? 0 : i;
+        }
+        const cur = j.steps[curIdx];
+        (cur.tasks || []).forEach(t => {
+          if (t.status === 'locked') return;
+          const col = t.status === 'done' ? 'done' : (t.status === 'in_progress' ? 'wip' : 'todo');
+          items.push({
+            source: 'journey', title: t.title || '', col,
+            meta: `${j.title || 'Lernreise'} · ${cur.title || ''}`,
+            urgent: false, taskId: t.id
+          });
+        });
+      }
+    }
+  } catch (e) { console.warn('Wochenplan Lernreise:', e); }
+
+  // --- Projekte: NUR mir zugewiesene Aufgaben (inkl. erledigte) mit Verbindlichkeiten ---
+  try {
+    const projects = Array.isArray(window.TONI_PROJECTS) ? window.TONI_PROJECTS : [];
+    const openT = Array.isArray(window.TONI_OPEN_TASKS) ? window.TONI_OPEN_TASKS : [];
+    const doneT = Array.isArray(window.TONI_DONE_TASKS) ? window.TONI_DONE_TASKS : [];
+    const tasks = openT.concat(doneT);
+    const myId = (window.TONI_AUTH_PROFILE && window.TONI_AUTH_PROFILE.id) || window.TONI_ACTIVE_PROFILE_ID || null;
+    const projTitle = {};
+    projects.forEach(p => { projTitle[p.id] = p.title; });
+    tasks.forEach(t => {
+      // Punkt 2: nur Aufgaben anzeigen, die mir zugewiesen sind.
+      if (!myId || t.assigned_to !== myId) return;
+      const col = t.status === 'done' ? 'done' : (t.status === 'in_progress' || t.status === 'review' ? 'wip' : 'todo');
+      const overdue = t.due_date && wpIsOverdue(t.due_date) && t.status !== 'done';
+      const blocked = !!t.blocker && t.status !== 'done';
+      let note = '';
+      if (blocked) note = 'Blockiert';
+      else if (overdue) note = 'überfällig';
+      items.push({
+        source: 'project', title: t.title || '', col,
+        meta: `${projTitle[t.project_id] || 'Projekt'}`,
+        note, urgent: blocked || overdue, blocked, overdue,
+        projectId: t.project_id,
+        updatedAt: t.updated_at || t.created_at || ''
+      });
+    });
+  } catch (e) { console.warn('Wochenplan Projekte:', e); }
+
+  // --- Eigene (freie) Aufgaben ---
+  try {
+    const personal = Array.isArray(window.TONI_PERSONAL_TASKS) ? window.TONI_PERSONAL_TASKS : [];
+    personal.forEach(t => {
+      const col = t.status === 'done' ? 'done' : (t.status === 'in_progress' ? 'wip' : 'todo');
+      items.push({
+        source: 'personal', title: t.title || '', col,
+        meta: 'Eigene Aufgabe',
+        urgent: false, personalId: t.id,
+        updatedAt: t.updated_at || t.created_at || ''
+      });
+    });
+  } catch (e) { console.warn('Wochenplan eigene Aufgaben:', e); }
+
+  return items;
+}
+
+function renderWeeklyPlan() {
+  const wrap = document.getElementById('toni-weekly-plan');
   if (!wrap) return;
 
+  const items = collectWeeklyPlanItems();
+
+  if (!items.length) {
+    wrap.innerHTML = `<div style="color:var(--color-text-tertiary);font-size:13px;padding:14px 0;text-align:center">
+      Noch nichts zu planen. Öffne eine Lernreise oder lege ein Projekt an – dein Wochenplan füllt sich automatisch.</div>`;
+    return;
+  }
+
+  // Innerhalb der Spalten nach Dringlichkeit sortieren (urgent zuerst)
+  const byCol = { todo: [], wip: [], done: [] };
+  items.forEach(it => { (byCol[it.col] || byCol.todo).push(it); });
+  ['todo','wip'].forEach(c => byCol[c].sort((a,b) => (b.urgent?1:0) - (a.urgent?1:0)));
+  // "Erledigt": zuletzt erledigte zuerst (für die "letzten 5"-Anzeige)
+  byCol.done.sort((a,b) => String(b.updatedAt||'').localeCompare(String(a.updatedAt||'')));
+
+  const colColor = (source) => source === 'journey'
+    ? { border:'#185FA5', text:'#0C447C', icon:'ti-book', label:'Lernreise' }
+    : source === 'personal'
+    ? { border:'#534AB7', text:'#3C3489', icon:'ti-star', label:'Eigene' }
+    : { border:'#BA7517', text:'#633806', icon:'ti-folder', label:'Projekt' };
+
+  const cardHtml = (it) => {
+    const c = colColor(it.source);
+    const done = it.col === 'done';
+    // Klickverhalten je Quelle:
+    // - Lernreise: Aufgabe öffnen
+    // - Projekt: Projekt öffnen
+    // - Eigene: Status durchschalten – aber NICHT mehr, wenn bereits erledigt
+    const click = it.source === 'journey'
+      ? (it.taskId && typeof window.openLearningTask === 'function' ? `onclick="openLearningTask('${it.taskId}')"` : '')
+      : it.source === 'personal'
+      ? (it.personalId && !done ? `onclick="cyclePersonalTask('${it.personalId}')" title="Status ändern"` : '')
+      : (it.projectId ? `onclick="openProjectModal('${it.projectId}')"` : '');
+    let badge = '';
+    if (it.note === 'Blockiert') badge = `<span style="font-size:10px;background:#FAECE7;color:#993C1D;padding:1px 6px;border-radius:8px;margin-left:4px">Blockiert</span>`;
+    else if (it.note === 'überfällig') badge = `<span style="font-size:10px;background:#FAECE7;color:#993C1D;padding:1px 6px;border-radius:8px;margin-left:4px">⚠ überfällig</span>`;
+    // Eigene Aufgaben: hellblauer Hintergrund, damit sie sich klar abheben
+    const bg = it.source === 'personal' ? 'background:#E6F1FB;' : '';
+    // Eigene Aufgaben: kleines Löschsymbol
+    const del = it.source === 'personal' && it.personalId
+      ? `<span onclick="event.stopPropagation();deletePersonalTask('${it.personalId}')" title="Löschen" style="margin-left:auto;color:var(--color-text-tertiary);cursor:pointer;font-size:12px"><i class="ti ti-x"></i></span>`
+      : '';
+    return `<div class="k-card${done?' done-c':''}" ${click} style="${bg}border-left:3px solid ${c.border};${done?'opacity:.55':''}">
+      <div class="k-card-title" style="${done?'text-decoration:line-through;':''}">${escapeHtml(it.title)}${done?'':badge}</div>
+      <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:${c.text}">
+        <i class="ti ${c.icon}" style="font-size:13px"></i><span style="opacity:.85">${escapeHtml(it.meta)}</span>${del}
+      </div>
+    </div>`;
+  };
+
+  const colDef = [
+    { key:'todo', title:'Offen' },
+    { key:'wip',  title:'In Arbeit' },
+    { key:'done', title:'Erledigt' }
+  ];
+
+  wrap.innerHTML = `<div class="kanban-grid" style="grid-template-columns:repeat(3,minmax(180px,1fr));min-width:560px">
+    ${colDef.map(cd => {
+      let list = byCol[cd.key] || [];
+      let extraNote = '';
+      // Punkt 2: in "Erledigt" nur die letzten 5 zeigen
+      if (cd.key === 'done' && list.length > 5) {
+        const hidden = list.length - 5;
+        list = list.slice(0, 5);
+        extraNote = `<div style="font-size:11px;color:var(--color-text-tertiary);padding:4px 2px;text-align:center">+ ${hidden} weitere erledigt</div>`;
+      }
+      const cards = list.length ? list.map(cardHtml).join('') :
+        `<div style="font-size:12px;color:var(--color-text-tertiary);padding:6px 2px">—</div>`;
+      const addBtn = cd.key === 'todo'
+        ? `<div onclick="addPersonalTask()" style="margin-top:6px;font-size:12px;color:#534AB7;cursor:pointer"><i class="ti ti-plus" style="font-size:13px"></i> Eigene Aufgabe</div>`
+        : '';
+      const count = (byCol[cd.key] || []).length;
+      return `<div class="kanban-col col-${cd.key==='wip'?'wip':cd.key==='done'?'done':'todo'}">
+        <div class="k-header"><span class="k-title">${cd.title}</span><span class="k-badge">${count}</span></div>
+        <div>${cards}</div>
+        ${extraNote}
+        ${addBtn}
+      </div>`;
+    }).join('')}
+  </div>
+  <div style="display:flex;gap:14px;align-items:center;margin-top:8px;padding:0 2px;font-size:11px;color:var(--color-text-tertiary);flex-wrap:wrap">
+    <span><i class="ti ti-book" style="color:#185FA5"></i> Lernreise</span>
+    <span><i class="ti ti-folder" style="color:#BA7517"></i> Projekt</span>
+    <span><i class="ti ti-star" style="color:#534AB7"></i> Eigene</span>
+    <span style="margin-left:auto">tippe eine eigene Aufgabe an, um den Status zu ändern</span>
+  </div>`;
+}
+
+async function loadOpenTasksFromProjects() {
+  // Das frühere "Offene Aufgaben"-Anzeigeelement (toni-open-tasks-list) wurde aus
+  // dem Dashboard entfernt. Diese Funktion lädt aber weiterhin die offenen und
+  // erledigten Projektaufgaben für den Wochenplan und den KI-Kontext – daher
+  // KEIN früher Abbruch, wenn das Anzeigeelement fehlt.
+  const wrap = document.getElementById('toni-open-tasks-list');
+
   const projects = window.TONI_PROJECTS;
-  if (!projects.length) return;
+  if (!projects || !projects.length) return;
 
   try {
     const token = await getToken();
@@ -187,54 +437,70 @@ async function loadOpenTasksFromProjects() {
     if (!res.ok) throw new Error(await res.text());
     const tasks = await res.json();
 
-    if (!tasks.length) {
-      wrap.innerHTML = `<div style="color:var(--color-text-tertiary);font-size:13px;padding:6px 0">Keine offenen Aufgaben – sehr gut! 🎉</div>`;
-      return;
+    // Für den KI-Kontext global ablegen (bereits geladene Daten wiederverwenden).
+    window.TONI_OPEN_TASKS = Array.isArray(tasks) ? tasks : [];
+
+    // Zusätzlich die zuletzt erledigten Projektaufgaben laden – nur für den
+    // Wochenplan (die "Erledigt"-Spalte). Begrenzt, damit es übersichtlich bleibt.
+    try {
+      const doneRes = await fetch(
+        `${window.SUPABASE_URL}/rest/v1/project_tasks?${projectIds}&status=eq.done&order=updated_at.desc.nullslast,created_at.desc&limit=20&select=*,assigned_profile:profiles!project_tasks_assigned_to_fkey(id,display_name,first_name,avatar_url)`,
+        { headers: { 'apikey': window.SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + token } }
+      );
+      window.TONI_DONE_TASKS = doneRes.ok ? (await doneRes.json()) : [];
+    } catch (e) { window.TONI_DONE_TASKS = []; }
+
+    // Anzeige im alten "Offene Aufgaben"-Kasten nur, wenn er (noch) existiert.
+    if (wrap) {
+      if (!tasks.length) {
+        wrap.innerHTML = `<div style="color:var(--color-text-tertiary);font-size:13px;padding:6px 0">Keine offenen Aufgaben – sehr gut! 🎉</div>`;
+      } else {
+        wrap.innerHTML = tasks.slice(0, 8).map(t => {
+          const profile = t.assigned_profile;
+          const pal = profile ? getMemberPalette(profile.id) : { bg: 'var(--color-background-secondary)', border: 'var(--color-border-secondary)', text: 'var(--color-text-primary)' };
+          const proj = projects.find(p => p.id === t.project_id);
+          const projName = proj ? escapeHtml(proj.title) : '';
+          const overdue = t.due_date && isOverdue(t.due_date);
+          const dueHtml = t.due_date
+            ? `<span style="font-size:11px;color:${overdue?'#A32D2D':'var(--color-text-tertiary)'};margin-left:4px">${overdue?'⚠ ':''}${formatDate(t.due_date)}</span>`
+            : '';
+          const blockerBadge = t.blocker
+            ? `<span style="font-size:10px;background:#FAECE7;color:#993C1D;padding:1px 6px;border-radius:8px;margin-left:4px">Blockiert</span>`
+            : '';
+          const statusBadge = t.status === 'in_progress'
+            ? `<span style="font-size:10px;background:#FAEEDA;color:#633806;padding:1px 6px;border-radius:8px;margin-left:4px">In Arbeit</span>`
+            : t.status === 'review'
+            ? `<span style="font-size:10px;background:#EEEDFE;color:#3C3489;padding:1px 6px;border-radius:8px;margin-left:4px">Review</span>`
+            : '';
+
+          return `<div onclick="openProjectModal('${t.project_id}')"
+            style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:0.5px solid var(--color-border-tertiary);cursor:pointer"
+            onmouseover="this.style.opacity='.75'" onmouseout="this.style.opacity='1'">
+            ${profile ? avatarHtml(profile, 28) : `<div style="width:28px;height:28px;border-radius:50%;background:var(--color-background-secondary);border:0.5px solid var(--color-border-secondary);flex-shrink:0"></div>`}
+            <div style="flex:1;min-width:0">
+              <div style="font-size:13px;font-weight:500;color:var(--color-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(t.title)}${statusBadge}${blockerBadge}</div>
+              <div style="display:flex;align-items:center;flex-wrap:wrap;gap:2px;margin-top:1px">
+                ${profile ? `<span style="font-size:11px;color:${pal.text}">${escapeHtml(profile.first_name||profile.display_name||'')}</span>` : '<span style="font-size:11px;color:var(--color-text-tertiary)">Nicht zugewiesen</span>'}
+                ${projName ? `<span style="font-size:11px;color:var(--color-text-tertiary)"> · ${projName}</span>` : ''}
+                ${dueHtml}
+              </div>
+            </div>
+          </div>`;
+        }).join('');
+
+        if (tasks.length > 8) {
+          wrap.innerHTML += `<div style="font-size:12px;color:var(--color-text-tertiary);padding:6px 0;text-align:center">+ ${tasks.length - 8} weitere Aufgaben</div>`;
+        }
+      }
     }
 
-    wrap.innerHTML = tasks.slice(0, 8).map(t => {
-      const profile = t.assigned_profile;
-      const pal = profile ? getMemberPalette(profile.id) : { bg: 'var(--color-background-secondary)', border: 'var(--color-border-secondary)', text: 'var(--color-text-primary)' };
-      const proj = projects.find(p => p.id === t.project_id);
-      const projName = proj ? escapeHtml(proj.title) : '';
-      const overdue = t.due_date && isOverdue(t.due_date);
-      const dueHtml = t.due_date
-        ? `<span style="font-size:11px;color:${overdue?'#A32D2D':'var(--color-text-tertiary)'};margin-left:4px">${overdue?'⚠ ':''}${formatDate(t.due_date)}</span>`
-        : '';
-      const blockerBadge = t.blocker
-        ? `<span style="font-size:10px;background:#FAECE7;color:#993C1D;padding:1px 6px;border-radius:8px;margin-left:4px">Blockiert</span>`
-        : '';
-      const statusBadge = t.status === 'in_progress'
-        ? `<span style="font-size:10px;background:#FAEEDA;color:#633806;padding:1px 6px;border-radius:8px;margin-left:4px">In Arbeit</span>`
-        : t.status === 'review'
-        ? `<span style="font-size:10px;background:#EEEDFE;color:#3C3489;padding:1px 6px;border-radius:8px;margin-left:4px">Review</span>`
-        : '';
-
-      return `<div onclick="openProjectModal('${t.project_id}')"
-        style="display:flex;align-items:center;gap:8px;padding:7px 0;border-bottom:0.5px solid var(--color-border-tertiary);cursor:pointer"
-        onmouseover="this.style.opacity='.75'" onmouseout="this.style.opacity='1'">
-        ${profile ? avatarHtml(profile, 28) : `<div style="width:28px;height:28px;border-radius:50%;background:var(--color-background-secondary);border:0.5px solid var(--color-border-secondary);flex-shrink:0"></div>`}
-        <div style="flex:1;min-width:0">
-          <div style="font-size:13px;font-weight:500;color:var(--color-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(t.title)}${statusBadge}${blockerBadge}</div>
-          <div style="display:flex;align-items:center;flex-wrap:wrap;gap:2px;margin-top:1px">
-            ${profile ? `<span style="font-size:11px;color:${pal.text}">${escapeHtml(profile.first_name||profile.display_name||'')}</span>` : '<span style="font-size:11px;color:var(--color-text-tertiary)">Nicht zugewiesen</span>'}
-            ${projName ? `<span style="font-size:11px;color:var(--color-text-tertiary)"> · ${projName}</span>` : ''}
-            ${dueHtml}
-          </div>
-        </div>
-      </div>`;
-    }).join('');
-
-    if (tasks.length > 8) {
-      wrap.innerHTML += `<div style="font-size:12px;color:var(--color-text-tertiary);padding:6px 0;text-align:center">+ ${tasks.length - 8} weitere Aufgaben</div>`;
-    }
-
-    // TONI-Hinweis basierend auf echten Daten aktualisieren
+    // TONI-Hinweis und Wochenplan immer aktualisieren (unabhängig vom Anzeigeelement)
     renderToniHintFromTasks(tasks);
+    renderWeeklyPlan();
 
   } catch (e) {
     console.warn('TONI offene Aufgaben:', e);
-    wrap.innerHTML = `<div style="color:var(--color-text-tertiary);font-size:13px;padding:6px 0">Aufgaben konnten nicht geladen werden.</div>`;
+    if (wrap) wrap.innerHTML = `<div style="color:var(--color-text-tertiary);font-size:13px;padding:6px 0">Aufgaben konnten nicht geladen werden.</div>`;
   }
 }
 

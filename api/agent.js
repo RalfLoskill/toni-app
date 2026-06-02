@@ -37,18 +37,22 @@ export default async function handler(req, res) {
   const systemPrompts = {
 
     task_agent: `Du bist TONI, ein freundlicher und motivierender Lernassistent für Berufsschüler.
-Du hilfst dem Schüler dabei, die nächste sinnvolle Aufgabe zu finden und zu starten.
-Schau dir den aktuellen Lernstand, das Kanban-Board und die offenen Ziele an.
-Empfehle konkret eine Aufgabe und erkläre kurz warum sie jetzt sinnvoll ist.
-Halte deine Antwort kurz und motivierend (3-5 Sätze).
+Der Schüler möchte mit der nächsten sinnvollen Aufgabe in seiner Lernreise weitermachen.
+Schau dir den aktuellen Lernreise-Stand an (aktuelle Station, erledigte und offene Aufgaben).
+Empfiehl konkret die nächste offene Aufgabe und erkläre in einem Satz, warum sie jetzt dran ist.
+Die Aufgabe wird dem Schüler direkt nach deiner Antwort automatisch geöffnet – kündige das kurz an
+(z.B. "Ich öffne sie dir gleich").
+Halte deine Antwort kurz und motivierend (2-4 Sätze).
 Sprich den Schüler direkt mit seinem Namen an.
 Antworte auf Deutsch.`,
 
     project_agent: `Du bist TONI, ein freundlicher Lernassistent für Berufsschüler.
-Du gibst einen übersichtlichen Status der aktuellen Projekte und Gruppenarbeit.
-Hebe besonders Blockaden und dringende Aufgaben hervor.
+Du gibst einen übersichtlichen Status der echten Projekte und Gruppenaufgaben des Schülers.
+Priorisiere klar: zuerst blockierte Aufgaben (sie bremsen die ganze Gruppe), dann überfällige,
+dann nicht zugewiesene. Sprich Verbindlichkeiten freundlich, aber deutlich an – wer auf wen wartet
+und was die Gruppe voranbringt.
 Schlage konkrete nächste Schritte vor.
-Halte deine Antwort strukturiert aber nicht zu lang (5-7 Sätze).
+Halte deine Antwort strukturiert, aber nicht zu lang (5-7 Sätze).
 Sprich den Schüler direkt mit seinem Namen an.
 Antworte auf Deutsch.`,
 
@@ -61,9 +65,11 @@ Sprich den Schüler direkt mit seinem Namen an.
 Antworte auf Deutsch.`,
 
     goal_agent: `Du bist TONI, ein freundlicher Lernassistent für Berufsschüler.
-Du gibst einen Überblick über die aktuelle Lernreise und den Fortschritt.
-Zeige auf was gut läuft und was noch Aufmerksamkeit braucht.
-Motiviere den Schüler und erinnere ihn an seine Ziele.
+Der Schüler möchte seinen Stand in der aktuellen Lernreise prüfen.
+Gib einen Überblick anhand des echten Lernreise-Kontexts: Fortschritt, abgeschlossene Stationen,
+aktuelle Station und welche Pflichtaufgaben dort noch offen sind.
+Zeige auf, was schon gut läuft, und nenne konkret, was als Nächstes ansteht.
+Motiviere den Schüler und erinnere ihn an das Lernziel der Reise.
 Halte deine Antwort ermutigend und konkret (4-6 Sätze).
 Sprich den Schüler direkt mit seinem Namen an.
 Antworte auf Deutsch.`,
@@ -185,6 +191,105 @@ Antworte auf Deutsch.`
 // ----------------------------------------------------------------
 function buildContextSummary(ctx) {
   const lines = [];
+
+  // ----------------------------------------------------------------
+  // ECHTER LERNREISE-KONTEXT (Baustein 1) – hat Vorrang.
+  // Wird clientseitig aus der aktiven Lernreise erstellt und als
+  // ctx.journeyContext mitgeschickt. Wenn vorhanden, beschreibt er
+  // den tatsächlichen Stand des Schülers.
+  // ----------------------------------------------------------------
+  const jc = ctx.journeyContext;
+  const pc = ctx.projectContext;
+  let hasReal = false;
+
+  if (jc && jc.title) {
+    hasReal = true;
+    if (ctx.user) {
+      lines.push(`SCHÜLER: ${ctx.user.name || 'Unbekannt'}, Klasse: ${ctx.user.class || '-'}`);
+    }
+    lines.push(`\nAKTUELLE LERNREISE: "${jc.title}"${jc.subject ? ` (${jc.subject})` : ''}`);
+    if (jc.goal) lines.push(`LERNZIEL: ${jc.goal}`);
+    if (jc.progressPct !== null && jc.progressPct !== undefined) lines.push(`FORTSCHRITT: ${jc.progressPct}%`);
+    if (jc.doneStations && jc.doneStations.length) {
+      lines.push(`ABGESCHLOSSENE STATIONEN: ${jc.doneStations.join(', ')}`);
+    }
+    if (jc.currentStation) {
+      lines.push(`AKTUELLE STATION: ${jc.currentStation}${jc.currentStationSubtitle ? ` – ${jc.currentStationSubtitle}` : ''}`);
+    }
+    if (jc.currentDone && jc.currentDone.length) {
+      lines.push(`  davon erledigt: ${jc.currentDone.join(', ')}`);
+    }
+    if (jc.currentOpen && jc.currentOpen.length) {
+      lines.push(`  noch offen: ${jc.currentOpen.join(', ')}`);
+    }
+    // Aktuell geöffnete Aufgabe – der Schüler arbeitet gerade hieran.
+    if (jc.openTask && jc.openTask.title) {
+      const ot = jc.openTask;
+      lines.push(`\nDER SCHÜLER ARBEITET GERADE AN DIESER AUFGABE:`);
+      lines.push(`  Titel: ${ot.title}${ot.type ? ` (${ot.type})` : ''}`);
+      if (ot.prompt) lines.push(`  Aufgabenstellung: ${ot.prompt}`);
+      if (ot.studentAnswer) lines.push(`  Bisherige Eingabe des Schülers: ${ot.studentAnswer}`);
+      else lines.push(`  Der Schüler hat noch nichts eingegeben.`);
+      lines.push(`  Hilf ihm, selbst auf die Lösung zu kommen – gib Hinweise und stelle Fragen, statt die Lösung einfach zu verraten.`);
+    }
+  }
+
+  // ----------------------------------------------------------------
+  // ECHTER PROJEKT-KONTEXT inkl. Verbindlichkeiten.
+  // Wird als ctx.projectContext mitgeschickt. Betont, was die Gruppe
+  // blockiert, was überfällig ist und was noch niemandem zugewiesen ist.
+  // ----------------------------------------------------------------
+  if (pc && pc.projectCount) {
+    hasReal = true;
+    if (ctx.user && !jc) {
+      lines.push(`SCHÜLER: ${ctx.user.name || 'Unbekannt'}, Klasse: ${ctx.user.class || '-'}`);
+    }
+    lines.push(`\nPROJEKTE (${pc.projectCount}):`);
+    (pc.projects || []).forEach(p => {
+      const parts = [`  - "${p.title}"`];
+      if (p.type) parts.push(p.type === 'group' ? '(Gruppe)' : '(Solo)');
+      parts.push(`${p.progressPct}%`);
+      if (p.deadline) parts.push(`Deadline ${p.deadline}${p.deadlineOverdue ? ' ⚠ überfällig' : ''}`);
+      if (p.hasBlocker) parts.push('⚠ Blocker');
+      lines.push(parts.join(' '));
+    });
+
+    if (pc.blocked && pc.blocked.length) {
+      lines.push(`\n⚠ BLOCKIERTE AUFGABEN (bremsen die ganze Gruppe – zuerst klären!):`);
+      pc.blocked.forEach(t => {
+        lines.push(`  - "${t.title}" (Projekt: ${t.project})${t.assignee ? `, zuständig: ${t.assignee}` : ', nicht zugewiesen'} – Blocker: ${t.blocker}`);
+      });
+    }
+    if (pc.overdue && pc.overdue.length) {
+      lines.push(`\n⚠ ÜBERFÄLLIGE AUFGABEN:`);
+      pc.overdue.forEach(t => {
+        lines.push(`  - "${t.title}" (Projekt: ${t.project})${t.assignee ? `, zuständig: ${t.assignee}` : ''}, fällig war: ${t.dueDate}`);
+      });
+    }
+    if (pc.unassigned && pc.unassigned.length) {
+      lines.push(`\nNOCH NIEMANDEM ZUGEWIESEN:`);
+      pc.unassigned.forEach(t => {
+        lines.push(`  - "${t.title}" (Projekt: ${t.project})`);
+      });
+    }
+    if (pc.otherOpen && pc.otherOpen.length) {
+      lines.push(`\nWEITERE OFFENE AUFGABEN:`);
+      pc.otherOpen.forEach(t => {
+        lines.push(`  - "${t.title}" (Projekt: ${t.project})${t.assignee ? `, zuständig: ${t.assignee}` : ''}${t.dueDate ? `, fällig: ${t.dueDate}` : ''}`);
+      });
+    }
+    lines.push(`\nIn Gruppenprojekten gilt: Wenn eine Aufgabe blockiert oder überfällig ist, betrifft das oft auch andere Mitglieder. Sprich solche Verbindlichkeiten freundlich, aber klar an – wer auf wen wartet und was die Gruppe voranbringt.`);
+  }
+
+  if (hasReal) {
+    lines.push(`\nBitte beziehe dich auf diese realen Daten des Schülers, nicht auf Beispieldaten.`);
+    return lines.join('\n');
+  }
+
+  // ----------------------------------------------------------------
+  // Fallback: bisheriger (Demo-/Projekt-)Kontext, wenn keine aktive
+  // Lernreise mitgeschickt wurde.
+  // ----------------------------------------------------------------
 
   // Nutzer
   if (ctx.user) {
