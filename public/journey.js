@@ -2477,11 +2477,37 @@ async function loadJourneyTemplatesForAssignmentsV18(){
 
   try{
     if(typeof supabaseRequest === "function" && ownerId){
-      const query = role === "admin"
-        ? "learning_journey_templates?select=*&order=updated_at.desc"
-        : `learning_journey_templates?owner_profile_id=eq.${encodeURIComponent(ownerId)}&select=*&order=updated_at.desc`;
-      const rows = await supabaseRequest(query);
-      return (rows || []).map(r => ({...r, _source:"remote"}));
+      // Admins betreuen keine Schüler -> hier KEINE Lernreisen (kein Fortschrittseinblick).
+      if(role === "admin"){
+        return [];
+      }
+
+      // Tutor: eigene Lernreisen ...
+      const ownRows = await supabaseRequest(
+        `learning_journey_templates?owner_profile_id=eq.${encodeURIComponent(ownerId)}&select=*&order=updated_at.desc`
+      ) || [];
+
+      // ... plus mitbetreute Lernreisen (als Mit-Tutor eingeladen).
+      let coRows = [];
+      try{
+        const links = await supabaseRequest(
+          `learning_journey_tutors?tutor_profile_id=eq.${encodeURIComponent(ownerId)}&select=learning_journey_template_id`
+        ) || [];
+        const ids = links.map(l => l.learning_journey_template_id).filter(Boolean);
+        if(ids.length){
+          const inList = ids.map(encodeURIComponent).join(",");
+          coRows = await supabaseRequest(
+            `learning_journey_templates?id=in.(${inList})&select=*&order=updated_at.desc`
+          ) || [];
+        }
+      }catch(coErr){
+        console.warn("Mitbetreute Lernreisen konnten nicht geladen werden:", coErr);
+      }
+
+      // Zusammenführen, Duplikate (eigene == mitbetreut) anhand id entfernen.
+      const byId = new Map();
+      [...ownRows, ...coRows].forEach(r => { if(r && r.id) byId.set(String(r.id), r); });
+      return Array.from(byId.values()).map(r => ({...r, _source:"remote"}));
     }
   }catch(error){
     console.warn("Lernreisen für Zuordnung konnten nicht aus Supabase geladen werden:", error);
@@ -2497,7 +2523,7 @@ async function loadJourneyTemplatesForAssignmentsV18(){
 async function loadJourneyAssignmentsV18(){
   try{
     if(typeof supabaseRequest === "function"){
-      const rows = await supabaseRequest("learning_journey_assignments?select=*,profiles(id,display_name,email,class_name,first_name,last_name)&order=created_at.desc");
+      const rows = await supabaseRequest("learning_journey_assignments?select=*,profiles!student_profile_id(id,display_name,email,class_name,first_name,last_name)&order=created_at.desc");
       return rows || [];
     }
   }catch(error){

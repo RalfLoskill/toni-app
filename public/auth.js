@@ -5911,14 +5911,17 @@ async function toniV36LoadJourneyAssignments(){
   try{
     if(typeof supabaseRequest === "function"){
       try{
+        // Explizite Verknüpfung über student_profile_id: es gibt mehrere
+        // FK-Beziehungen zu profiles (u.a. assigned_by_profile_id), daher
+        // muss die gewünschte Beziehung eindeutig benannt werden.
         const rows = await supabaseRequest(
-          "learning_journey_assignments?select=*,profiles(id,display_name,email,class_name,first_name,last_name,avatar_data_url)&order=created_at.desc"
+          "learning_journey_assignments?select=*,profiles!student_profile_id(id,display_name,email,class_name,first_name,last_name,avatar_data_url)&order=created_at.desc"
         );
         return rows || [];
       }catch(errorWithAvatar){
         console.warn("TONI V36: Profilbilder konnten nicht mitgeladen werden, fallback ohne avatar_data_url:", errorWithAvatar);
         const rows = await supabaseRequest(
-          "learning_journey_assignments?select=*,profiles(id,display_name,email,class_name,first_name,last_name)&order=created_at.desc"
+          "learning_journey_assignments?select=*,profiles!student_profile_id(id,display_name,email,class_name,first_name,last_name)&order=created_at.desc"
         );
         return rows || [];
       }
