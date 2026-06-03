@@ -2715,6 +2715,35 @@ window.signOutUser = async function() {
     });
 
     appendMsg?.("toni", "Du wurdest abgemeldet.", typeof time === "function" ? time() : "", "desktop");
+
+    // Anmeldefelder leeren, damit nach dem Logout ein leerer Anmeldebildschirm
+    // erscheint (keine vorausgefüllte E-Mail / kein Passwort).
+    try{
+      const emailEl = document.getElementById("auth-email");
+      const pwEl = document.getElementById("auth-password");
+      if(emailEl){ emailEl.value = ""; emailEl.disabled = false; }
+      if(pwEl){ pwEl.value = ""; }
+      // SuperAdmin-Login-Modus zurücksetzen
+      const modal = document.getElementById("auth-modal");
+      modal?.classList.remove("superadmin-login-mode-v77");
+      const pwArea = document.getElementById("auth-password-area");
+      pwArea?.classList.remove("visible");
+      const note = document.getElementById("auth-login-note");
+      if(note) note.innerHTML = "";
+      const msg = document.getElementById("auth-message");
+      if(msg){ msg.textContent = ""; msg.className = "auth-message"; }
+      const contBtn = document.getElementById("auth-continue-btn");
+      if(contBtn){ contBtn.style.display = ""; contBtn.textContent = "Anmelden"; }
+      // Startbildschirm wieder zeigen. Der SuperAdmin hatte keine Supabase-Sitzung,
+      // daher feuert kein SIGNED_OUT-Event, das den Startbildschirm einblenden würde.
+      try{
+        const ss = document.getElementById("toni-startscreen");
+        if(ss){ ss.style.display = ""; ss.classList.remove("hidden"); }
+        if(typeof window.toniShowStartScreen === "function"){
+          window.toniShowStartScreen();
+        }
+      }catch(e){ /* Startbildschirm optional */ }
+    }catch(e){ console.warn("TONI Logout Felder-Reset:", e); }
   } catch (error) {
     console.warn("TONI V10 Logout Fehler:", error);
   }
@@ -6246,7 +6275,9 @@ window.addEventListener("DOMContentLoaded", () => {
       emailEl.disabled = true;
     }
     if(area) area.classList.add("visible");
-    if(btn) btn.style.display = "none";
+    // Button sichtbar lassen: er ruft toniSlimLogin(), das den SuperAdmin
+    // korrekt zweistufig behandelt (erst Passwortfeld, dann Anmeldung).
+    if(btn){ btn.style.display = ""; btn.textContent = "Anmelden"; }
     if(note){
       note.innerHTML = "SuperAdmin erkannt. Bitte gib das SuperAdmin-Passwort ein. Die Passwort-Vergessen-Funktion ist für diesen Zugang deaktiviert.";
     }
@@ -6347,6 +6378,24 @@ window.addEventListener("DOMContentLoaded", () => {
     if(typeof closeAuthModal === "function"){
       try{ closeAuthModal(); }catch{}
     }
+
+    // WICHTIG: Der Login ist in den Startbildschirm eingebettet. Da der SuperAdmin
+    // sich nicht über Supabase anmeldet, feuert kein SIGNED_IN-Event – der
+    // Startbildschirm muss daher hier aktiv ausgeblendet werden, sonst bleibt
+    // der SuperAdmin sichtbar "in der Anmeldung hängen".
+    function toniHideStartScreenForSuperAdmin(){
+      try{
+        const ss = document.getElementById("toni-startscreen");
+        if(ss){ ss.classList.add("hidden"); ss.style.display = "none"; }
+        if(typeof window.toniHideStartScreen === "function"){
+          try{ window.toniHideStartScreen(); }catch{}
+        }
+      }catch(e){ console.warn("SuperAdmin Startscreen:", e); }
+    }
+    toniHideStartScreenForSuperAdmin();
+    // Mehrfach absichern, falls anderer Code (Loader/Listener) kurz dazwischenfunkt.
+    setTimeout(toniHideStartScreenForSuperAdmin, 200);
+    setTimeout(toniHideStartScreenForSuperAdmin, 800);
 
     if(typeof appendMsg === "function"){
       appendMsg("toni", "✅ SuperAdmin angemeldet.", typeof time === "function" ? time() : "", "desktop");
@@ -6534,7 +6583,18 @@ window.addEventListener("DOMContentLoaded", () => {
     event?.stopPropagation?.();
     event?.stopImmediatePropagation?.();
 
-    showSuperAdminPassword();
+    // Zweistufig: Solange das Passwortfeld noch nicht sichtbar ist oder noch kein
+    // Passwort eingegeben wurde, erst das Passwortfeld zeigen. Sobald beides
+    // vorliegt, die SuperAdmin-Anmeldung tatsächlich durchführen.
+    const pwArea = document.getElementById("auth-password-area");
+    const pwVisible = pwArea && pwArea.classList.contains("visible");
+    const pw = document.getElementById("auth-password")?.value || "";
+
+    if(!pwVisible || !pw){
+      showSuperAdminPassword();
+    }else{
+      trySuperAdminLogin();
+    }
     return true;
   }
 
@@ -6570,6 +6630,17 @@ window.addEventListener("DOMContentLoaded", () => {
     if(cont && cont.dataset.toniV77ContinueInstalled !== "1"){
       cont.dataset.toniV77ContinueInstalled = "1";
       cont.addEventListener("click", interceptContinue, true);
+    }
+
+    // Enter im Passwortfeld löst beim SuperAdmin die Anmeldung aus (zweistufige Logik).
+    const pwEl = document.getElementById("auth-password");
+    if(pwEl && pwEl.dataset.toniV77PwEnterInstalled !== "1"){
+      pwEl.dataset.toniV77PwEnterInstalled = "1";
+      pwEl.addEventListener("keydown", event => {
+        if(event.key === "Enter" && isSuperAdminName(document.getElementById("auth-email")?.value)){
+          interceptContinue(event);
+        }
+      }, true);
     }
 
     if(login && login.dataset.toniV77LoginInstalled !== "1"){
@@ -6656,7 +6727,9 @@ window.addEventListener("DOMContentLoaded", () => {
   window.toniV77SuperAdminLogin = {
     showSuperAdminPassword,
     setSuperAdminProfile,
-    applySuperAdminVisibility
+    applySuperAdminVisibility,
+    isSuperAdminName,
+    trySuperAdminLogin
   };
 
   window.addEventListener("DOMContentLoaded", () => {
