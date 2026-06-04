@@ -16,6 +16,17 @@
   --green: #22c55e; --violet: #8b5cf6; --amber: #f59e0b;
   --slate-900: #0f172a; --slate-700: #374151; --slate-500: #64748b;
   --slate-300: #cbd5e1; --slate-100: #f1f5f9; --border: #e2e8f0;
+  /* Projekt-Bereich (V2): Design-Tokens auf echte App-Werte gemappt.
+     Diese --color-*/--border-radius-* wurden im Projekt-Code verwendet,
+     waren aber nirgends definiert -> Kasten/Rahmen/Radius fehlten. */
+  --color-background-primary: #ffffff;
+  --color-background-secondary: #f1f5f9;
+  --color-border-secondary: #cbd5e1;
+  --color-border-tertiary: #e2e8f0;
+  --color-text-primary: #1e293b;
+  --color-text-secondary: #64748b;
+  --color-text-tertiary: #94a3b8;
+  --border-radius-md: 8px;
 }
 body { font-family:'Inter',sans-serif; background:#f8fafc; font-size:13px; color:#1e293b; min-height:100vh; display:flex; flex-direction:column; }
 ::-webkit-scrollbar{width:4px;height:4px} ::-webkit-scrollbar-thumb{background:var(--slate-300);border-radius:99px}
@@ -9140,7 +9151,7 @@ input.youtube-force-invalid-v105{
 
 
 
-<script src="/auth.js?v=7"></script>
+<script src="/auth.js?v=8"></script>
 
 
 
@@ -9564,61 +9575,48 @@ input.youtube-force-invalid-v105{
 
 <!-- Projekt anlegen -->
 <div class="lr-modal-backdrop" id="create-project-modal">
-  <div class="lr-modal" role="dialog" aria-modal="true" style="max-width:520px">
-    <div class="lr-modal-header" style="border-bottom:0.5px solid var(--color-border-tertiary);padding-bottom:12px;margin-bottom:0">
-      <div><div class="lr-modal-title">Neues Projekt anlegen</div></div>
+  <div class="lr-modal" role="dialog" aria-modal="true" style="max-width:460px;padding:0;overflow:hidden">
+    <div class="lr-modal-header lr-typed-head" style="padding:18px 22px;margin:0;display:flex;align-items:flex-start;justify-content:space-between">
+      <div>
+        <div class="lr-modal-title" style="color:#0C447C">Neues Projekt</div>
+        <div style="font-size:13px;color:#185FA5;margin-top:2px">🚀 Lege ein neues Projekt an</div>
+      </div>
       <div class="lr-modal-actions">
-        <button class="lr-close-btn" onclick="closeCreateProjectModal()" style="font-size:18px;line-height:1">✕</button>
+        <button onclick="closeCreateProjectModal()" style="background:rgba(255,255,255,.6);border:0.5px solid #85B7EB;color:#185FA5;padding:6px 14px;border-radius:var(--border-radius-md);font-size:13px;cursor:pointer">Schließen</button>
       </div>
     </div>
-    <div style="padding:16px 4px">
-
-      <!-- Typ-Auswahl oben als Tabs -->
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:16px">
-        <label style="cursor:pointer">
-          <input type="radio" name="project-type-radio" value="solo" id="pt-solo" checked style="display:none">
-          <div id="pt-solo-card" onclick="selectProjectType('solo')"
-            style="border:2px solid #185FA5;border-radius:10px;padding:10px 12px;background:#E6F1FB;text-align:center">
-            <div style="font-size:20px;margin-bottom:3px">👤</div>
-            <div style="font-size:13px;font-weight:500;color:#0C447C">Solo-Projekt</div>
-            <div style="font-size:11px;color:#185FA5;margin-top:2px">Nur du</div>
-          </div>
-        </label>
-        <label style="cursor:pointer">
-          <input type="radio" name="project-type-radio" value="group" id="pt-group" style="display:none">
-          <div id="pt-group-card" onclick="selectProjectType('group')"
-            style="border:0.5px solid var(--color-border-secondary);border-radius:10px;padding:10px 12px;background:var(--color-background-secondary);text-align:center">
-            <div style="font-size:20px;margin-bottom:3px">👥</div>
-            <div style="font-size:13px;font-weight:500;color:var(--color-text-primary)">Gruppenarbeit</div>
-            <div style="font-size:11px;color:var(--color-text-tertiary);margin-top:2px">Mit Einladungscode</div>
-          </div>
-        </label>
-      </div>
+    <div style="padding:20px 22px">
       <input id="new-project-type" type="hidden" value="solo">
 
       <!-- Titel -->
-      <div style="margin-bottom:12px">
-        <label style="font-size:12px;font-weight:500;color:var(--color-text-secondary);display:block;margin-bottom:5px">Titel *</label>
+      <div style="margin-bottom:16px">
+        <label style="font-size:13px;font-weight:500;color:var(--color-text-primary);display:block;margin-bottom:6px">Titel *</label>
         <input id="new-project-title" type="text" placeholder="z.B. Automatisierte Pflanzenbewässerung"
           style="width:100%;padding:9px 12px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;background:var(--color-background-primary);color:var(--color-text-primary)">
       </div>
 
       <!-- Beschreibung -->
-      <div style="margin-bottom:12px">
-        <label style="font-size:12px;font-weight:500;color:var(--color-text-secondary);display:block;margin-bottom:5px">Beschreibung <span style="font-weight:400;opacity:.6">(optional)</span></label>
-        <textarea id="new-project-desc" rows="2" placeholder="Was ist das Ziel dieses Projekts?"
-          style="width:100%;padding:9px 12px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;resize:none;background:var(--color-background-primary);color:var(--color-text-primary)"></textarea>
+      <div style="margin-bottom:16px">
+        <label style="font-size:13px;font-weight:500;color:var(--color-text-primary);display:block;margin-bottom:6px">Beschreibung <span style="font-weight:400;color:var(--color-text-tertiary)">(optional)</span></label>
+        <textarea id="new-project-desc" rows="3" placeholder="Was ist das Ziel dieses Projekts?"
+          style="width:100%;padding:9px 12px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;resize:vertical;background:var(--color-background-primary);color:var(--color-text-primary)"></textarea>
       </div>
 
       <!-- Abgabe -->
       <div style="margin-bottom:20px">
-        <label style="font-size:12px;font-weight:500;color:var(--color-text-secondary);display:block;margin-bottom:5px">Abgabedatum <span style="font-weight:400;opacity:.6">(optional)</span></label>
+        <label style="font-size:13px;font-weight:500;color:var(--color-text-primary);display:block;margin-bottom:6px">Abgabedatum <span style="font-weight:400;color:var(--color-text-tertiary)">(optional)</span></label>
         <input id="new-project-deadline" type="date"
           style="width:100%;padding:9px 12px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;background:var(--color-background-primary);color:var(--color-text-primary)">
       </div>
 
+      <!-- Hinweis: Mitglieder über Einladungscode -->
+      <div style="background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:10px 14px;margin-bottom:20px;display:flex;align-items:center;gap:8px">
+        <span style="font-size:18px;color:var(--color-text-secondary)">👥</span>
+        <span style="font-size:12px;color:var(--color-text-secondary);line-height:1.4">Nach dem Anlegen kannst du über den Einladungscode jederzeit weitere Mitglieder hinzufügen.</span>
+      </div>
+
       <button onclick="saveNewProject()"
-        style="width:100%;padding:11px;background:#185FA5;color:#fff;border:none;border-radius:var(--border-radius-md);font-size:14px;font-weight:500;cursor:pointer;transition:opacity .15s"
+        style="width:100%;padding:12px;background:#185FA5;color:#fff;border:none;border-radius:var(--border-radius-md);font-size:15px;font-weight:500;cursor:pointer;transition:opacity .15s"
         onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
         Projekt anlegen
       </button>
@@ -9663,6 +9661,10 @@ input.youtube-force-invalid-v105{
         <label style="font-size:12px;color:var(--color-text-secondary);display:block;margin-bottom:4px">Aufgabe *</label>
         <input id="add-task-title" type="text" placeholder="Was muss erledigt werden?" style="width:100%;padding:8px 10px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;background:var(--color-background-primary);color:var(--color-text-primary)">
       </div>
+      <div style="margin-bottom:10px">
+        <label style="font-size:12px;color:var(--color-text-secondary);display:block;margin-bottom:4px">Beschreibung</label>
+        <textarea id="add-task-desc" rows="3" placeholder="Beschreibung (optional)…" style="width:100%;padding:8px 10px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;resize:vertical;background:var(--color-background-primary);color:var(--color-text-primary)"></textarea>
+      </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
         <div>
           <label style="font-size:12px;color:var(--color-text-secondary);display:block;margin-bottom:4px">Zugewiesen an</label>
@@ -9684,47 +9686,72 @@ input.youtube-force-invalid-v105{
 
 <!-- Aufgabe bearbeiten -->
 <div class="lr-modal-backdrop" id="task-detail-modal">
-  <div class="lr-modal" role="dialog" aria-modal="true" style="max-width:480px">
-    <div class="lr-modal-header">
-      <div><div class="lr-modal-title">Aufgabe bearbeiten</div></div>
+  <div class="lr-modal" role="dialog" aria-modal="true" style="max-width:520px">
+    <div class="lr-modal-header lr-typed-head" id="ptask-header">
+      <div>
+        <div class="lr-modal-title" id="ptask-title">Aufgabe</div>
+        <div class="lr-modal-sub" id="ptask-sub" style="font-size:12px;margin-top:2px"></div>
+      </div>
       <div class="lr-modal-actions">
-        <button onclick="deleteTask()" style="padding:5px 10px;font-size:12px;color:#A32D2D;border:0.5px solid #F09595;border-radius:8px;background:none;cursor:pointer">Löschen</button>
-        <button class="lr-close-btn" onclick="closeTaskDetailModal()">✕</button>
+        <button class="lr-secondary-btn" onclick="closeTaskDetailModal()">Schließen</button>
       </div>
     </div>
     <div style="padding:0 4px 16px">
       <input id="task-detail-id" type="hidden">
-      <div style="margin-bottom:10px">
+
+      <!-- Inhaber-Hinweis -->
+      <div id="ptask-owner" style="font-size:12px;color:var(--color-text-secondary);margin-bottom:10px"></div>
+
+      <!-- Titel bearbeiten (nur Inhaber) -->
+      <div id="ptask-title-edit-wrap" style="margin-bottom:10px;display:none">
         <label style="font-size:12px;color:var(--color-text-secondary);display:block;margin-bottom:4px">Titel</label>
-        <input id="task-detail-title" type="text" style="width:100%;padding:8px 10px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;background:var(--color-background-primary);color:var(--color-text-primary)">
+        <input id="ptask-title-edit" type="text" style="width:100%;padding:8px 10px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;background:var(--color-background-primary);color:var(--color-text-primary)">
       </div>
-      <div style="margin-bottom:10px">
+
+      <!-- Beschreibung -->
+      <div style="margin-bottom:14px">
         <label style="font-size:12px;color:var(--color-text-secondary);display:block;margin-bottom:4px">Beschreibung</label>
-        <textarea id="task-detail-desc" rows="3" style="width:100%;padding:8px 10px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;resize:vertical;background:var(--color-background-primary);color:var(--color-text-primary)"></textarea>
+        <div id="ptask-desc" style="font-size:14px;line-height:1.4;color:var(--color-text-primary);white-space:pre-wrap;background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:10px 12px;min-height:20px"></div>
+        <textarea id="ptask-desc-edit" rows="3" placeholder="Beschreibung der Aufgabe…" style="display:none;width:100%;padding:8px 10px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;resize:vertical;background:var(--color-background-primary);color:var(--color-text-primary)"></textarea>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
-        <div>
-          <label style="font-size:12px;color:var(--color-text-secondary);display:block;margin-bottom:4px">Zugewiesen an</label>
-          <select id="task-detail-assigned" style="width:100%;padding:8px 10px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:13px;background:var(--color-background-primary);color:var(--color-text-primary)">
-            <option value="">Niemand</option>
-          </select>
-        </div>
-        <div>
-          <label style="font-size:12px;color:var(--color-text-secondary);display:block;margin-bottom:4px">Fällig bis</label>
-          <input id="task-detail-due" type="date" style="width:100%;padding:8px 10px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:13px;background:var(--color-background-primary);color:var(--color-text-primary)">
-        </div>
+
+      <!-- Blocker-Anzeige (nur wenn vorhanden) -->
+      <div id="ptask-blocker-wrap" style="margin-bottom:14px;display:none">
+        <div id="ptask-blocker" style="font-size:13px;color:#993C1D;background:rgba(240,153,123,.12);border:0.5px solid #F0997B;border-radius:var(--border-radius-md);padding:8px 12px"></div>
       </div>
+
+      <!-- Status-Steuerung -->
       <div style="margin-bottom:16px">
-        <label style="font-size:12px;color:var(--color-text-secondary);display:block;margin-bottom:4px">Blocker (optional)</label>
-        <input id="task-detail-blocker" type="text" placeholder="Was blockiert diese Aufgabe?" style="width:100%;padding:8px 10px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;background:var(--color-background-primary);color:var(--color-text-primary)">
+        <label style="font-size:12px;color:var(--color-text-secondary);display:block;margin-bottom:6px">Status</label>
+        <div id="ptask-status-controls" style="display:flex;gap:8px;align-items:center"></div>
+        <div id="ptask-status-note" style="font-size:11px;color:var(--color-text-tertiary);margin-top:5px"></div>
       </div>
-      <button onclick="saveTaskDetail()" style="width:100%;padding:10px;background:#185FA5;color:#fff;border:none;border-radius:var(--border-radius-md);font-size:14px;font-weight:500;cursor:pointer">
-        Speichern
-      </button>
+
+      <!-- Meine Lösung / Notiz -->
+      <div style="margin-bottom:16px">
+        <label style="font-size:13px;font-weight:600;color:var(--color-text-primary);display:block;margin-bottom:4px">Meine Lösung / Notiz</label>
+        <textarea id="ptask-note" rows="5" placeholder="Schreibe deinen Rechenweg oder deine Antwort…" style="width:100%;padding:10px 12px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;resize:vertical;background:var(--color-background-primary);color:var(--color-text-primary)"></textarea>
+        <div id="ptask-note-hint" style="font-size:11px;color:var(--color-text-tertiary);margin-top:4px"></div>
+      </div>
+
+      <!-- Gemeinsamer Speichern-Button (nur Inhaber): Titel + Beschreibung + Notiz -->
+      <button id="ptask-save-all" onclick="saveTaskAll()" style="width:100%;padding:11px;background:#185FA5;color:#fff;border:none;border-radius:var(--border-radius-md);font-size:14px;font-weight:500;cursor:pointer;margin-bottom:14px;display:none">Speichern & schließen</button>
+
+      <!-- Verwaltung (nur Manager/Inhaber, per JS eingeblendet) -->
+      <div id="ptask-admin" style="border-top:0.5px solid var(--color-border-tertiary);padding-top:12px;display:none">
+        <div id="ptask-reassign-wrap" style="margin-bottom:10px;display:none">
+          <label style="font-size:12px;color:var(--color-text-secondary);display:block;margin-bottom:4px">Zuständigkeit ändern (nur Projektmanager)</label>
+          <div style="display:flex;gap:8px">
+            <select id="ptask-reassign" style="flex:1;padding:8px 10px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:13px;background:var(--color-background-primary);color:var(--color-text-primary)"></select>
+            <button onclick="reassignCurrentTask()" style="padding:8px 14px;background:var(--color-background-secondary);border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:13px;cursor:pointer;color:var(--color-text-primary)">Umweisen</button>
+          </div>
+        </div>
+        <button id="ptask-delete" onclick="deleteTask()" style="padding:7px 12px;font-size:12px;color:#A32D2D;border:0.5px solid #F09595;border-radius:8px;background:none;cursor:pointer;display:none">Aufgabe löschen</button>
+      </div>
     </div>
   </div>
 </div>
 
-<script src="/projects.js?v=3"></script>
+<script src="/projects.js?v=17"></script>
 </body>
 </html>

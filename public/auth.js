@@ -2726,8 +2726,12 @@ window.signOutUser = async function() {
       // SuperAdmin-Login-Modus zurücksetzen
       const modal = document.getElementById("auth-modal");
       modal?.classList.remove("superadmin-login-mode-v77");
+      // Standard-Anmeldebildschirm wiederherstellen: E-Mail UND Passwort
+      // zugleich sichtbar (identisch zum Zustand nach einem Neuladen).
+      // Frueher wurde "visible" hier entfernt, wodurch nach dem Logout nur
+      // das E-Mail-Feld erschien und ein manueller Reload noetig war.
       const pwArea = document.getElementById("auth-password-area");
-      pwArea?.classList.remove("visible");
+      pwArea?.classList.add("visible");
       const note = document.getElementById("auth-login-note");
       if(note) note.innerHTML = "";
       const msg = document.getElementById("auth-message");
@@ -5020,7 +5024,7 @@ function toniV31CaptureAvatarPhoto(){
       throw new Error("Die Kamera ist noch nicht bereit.");
     }
 
-    const size = 420;
+    const size = 160; // V110.2: Profilbild auf Anzeigegroesse verkleinert (vorher 420).
     const vw = video.videoWidth;
     const vh = video.videoHeight;
     const side = Math.min(vw, vh);
@@ -5033,7 +5037,7 @@ function toniV31CaptureAvatarPhoto(){
     const ctx = canvas.getContext("2d");
     ctx.drawImage(video, sx, sy, side, side, 0, 0, size, size);
 
-    window.TONI_V31_AVATAR_DATA_URL = canvas.toDataURL("image/jpeg", 0.82);
+    window.TONI_V31_AVATAR_DATA_URL = canvas.toDataURL("image/jpeg", 0.75);
 
     const preview = document.getElementById("avatar-preview-v31");
     const img = document.getElementById("avatar-preview-img-v31");

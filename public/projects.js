@@ -31,11 +31,47 @@ function avatarHtml(member, size=28) {
   const textColors = ['#0C447C','#085041','#633806','#3C3489','#712B13','#72243E'];
   const ci = Math.abs((member.id||'').charCodeAt(0)||0) % colors.length;
   const initials = ((member.first_name||'')[0]||(member.display_name||'?')[0]).toUpperCase();
-  if (member.avatar_url) {
-    return `<img src="${member.avatar_url}" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;border:2px solid var(--color-background-primary)" title="${escapeHtml(member.first_name||member.display_name||'')}">`;
+  // V31: Profilbilder liegen als Base64 in avatar_data_url; avatar_url als Fallback.
+  const img = member.avatar_data_url || member.avatar_url;
+  if (img) {
+    return `<img src="${img}" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;border:2px solid var(--color-background-primary)" title="${escapeHtml(member.first_name||member.display_name||'')}">`;
   }
   return `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${colors[ci]};color:${textColors[ci]};display:flex;align-items:center;justify-content:center;font-size:${Math.round(size*0.4)}px;font-weight:500;border:2px solid var(--color-background-primary);flex-shrink:0" title="${escapeHtml(member.first_name||member.display_name||'')}">${initials}</div>`;
 }
+
+// ══════════════════════════════════════
+// V1 – MITGLIEDER-BLOCK (Bild + Name + Klasse/Rolle untereinander)
+// Tutor/Admin/SuperAdmin -> Nachname + "Tutor"
+// Schüler                -> Vorname + Klasse (sonst "Keine Klasse")
+// ══════════════════════════════════════
+function memberPrimaryName(m) {
+  const role = m.role || '';
+  const isStaff = ['tutor', 'admin', 'superadmin'].includes(role);
+  if (isStaff) {
+    return m.last_name || m.display_name || m.first_name || '–';
+  }
+  return m.first_name || m.display_name || '–';
+}
+
+function memberSubLabel(m) {
+  const role = m.role || '';
+  const isStaff = ['tutor', 'admin', 'superadmin'].includes(role);
+  if (isStaff) return 'Tutor';
+  const cls = (m.class_name || '').trim();
+  return cls || 'Keine Klasse';
+}
+
+// Vertikaler Block: Avatar oben, Name darunter, Klasse/Rolle darunter.
+function memberBlock(m, size = 40) {
+  const name = escapeHtml(memberPrimaryName(m));
+  const sub  = escapeHtml(memberSubLabel(m));
+  return `<div style="display:flex;flex-direction:column;align-items:center;gap:3px;width:${size + 24}px;flex-shrink:0">
+    ${avatarHtml(m, size)}
+    <span style="font-size:11px;font-weight:500;color:var(--color-text-primary);line-height:1.2;text-align:center;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${name}</span>
+    <span style="font-size:10px;color:var(--color-text-tertiary);line-height:1.2;text-align:center">${sub}</span>
+  </div>`;
+}
+
 
 // ══════════════════════════════════════
 // FARB-SYSTEM
@@ -65,6 +101,17 @@ function getMemberPalette(memberId) {
   return MEMBER_PALETTES[idx];
 }
 
+// Projektweite, kollisionsfreie Farbe: jedes Mitglied bekommt anhand seiner
+// Position in der Mitgliederliste eine eindeutige Farbe (solange Mitgliederzahl
+// <= Palettenanzahl). Fallback auf Hash, wenn nicht auflösbar.
+function getMemberPaletteInProject(memberId, projectId) {
+  const proj = (window.TONI_PROJECTS || []).find(p => p.id === projectId);
+  const members = proj?.members || [];
+  const pos = members.findIndex(m => m.id === memberId);
+  if (pos >= 0) return MEMBER_PALETTES[pos % MEMBER_PALETTES.length];
+  return getMemberPalette(memberId || '');
+}
+
 function getProjectPalette(projectId) {
   const idx = Math.abs((projectId||'').split('').reduce((a,c) => a + c.charCodeAt(0), 0)) % PROJECT_PALETTES.length;
   return PROJECT_PALETTES[idx];
@@ -80,7 +127,31 @@ async function getToken() {
 async function loadProjects() {
   try {
     const token = await getToken();
-    if (!token) return;
+    if (!token) {
+      // Kein Token (z.B. mitten im Nutzerwechsel): alte Liste verwerfen,
+      // statt ein fremdes Projekt aus dem alten State stehen zu lassen.
+      window.TONI_PROJECTS = [];
+      renderProjectsDashboard();
+      return;
+    }
+
+    // V2-Fix (Token/Profil-Abgleich): Beim Nutzerwechsel kann das Token
+    // kurz noch zum alten Nutzer gehoeren, waehrend das Profil schon
+    // gewechselt ist. Dann wuerde der Server fremde Projekte liefern.
+    // Wir vergleichen die User-ID IM Token (sub) mit dem aktuellen Profil
+    // und laden erst, wenn beide uebereinstimmen.
+    try {
+      const sub = JSON.parse(atob(token.split('.')[1])).sub;
+      const profileId = window.TONI_AUTH_PROFILE?.id;
+      if (profileId && sub && sub !== profileId) {
+        console.warn('TONI: Token gehört noch nicht zum aktuellen Profil – warte und lade neu.');
+        window.TONI_PROJECTS = [];
+        renderProjectsDashboard();
+        setTimeout(loadProjects, 500); // kurz warten, dann mit frischem Token erneut
+        return;
+      }
+    } catch (_) { /* Token nicht dekodierbar -> normal fortfahren */ }
+
     const res = await fetch(`${window.SUPABASE_URL}/rest/v1/rpc/get_my_projects`, {
       method: 'POST',
       headers: { 'apikey': window.SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
@@ -94,7 +165,11 @@ async function loadProjects() {
     renderToniHint();
     await loadPersonalTasks();
     renderWeeklyPlan();
-  } catch (e) { console.warn('TONI Projekte laden:', e); }
+  } catch (e) {
+    console.warn('TONI Projekte laden:', e);
+    window.TONI_PROJECTS = [];
+    renderProjectsDashboard();
+  }
 }
 
 // ══════════════════════════════════════
@@ -117,8 +192,8 @@ function renderProjectsDashboard() {
     const pct = p.task_total > 0 ? Math.round((p.task_done / p.task_total) * 100) : 0;
     const pal = getProjectPalette(p.id);
     const members = (p.members || []).slice(0, 5);
-    const extra = (p.member_count||0) > 5 ? `<span style="font-size:11px;color:${pal.text};opacity:.7;margin-left:2px">+${p.member_count-5}</span>` : '';
-    const avatars = members.map(m => avatarHtml(m, 24)).join('');
+    const extra = (p.member_count||0) > 5 ? `<span style="font-size:11px;color:${pal.text};opacity:.7;margin-left:4px;align-self:center">+${p.member_count-5}</span>` : '';
+    const avatars = members.map(m => memberBlock(m, 32)).join('');
 
     const badges = [
       p.is_official ? `<span style="font-size:10px;background:rgba(255,255,255,.6);color:${pal.text};padding:1px 6px;border-radius:10px;border:0.5px solid ${pal.border}">Offiziell</span>` : '',
@@ -141,10 +216,12 @@ function renderProjectsDashboard() {
       <div style="height:4px;background:rgba(255,255,255,.5);border-radius:2px;margin:5px 0">
         <div style="height:4px;width:${pct}%;background:${pal.bar};border-radius:2px;transition:width .3s"></div>
       </div>
-      <div style="display:flex;align-items:center;gap:6px;margin-top:6px;flex-wrap:wrap">
-        <div style="display:flex;gap:2px">${avatars}${extra}</div>
-        ${deadlineHtml}
-        <div style="margin-left:auto;display:flex;gap:4px">${badges}</div>
+      <div style="display:flex;align-items:flex-start;gap:6px;margin-top:6px;flex-wrap:wrap">
+        <div style="display:flex;gap:6px;overflow-x:auto;max-width:100%;padding-bottom:2px">${avatars}${extra}</div>
+        <div style="display:flex;align-items:center;gap:6px;width:100%;margin-top:2px">
+          ${deadlineHtml}
+          <div style="margin-left:auto;display:flex;gap:4px">${badges}</div>
+        </div>
       </div>
     </div>`;
   }).join('');
@@ -560,17 +637,23 @@ function openProjectModal(projectId) {
 
   // Header mit Fortschritt + Mitglieder
   const members = p.members || [];
-  const avatarsHtml = members.map(m => avatarHtml(m, 28)).join('');
+  const avatarsHtml = members.map(m => memberBlock(m, 40)).join('');
   const inviteCode = p.invite_code ? `<span style="font-size:11px;background:var(--color-background-secondary);padding:2px 8px;border-radius:8px;font-family:monospace;cursor:pointer" onclick="copyInviteCode('${p.invite_code}')" title="Kopieren">🔗 ${p.invite_code}</span>` : '';
   const deadlineHtml = p.deadline ? `<span style="font-size:12px;color:${isOverdue(p.deadline)?'#A32D2D':'var(--color-text-secondary)'}">📅 ${formatDate(p.deadline)}</span>` : '';
 
+  // V2/Regel 7: Projektmanager (Ersteller) statt Solo/Gruppe-Unterscheidung.
+  const managerProfile = members.find(m => m.id === p.created_by);
+  const managerName = managerProfile
+    ? (typeof memberPrimaryName === 'function' ? memberPrimaryName(managerProfile) : (managerProfile.first_name||managerProfile.display_name||''))
+    : '–';
+
   document.getElementById('project-modal-sub').innerHTML = `
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px">
-      <span style="font-size:12px;color:var(--color-text-secondary)">${p.type==='group'?'Gruppenarbeit':'Solo-Projekt'}</span>
+      <span style="font-size:12px;color:var(--color-text-secondary)">👤 Projektmanager: <strong>${escapeHtml(managerName)}</strong></span>
       ${deadlineHtml}
       ${inviteCode}
-      <div style="margin-left:auto;display:flex;gap:2px">${avatarsHtml}</div>
     </div>
+    <div style="display:flex;gap:10px;margin-top:10px;overflow-x:auto;padding-bottom:4px">${avatarsHtml}</div>
     <div style="margin-top:8px">
       <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--color-text-secondary);margin-bottom:3px">
         <span>${p.task_done||0} von ${p.task_total||0} Aufgaben erledigt</span>
@@ -607,7 +690,7 @@ async function loadProjectTasks(projectId) {
     const token = await getToken();
     if (!token) return;
     const res = await fetch(
-      `${window.SUPABASE_URL}/rest/v1/project_tasks?project_id=eq.${projectId}&order=position.asc,created_at.asc&select=*,assigned_profile:profiles!project_tasks_assigned_to_fkey(id,display_name,first_name,avatar_url)`,
+      `${window.SUPABASE_URL}/rest/v1/project_tasks?project_id=eq.${projectId}&order=position.asc,created_at.asc&select=*,assigned_profile:profiles!project_tasks_assigned_to_fkey(id,display_name,first_name,last_name,class_name,role,avatar_url,avatar_data_url)`,
       { headers: { 'apikey': window.SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + token } }
     );
     if (!res.ok) throw new Error(await res.text());
@@ -658,15 +741,46 @@ function renderProjectKanban(tasks) {
   }).join('');
 }
 
-function renderTaskCard(task, col) {
-  const profile = task.assigned_profile;
-  const nextCol = { todo: 'in_progress', in_progress: 'review', review: 'done', done: 'todo' };
-  const nextLabel = { todo: 'Starten', in_progress: 'Review', review: 'Erledigt', done: 'Zurück' };
+// ══════════════════════════════════════
+// V110.1 – STATUS-KETTE (kein Drag&Drop)
+// Kachel:  todo -> in_progress -> review -> done
+// Vorwaerts-Button-Beschriftung je nach AKTUELLER Spalte:
+//   todo:"Start" in_progress:"Review" review:"Erledigt" done:"Fertig"(inaktiv)
+// "Zurücksetzen": einen Schritt zurueck; bei todo inaktiv.
+// Beide Buttons nur fuer zugewiesene Person ODER Tutor/Admin aktiv.
+// ══════════════════════════════════════
+const TONI_TASK_NEXT_COL  = { todo: 'in_progress', in_progress: 'review', review: 'done', done: null };
+const TONI_TASK_PREV_COL  = { todo: null, in_progress: 'todo', review: 'in_progress', done: 'review' };
+const TONI_TASK_FWD_LABEL = { todo: 'Start', in_progress: 'Review', review: 'Erledigt', done: 'Fertig' };
 
-  // Karteikarte bekommt die Farbe des zugewiesenen Mitglieds, unzugewiesene bekommen einen neutralen Rahmen
+// Darf der aktuelle Nutzer den Status dieser Aufgabe aendern?
+// Regel: zugewiesene Person ODER Tutor/Admin/SuperAdmin.
+// Hinweis: reine UI-Sperre. Echte Durchsetzung spaeter via RLS-Policy
+// auf project_tasks (UPDATE ist dort aktuell fuer alle Mitglieder offen).
+function toniCanChangeTaskStatus(task) {
+  // V2/Regel 6: NUR der Inhaber (assigned_to) darf den Status aendern -
+  // auch kein Tutor/Manager. Serverseitig durch RPC set_task_status erzwungen.
+  const myId = (window.TONI_AUTH_PROFILE && window.TONI_AUTH_PROFILE.id) || window.TONI_ACTIVE_PROFILE_ID || null;
+  return !!myId && task.assigned_to === myId;
+}
+
+function renderTaskCard(task, col) {
+  // Profil des Inhabers bevorzugt aus der bereits geladenen Mitgliederliste
+  // des Projekts auflösen (zuverlässig, inkl. Bild/Klasse/Rolle). Der
+  // eingebettete Join (task.assigned_profile) liefert fremde Profile wegen
+  // RLS nicht immer vollständig – deshalb ist members die bessere Quelle.
+  let profile = task.assigned_profile;
+  if (task.assigned_to) {
+    const proj = (window.TONI_PROJECTS || []).find(p => p.id === task.project_id);
+    const fromMembers = proj?.members?.find(m => m.id === task.assigned_to);
+    if (fromMembers) profile = fromMembers;
+  }
+
+  // Jede Kachel bekommt immer eine Farbe: projektweit eindeutige Inhaberfarbe,
+  // sonst eine stabile Farbe anhand der Aufgaben-ID (kein Weiss mehr).
   const pal = profile
-    ? getMemberPalette(profile.id)
-    : { bg: 'var(--color-background-secondary)', border: 'var(--color-border-secondary)', text: 'var(--color-text-primary)' };
+    ? getMemberPaletteInProject(profile.id, task.project_id)
+    : getMemberPalette(task.id || '');
 
   const dueColor = task.due_date && isOverdue(task.due_date) && col !== 'done' ? '#A32D2D' : pal.text;
   const dueHtml = task.due_date
@@ -678,37 +792,81 @@ function renderTaskCard(task, col) {
   const doneStyle = col === 'done' ? 'text-decoration:line-through;opacity:.6' : '';
 
   const assigneeHtml = profile
-    ? `<div style="display:flex;align-items:center;gap:4px;margin-top:4px">${avatarHtml(profile,18)}<span style="font-size:11px;color:${pal.text};opacity:.8">${escapeHtml(profile.first_name||profile.display_name||'')}</span></div>`
+    ? `<div style="display:flex;align-items:center;gap:6px;margin-top:5px">${avatarHtml(profile,22)}<div style="display:flex;flex-direction:column;line-height:1.15"><span style="font-size:11px;font-weight:500;color:${pal.text}">${escapeHtml(memberPrimaryName(profile))}</span><span style="font-size:10px;color:${pal.text};opacity:.7">${escapeHtml(memberSubLabel(profile))}</span></div></div>`
     : '';
+
+  // ── Status-Steuerung ──────────────────────────────
+  const canChange   = toniCanChangeTaskStatus(task);
+  const nextCol     = TONI_TASK_NEXT_COL[col];          // null bei done
+  const prevCol     = TONI_TASK_PREV_COL[col];          // null bei todo
+  const fwdLabel    = TONI_TASK_FWD_LABEL[col] || 'Start';
+  const fwdEnabled  = canChange && !!nextCol;           // done -> kein Vorwaerts
+  const resetEnabled = canChange && !!prevCol;          // todo -> kein Zurueck
+
+  const fwdBtn = `<button ${fwdEnabled ? `onclick="event.stopPropagation();moveProjectTask('${task.id}','${nextCol}')"` : 'disabled'}
+      style="flex:1;font-size:11px;padding:4px 9px;border:0.5px solid ${pal.border};border-radius:10px;font-weight:500;
+      background:${fwdEnabled ? 'rgba(255,255,255,.7)' : 'transparent'};color:${pal.text};
+      cursor:${fwdEnabled ? 'pointer' : 'default'};opacity:${fwdEnabled ? '1' : '.4'}">
+      ${fwdLabel}${nextCol ? ' →' : ''}
+    </button>`;
+
+  const resetBtn = `<button ${resetEnabled ? `onclick="event.stopPropagation();moveProjectTask('${task.id}','${prevCol}')"` : 'disabled'}
+      title="Zurücksetzen"
+      style="font-size:11px;padding:4px 9px;border:0.5px solid ${pal.border};border-radius:10px;font-weight:500;
+      background:transparent;color:${pal.text};
+      cursor:${resetEnabled ? 'pointer' : 'default'};opacity:${resetEnabled ? '.8' : '.3'}">
+      ↺
+    </button>`;
 
   return `<div style="background:${pal.bg};border:0.5px solid ${pal.border};border-radius:8px;padding:9px 10px;margin-bottom:6px;cursor:pointer;transition:opacity .15s"
     onclick="openTaskDetail('${task.id}')"
     onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
     <div style="font-size:13px;font-weight:500;color:${pal.text};line-height:1.3;${doneStyle}">${escapeHtml(task.title)}</div>
     ${assigneeHtml}${dueHtml}${blockerHtml}
-    <button onclick="event.stopPropagation();moveProjectTask('${task.id}','${nextCol[col]}')"
-      style="margin-top:7px;font-size:11px;padding:3px 9px;border:0.5px solid ${pal.border};border-radius:10px;background:rgba(255,255,255,.5);cursor:pointer;color:${pal.text};font-weight:500">
-      ${nextLabel[col]} →
-    </button>
+    <div style="display:flex;align-items:center;gap:6px;margin-top:7px">
+      ${fwdBtn}${resetBtn}
+    </div>
   </div>`;
 }
 
 // ══════════════════════════════════════
 // AUFGABE VERSCHIEBEN
 // ══════════════════════════════════════
+// ══════════════════════════════════════
+// V2/C1 – RPC-Helfer: ruft eine Supabase-RPC auf und gibt JSON zurueck.
+// Wirft bei Fehler eine Exception mit der Server-Meldung (z.B. Berechtigung).
+// ══════════════════════════════════════
+async function callRpc(fnName, args) {
+  const token = await getToken();
+  if (!token) throw new Error('Nicht angemeldet');
+  const res = await fetch(`${window.SUPABASE_URL}/rest/v1/rpc/${fnName}`, {
+    method: 'POST',
+    headers: {
+      'apikey': window.SUPABASE_ANON_KEY,
+      'Authorization': 'Bearer ' + token,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify(args || {})
+  });
+  if (!res.ok) {
+    let msg = 'Aktion nicht erlaubt';
+    try { const j = await res.json(); msg = j.message || j.hint || msg; } catch(_) {}
+    throw new Error(msg);
+  }
+  const text = await res.text();
+  return text ? JSON.parse(text) : null;
+}
+
 async function moveProjectTask(taskId, newStatus) {
   try {
-    const token = await getToken();
-    if (!token) return;
-    await fetch(`${window.SUPABASE_URL}/rest/v1/project_tasks?id=eq.${taskId}`, {
-      method: 'PATCH',
-      headers: { 'apikey': window.SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status: newStatus, updated_at: new Date().toISOString() })
-    });
+    await callRpc('set_task_status', { p_task_id: taskId, p_status: newStatus });
     if (window.TONI_ACTIVE_PROJECT_ID) loadProjectTasks(window.TONI_ACTIVE_PROJECT_ID);
     loadProjects();
     loadOpenTasksFromProjects();
-  } catch (e) { console.warn('TONI Aufgabe verschieben:', e); }
+  } catch (e) {
+    console.warn('TONI Status aendern:', e);
+    alert(e.message || 'Statuswechsel nicht erlaubt.');
+  }
 }
 
 // ══════════════════════════════════════
@@ -724,66 +882,212 @@ async function openTaskDetail(taskId) {
     );
     const [task] = await res.json();
     if (!task) return;
+    window.TONI_CURRENT_TASK = task;
 
-    // Mitglieder für Zuweisung laden
     const p = window.TONI_PROJECTS.find(x => x.id === task.project_id);
     const members = p?.members || [];
-    const assignSel = document.getElementById('task-detail-assigned');
-    if (assignSel) {
-      assignSel.innerHTML = '<option value="">Niemand zugewiesen</option>' +
-        members.map(m => `<option value="${m.id}" ${m.id===task.assigned_to?'selected':''}>${escapeHtml(m.first_name||m.display_name)}</option>`).join('');
+    const myId = window.TONI_AUTH_PROFILE?.id || window.TONI_ACTIVE_PROFILE_ID || null;
+    const isOwner = !!myId && task.assigned_to === myId;
+    const isManager = !!p && !!myId && p.created_by === myId;
+
+    // Inhaber-Name ermitteln
+    const ownerProfile = members.find(m => m.id === task.assigned_to);
+    const ownerName = ownerProfile
+      ? (typeof memberPrimaryName === 'function' ? memberPrimaryName(ownerProfile) : (ownerProfile.first_name||ownerProfile.display_name||''))
+      : 'niemandem';
+
+    // Kopfzeilen-Akzent = Farbe des Inhabers (verbindet Fenster mit Kachel)
+    const pal = ownerProfile
+      ? getMemberPaletteInProject(ownerProfile.id, task.project_id)
+      : getMemberPalette(task.id || '');
+    const header = document.getElementById('ptask-header');
+    if (header) {
+      header.style.setProperty('--lr-type-color', pal.border);
+      header.style.setProperty('--lr-type-bg', pal.bg);
+      header.style.setProperty('--lr-type-text', pal.text);
     }
 
-    document.getElementById('task-detail-title').value = task.title;
-    document.getElementById('task-detail-desc').value = task.description || '';
-    document.getElementById('task-detail-blocker').value = task.blocker || '';
-    document.getElementById('task-detail-due').value = task.due_date || '';
+    document.getElementById('ptask-title').textContent = task.title;
+    document.getElementById('ptask-sub').textContent =
+      `${p ? (p.title || 'Projekt') : 'Projekt'} · Inhaber: ${ownerName}`;
     document.getElementById('task-detail-id').value = taskId;
+    document.getElementById('ptask-owner').innerHTML =
+      `Inhaber dieser Aufgabe: <strong>${escapeHtml(ownerName)}</strong>${isOwner ? ' (du)' : ''}`;
+
+    // Titel + Beschreibung: Inhaber bekommt Eingabefelder, sonst nur Text
+    const titleWrap = document.getElementById('ptask-title-edit-wrap');
+    const descBox = document.getElementById('ptask-desc');
+    const descEdit = document.getElementById('ptask-desc-edit');
+    const saveAllBtn = document.getElementById('ptask-save-all');
+    if (isOwner) {
+      document.getElementById('ptask-title-edit').value = task.title || '';
+      descEdit.value = task.description || '';
+      titleWrap.style.display = '';
+      descEdit.style.display = '';
+      descBox.style.display = 'none';
+      saveAllBtn.style.display = '';
+    } else {
+      titleWrap.style.display = 'none';
+      descEdit.style.display = 'none';
+      descBox.style.display = '';
+      descBox.textContent = task.description || 'Keine Beschreibung.';
+      saveAllBtn.style.display = 'none';
+    }
+
+    // Blocker
+    const blWrap = document.getElementById('ptask-blocker-wrap');
+    if (task.blocker) {
+      document.getElementById('ptask-blocker').textContent = '⚠️ ' + task.blocker;
+      blWrap.style.display = '';
+    } else { blWrap.style.display = 'none'; }
+
+    // Status-Buttons (gleiche Kette wie im Board; nur Inhaber aktiv)
+    renderTaskDetailStatus(task, isOwner);
+
+    // Notizfeld – nur Inhaber darf schreiben, alle dürfen lesen
+    const noteEl = document.getElementById('ptask-note');
+    const noteHint = document.getElementById('ptask-note-hint');
+    noteEl.value = task.note || '';
+    if (isOwner) {
+      noteEl.removeAttribute('readonly');
+      noteEl.style.opacity = '1';
+      noteHint.textContent = '';
+    } else {
+      noteEl.setAttribute('readonly', 'readonly');
+      noteEl.style.opacity = '0.7';
+      noteHint.textContent = 'Nur der Inhaber dieser Aufgabe kann die Notiz bearbeiten.';
+      if (!task.note) noteEl.value = '';
+      noteEl.placeholder = task.note ? '' : 'Noch keine Notiz vorhanden.';
+    }
+
+    // Verwaltung: Umweisen (nur Manager), Löschen (Inhaber oder Manager)
+    const adminWrap = document.getElementById('ptask-admin');
+    const reassignWrap = document.getElementById('ptask-reassign-wrap');
+    const delBtn = document.getElementById('ptask-delete');
+    let adminVisible = false;
+    if (isManager) {
+      reassignWrap.style.display = '';
+      const sel = document.getElementById('ptask-reassign');
+      sel.innerHTML = members.map(m => {
+        const nm = typeof memberPrimaryName === 'function' ? memberPrimaryName(m) : (m.first_name||m.display_name||'');
+        return `<option value="${m.id}" ${m.id===task.assigned_to?'selected':''}>${escapeHtml(nm)}</option>`;
+      }).join('');
+      adminVisible = true;
+    } else {
+      reassignWrap.style.display = 'none';
+    }
+    if (isOwner || isManager) { delBtn.style.display = ''; adminVisible = true; }
+    else { delBtn.style.display = 'none'; }
+    adminWrap.style.display = adminVisible ? '' : 'none';
+
     document.getElementById('task-detail-modal').classList.add('open');
-    setTimeout(() => document.getElementById('task-detail-title').focus(), 100);
   } catch (e) { console.warn('TONI Aufgabe öffnen:', e); }
 }
 
 function closeTaskDetailModal() {
   document.getElementById('task-detail-modal').classList.remove('open');
+  window.TONI_CURRENT_TASK = null;
 }
 
-async function saveTaskDetail() {
-  const taskId = document.getElementById('task-detail-id').value;
-  const title = document.getElementById('task-detail-title').value.trim();
-  const description = document.getElementById('task-detail-desc').value.trim();
-  const blocker = document.getElementById('task-detail-blocker').value.trim();
-  const due_date = document.getElementById('task-detail-due').value || null;
-  const assigned_to = document.getElementById('task-detail-assigned')?.value || null;
-  if (!title) return;
+// Status-Buttons im Detailfenster als große gleich breite Reihe (Lernreisen-Stil)
+function renderTaskDetailStatus(task, isOwner) {
+  const col = task.status;
+  const nextCol = TONI_TASK_NEXT_COL[col];
+  const prevCol = TONI_TASK_PREV_COL[col];
+  const fwdLabel = TONI_TASK_FWD_LABEL[col] || 'Start';
+  const colDE = { todo:'Offen', in_progress:'In Arbeit', review:'Review', done:'Erledigt' };
+  const fwdEnabled = isOwner && !!nextCol;
+  const resetEnabled = isOwner && !!prevCol;
+
+  // aktueller Status als Badge
+  const badge = `<div style="flex:1;text-align:center;padding:11px;border-radius:var(--border-radius-md);background:var(--color-background-secondary);font-size:13px;font-weight:600;color:var(--color-text-primary)">${colDE[col]||col}</div>`;
+
+  const fwdBtn = `<button ${fwdEnabled ? `onclick="moveProjectTaskFromDetail('${task.id}','${nextCol}')"` : 'disabled'}
+    style="flex:1;padding:11px;border:none;border-radius:var(--border-radius-md);font-size:13px;font-weight:600;
+    background:${fwdEnabled?'#639922':'var(--color-background-secondary)'};color:${fwdEnabled?'#fff':'var(--color-text-tertiary)'};
+    cursor:${fwdEnabled?'pointer':'default'};opacity:${fwdEnabled?'1':'.5'}">${nextCol?(fwdLabel+' →'):'✓ Fertig'}</button>`;
+
+  const resetBtn = `<button ${resetEnabled ? `onclick="moveProjectTaskFromDetail('${task.id}','${prevCol}')"` : 'disabled'}
+    style="flex:1;padding:11px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:13px;font-weight:500;
+    background:var(--color-background-primary);color:var(--color-text-primary);
+    cursor:${resetEnabled?'pointer':'default'};opacity:${resetEnabled?'1':'.4'}">↺ Zurücksetzen</button>`;
+
+  document.getElementById('ptask-status-controls').style.display = 'flex';
+  document.getElementById('ptask-status-controls').style.gap = '8px';
+  document.getElementById('ptask-status-controls').innerHTML = badge + fwdBtn + resetBtn;
+
+  document.getElementById('ptask-status-note').textContent =
+    isOwner ? '' : 'Nur der Inhaber dieser Aufgabe kann den Status ändern.';
+}
+
+// Status aus dem Detailfenster ändern -> danach Detail neu laden + Board aktualisieren
+async function moveProjectTaskFromDetail(taskId, newStatus) {
   try {
-    const token = await getToken();
-    if (!token) return;
-    await fetch(`${window.SUPABASE_URL}/rest/v1/project_tasks?id=eq.${taskId}`, {
-      method: 'PATCH',
-      headers: { 'apikey': window.SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title, description, blocker: blocker||null, due_date, assigned_to: assigned_to||null, updated_at: new Date().toISOString() })
-    });
+    await callRpc('set_task_status', { p_task_id: taskId, p_status: newStatus });
+    if (window.TONI_ACTIVE_PROJECT_ID) loadProjectTasks(window.TONI_ACTIVE_PROJECT_ID);
+    loadProjects();
+    loadOpenTasksFromProjects();
+    openTaskDetail(taskId); // Detailansicht mit neuem Status neu aufbauen
+  } catch (e) {
+    console.warn('TONI Status (Detail):', e);
+    alert(e.message || 'Statuswechsel nicht erlaubt.');
+  }
+}
+
+// V2: Gemeinsames Speichern – Titel + Beschreibung + Notiz in einem Schritt,
+// danach Fenster schliessen. Nur der Inhaber sieht den Button (Sichtbarkeit
+// in openTaskDetail); die RPCs erzwingen die Berechtigung zusaetzlich serverseitig.
+async function saveTaskAll() {
+  const taskId = document.getElementById('task-detail-id').value;
+  const title = document.getElementById('ptask-title-edit').value.trim();
+  const description = document.getElementById('ptask-desc-edit').value;
+  const note = document.getElementById('ptask-note').value;
+  if (!taskId) return;
+  if (!title) { alert('Der Titel darf nicht leer sein.'); return; }
+  try {
+    // Titel + Beschreibung speichern
+    await callRpc('set_task_details', { p_task_id: taskId, p_title: title, p_description: description });
+    // Notiz speichern
+    await callRpc('set_task_note', { p_task_id: taskId, p_note: note });
     closeTaskDetailModal();
     if (window.TONI_ACTIVE_PROJECT_ID) loadProjectTasks(window.TONI_ACTIVE_PROJECT_ID);
     loadProjects();
-  } catch (e) { console.warn('TONI Aufgabe speichern:', e); }
+    loadOpenTasksFromProjects();
+  } catch (e) {
+    console.warn('TONI Aufgabe speichern:', e);
+    alert(e.message || 'Konnte nicht gespeichert werden.');
+  }
+}
+
+// Umweisen -> nur Manager (RPC erzwingt es serverseitig)
+async function reassignCurrentTask() {
+  const taskId = document.getElementById('task-detail-id').value;
+  const newAssignee = document.getElementById('ptask-reassign').value;
+  if (!taskId || !newAssignee) return;
+  try {
+    await callRpc('reassign_task', { p_task_id: taskId, p_new_assignee: newAssignee });
+    if (window.TONI_ACTIVE_PROJECT_ID) loadProjectTasks(window.TONI_ACTIVE_PROJECT_ID);
+    loadProjects();
+    openTaskDetail(taskId);
+  } catch (e) {
+    console.warn('TONI Umweisen:', e);
+    alert(e.message || 'Umweisen nicht erlaubt.');
+  }
 }
 
 async function deleteTask() {
   const taskId = document.getElementById('task-detail-id').value;
   if (!taskId || !confirm('Aufgabe wirklich löschen?')) return;
   try {
-    const token = await getToken();
-    if (!token) return;
-    await fetch(`${window.SUPABASE_URL}/rest/v1/project_tasks?id=eq.${taskId}`, {
-      method: 'DELETE',
-      headers: { 'apikey': window.SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + token }
-    });
+    await callRpc('delete_project_task', { p_task_id: taskId });
     closeTaskDetailModal();
     if (window.TONI_ACTIVE_PROJECT_ID) loadProjectTasks(window.TONI_ACTIVE_PROJECT_ID);
     loadProjects();
-  } catch (e) { console.warn('TONI Aufgabe löschen:', e); }
+    loadOpenTasksFromProjects();
+  } catch (e) {
+    console.warn('TONI Aufgabe löschen:', e);
+    alert(e.message || 'Aufgabe konnte nicht gelöscht werden.');
+  }
 }
 
 // ══════════════════════════════════════
@@ -797,10 +1101,27 @@ function openAddTaskModal(col) {
   document.getElementById('add-task-col').value = col;
   document.getElementById('add-task-title').value = '';
   document.getElementById('add-task-due-date').value = '';
+  const descEl = document.getElementById('add-task-desc'); if (descEl) descEl.value = '';
 
+  // V2/Regel 8: Zuweisung beim Anlegen nur fuer den Projektmanager sichtbar.
+  // Nicht-Manager werden automatisch selbst Inhaber (serverseitig in der RPC).
+  const myId = window.TONI_AUTH_PROFILE?.id || window.TONI_ACTIVE_PROFILE_ID || null;
+  const isManager = !!project && !!myId && project.created_by === myId;
   const sel = document.getElementById('add-task-assigned');
-  if (sel) sel.innerHTML = '<option value="">Niemand zugewiesen</option>' +
-    members.map(m => `<option value="${m.id}">${escapeHtml(m.first_name||m.display_name)}</option>`).join('');
+  const assignWrap = sel ? sel.closest('div') : null;
+  if (sel) {
+    if (isManager) {
+      sel.innerHTML = '<option value="">Mir selbst (Standard)</option>' +
+        members.map(m => {
+          const nm = typeof memberPrimaryName === 'function' ? memberPrimaryName(m) : (m.first_name||m.display_name||'');
+          return `<option value="${m.id}">${escapeHtml(nm)}</option>`;
+        }).join('');
+      if (assignWrap) assignWrap.style.display = '';
+    } else {
+      sel.innerHTML = '<option value="">Mir selbst</option>';
+      if (assignWrap) assignWrap.style.display = 'none';
+    }
+  }
 
   document.getElementById('add-task-modal').classList.add('open');
   setTimeout(() => document.getElementById('add-task-title').focus(), 100);
@@ -812,51 +1133,39 @@ function closeAddTaskModal() {
 
 async function saveNewTask() {
   const title = document.getElementById('add-task-title').value.trim();
-  const col = document.getElementById('add-task-col').value;
+  const description = document.getElementById('add-task-desc')?.value.trim() || null;
   const due_date = document.getElementById('add-task-due-date').value || null;
   const assigned_to = document.getElementById('add-task-assigned')?.value || null;
   const projectId = window.TONI_ACTIVE_PROJECT_ID;
   if (!title || !projectId) return;
   try {
-    const token = await getToken();
-    if (!token) return;
-    await fetch(`${window.SUPABASE_URL}/rest/v1/project_tasks`, {
-      method: 'POST',
-      headers: { 'apikey': window.SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
-      body: JSON.stringify({ project_id: projectId, title, status: col, due_date, assigned_to: assigned_to||null, created_by: window.TONI_AUTH_PROFILE?.id })
+    // V2/C1: Anlegen ueber RPC. assigned_to wird serverseitig nur beruecksichtigt,
+    // wenn der Aufrufer Manager ist; sonst wird der Ersteller automatisch Inhaber.
+    await callRpc('create_project_task', {
+      p_project_id: projectId,
+      p_title: title,
+      p_description: description,
+      p_assigned_to: assigned_to || null,
+      p_due_date: due_date
     });
     closeAddTaskModal();
     loadProjectTasks(projectId);
     loadProjects();
-  } catch (e) { console.warn('TONI Aufgabe anlegen:', e); }
+    loadOpenTasksFromProjects();
+  } catch (e) {
+    console.warn('TONI Aufgabe anlegen:', e);
+    alert(e.message || 'Aufgabe konnte nicht angelegt werden.');
+  }
 }
 
 // ══════════════════════════════════════
 // PROJEKT ANLEGEN
 // ══════════════════════════════════════
 function selectProjectType(type) {
-  document.getElementById('new-project-type').value = type;
-  const soloCard = document.getElementById('pt-solo-card');
-  const groupCard = document.getElementById('pt-group-card');
-  if (type === 'solo') {
-    soloCard.style.border = '2px solid #185FA5';
-    soloCard.style.background = '#E6F1FB';
-    soloCard.querySelector('div:nth-child(2)').style.color = '#0C447C';
-    soloCard.querySelector('div:nth-child(3)').style.color = '#185FA5';
-    groupCard.style.border = '0.5px solid var(--color-border-secondary)';
-    groupCard.style.background = 'var(--color-background-secondary)';
-    groupCard.querySelector('div:nth-child(2)').style.color = 'var(--color-text-primary)';
-    groupCard.querySelector('div:nth-child(3)').style.color = 'var(--color-text-tertiary)';
-  } else {
-    groupCard.style.border = '2px solid #185FA5';
-    groupCard.style.background = '#E6F1FB';
-    groupCard.querySelector('div:nth-child(2)').style.color = '#0C447C';
-    groupCard.querySelector('div:nth-child(3)').style.color = '#185FA5';
-    soloCard.style.border = '0.5px solid var(--color-border-secondary)';
-    soloCard.style.background = 'var(--color-background-secondary)';
-    soloCard.querySelector('div:nth-child(2)').style.color = 'var(--color-text-primary)';
-    soloCard.querySelector('div:nth-child(3)').style.color = 'var(--color-text-tertiary)';
-  }
+  // V2: Solo/Gruppe-Unterscheidung entfernt. Funktion bleibt nur, um das
+  // versteckte Typ-Feld konsistent zu setzen (Default 'solo'); kein UI mehr.
+  const el = document.getElementById('new-project-type');
+  if (el) el.value = type || 'solo';
 }
 
 function openCreateProjectModal() {
@@ -989,7 +1298,17 @@ window.addEventListener('DOMContentLoaded', () => {
   const origApply = window.applyAuthProfile;
   window.applyAuthProfile = function(profile) {
     if (typeof origApply === 'function') origApply(profile);
-    if (profile?.id) { done = false; setTimeout(tryLoad, 200); }
+    // V2-Fix: Bei Nutzerwechsel (andere Profil-ID) die alte Projektliste
+    // sofort verwerfen, damit kein fremdes Projekt aus dem alten State
+    // haengen bleibt. Greift unabhaengig vom SIGNED_OUT-Event.
+    if (profile?.id && window.TONI_LAST_PROFILE_ID && window.TONI_LAST_PROFILE_ID !== profile.id) {
+      window.TONI_PROJECTS = [];
+      const w1 = document.getElementById('toni-projects-list');
+      if (w1) w1.innerHTML = '<div style="color:var(--color-text-tertiary);font-size:13px;padding:12px 0">Projekte werden geladen…</div>';
+      const w2 = document.getElementById('toni-open-tasks-list');
+      if (w2) w2.innerHTML = '<div style="color:var(--color-text-tertiary);font-size:13px;padding:8px 0">Wird geladen…</div>';
+    }
+    if (profile?.id) { window.TONI_LAST_PROFILE_ID = profile.id; done = false; setTimeout(tryLoad, 200); }
   };
 
   function hookSupabase() {
@@ -1018,4 +1337,28 @@ window.addEventListener('DOMContentLoaded', () => {
     tryLoad();
     if (done || tries > 50) clearInterval(poll);
   }, 400);
+
+  // V2-Fix (robust, unabhängig von applyAuthProfile-Kette):
+  // Ein dauerhafter Watcher vergleicht die aktuelle Profil-ID mit der
+  // zuletzt geladenen. Ändert sie sich (Nutzerwechsel), wird die alte
+  // Projektliste sofort verworfen und mit frischem Token neu geladen.
+  // Das greift auch, wenn auth.js TONI_AUTH_PROFILE direkt setzt, ohne
+  // applyAuthProfile aufzurufen.
+  setInterval(() => {
+    const curId = window.TONI_AUTH_PROFILE?.id || null;
+    if (curId && curId !== window.TONI_PROJECTS_LOADED_FOR) {
+      window.TONI_PROJECTS_LOADED_FOR = curId;
+      window.TONI_PROJECTS = [];
+      const w1 = document.getElementById('toni-projects-list');
+      if (w1) w1.innerHTML = '<div style="color:var(--color-text-tertiary);font-size:13px;padding:12px 0">Projekte werden geladen…</div>';
+      loadProjects();
+    }
+    // Abmeldung: Profil weg -> Liste leeren
+    if (!curId && window.TONI_PROJECTS_LOADED_FOR) {
+      window.TONI_PROJECTS_LOADED_FOR = null;
+      window.TONI_PROJECTS = [];
+      const w1 = document.getElementById('toni-projects-list');
+      if (w1) w1.innerHTML = '';
+    }
+  }, 800);
 })();
