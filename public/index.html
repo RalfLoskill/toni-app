@@ -349,6 +349,11 @@ body { font-family:'Inter',sans-serif; background:#f8fafc; font-size:13px; color
 .lr-modal-backdrop{position:fixed;inset:0;background:rgba(15,23,42,.42);display:none;align-items:center;justify-content:center;padding:22px;z-index:1000}
 .lr-modal-backdrop.open{display:flex}
 .lr-modal{width:min(1180px,100%);max-height:min(860px,92vh);background:#fff;border:1px solid var(--border);border-radius:18px;box-shadow:0 24px 70px rgba(15,23,42,.25);overflow:hidden;display:flex;flex-direction:column}
+.toni-create-project-modal{width:550px;max-width:550px;height:auto;max-height:90vh}
+.toni-join-project-modal{width:440px;max-width:440px;height:auto;max-height:90vh}
+.toni-add-task-modal{width:440px;max-width:440px;height:auto;max-height:90vh}
+.toni-task-detail-modal{width:520px;max-width:520px;height:auto;max-height:90vh}
+.toni-project-modal{max-height:90vh}
 .lr-modal-header{padding:16px 18px;border-bottom:1px solid var(--border);display:flex;align-items:flex-start;justify-content:space-between;gap:14px;background:#fff}
 .lr-modal-title{font-size:18px;font-weight:800;color:#0f172a;margin-bottom:4px}
 .lr-modal-sub{font-size:12px;color:#64748b;line-height:1.45}
@@ -423,7 +428,7 @@ body { font-family:'Inter',sans-serif; background:#f8fafc; font-size:13px; color
 .lr-header-progress .lr-track{width:120px;height:6px;background:#e2e8f0;border-radius:3px;overflow:hidden}
 .lr-header-progress .lr-track-fill{height:100%;background:var(--blue,#185FA5);border-radius:3px;transition:width .3s}
 .lr-header-pct{font-size:13px;font-weight:700;color:var(--blue,#185FA5)}
-@media(max-width:560px){.lr-modal-backdrop{padding:0}.lr-modal{max-height:100vh;height:100vh;border-radius:0}.lr-modal-header{flex-direction:column}.lr-modal-actions{width:100%}.lr-modal-actions button{flex:1}}
+@media(max-width:560px){.lr-modal-backdrop{padding:0}.lr-modal{max-height:100vh;height:100vh;border-radius:0}.toni-create-project-modal{width:100%;max-width:100%;height:auto;max-height:90vh;border-radius:18px}.toni-join-project-modal{width:100%;max-width:100%;height:auto;max-height:90vh;border-radius:18px}.toni-add-task-modal{width:100%;max-width:100%;height:auto;max-height:90vh;border-radius:18px}.toni-task-detail-modal{width:100%;max-width:100%;height:auto;max-height:90vh;border-radius:18px}.toni-project-modal{width:90%;max-width:90%;height:auto;max-height:90vh;border-radius:18px}.lr-modal-header{flex-direction:column}.lr-modal-actions{width:100%}.lr-modal-actions button{flex:1}}
 
 
 /* =========================================================
@@ -9558,7 +9563,7 @@ input.youtube-force-invalid-v105{
 
 <!-- Projekt-Detail + Kanban -->
 <div class="lr-modal-backdrop" id="project-modal">
-  <div class="lr-modal" role="dialog" aria-modal="true" style="max-width:960px;width:95vw">
+  <div class="lr-modal toni-project-modal" role="dialog" aria-modal="true" style="max-width:960px;width:95vw;display:flex;flex-direction:column">
     <div class="lr-modal-header">
       <div style="flex:1">
         <div class="lr-modal-title" id="project-modal-title">Projekt</div>
@@ -9569,13 +9574,13 @@ input.youtube-force-invalid-v105{
         <button class="lr-close-btn" onclick="closeProjectModal()">Schließen</button>
       </div>
     </div>
-    <div id="project-kanban" style="display:flex;gap:10px;overflow-x:auto;padding:16px 0;min-height:200px"></div>
+    <div id="project-kanban" style="display:flex;gap:10px;overflow-x:auto;overflow-y:auto;padding:16px;min-height:200px;flex:1"></div>
   </div>
 </div>
 
 <!-- Projekt anlegen -->
 <div class="lr-modal-backdrop" id="create-project-modal">
-  <div class="lr-modal" role="dialog" aria-modal="true" style="max-width:460px;padding:0;overflow:hidden">
+  <div class="lr-modal toni-create-project-modal" role="dialog" aria-modal="true" style="padding:0;overflow:hidden;display:flex;flex-direction:column">
     <div class="lr-modal-header lr-typed-head" style="padding:18px 22px;margin:0;display:flex;align-items:flex-start;justify-content:space-between">
       <div>
         <div class="lr-modal-title" style="color:#0C447C">Neues Projekt</div>
@@ -9585,7 +9590,7 @@ input.youtube-force-invalid-v105{
         <button onclick="closeCreateProjectModal()" style="background:rgba(255,255,255,.6);border:0.5px solid #85B7EB;color:#185FA5;padding:6px 14px;border-radius:var(--border-radius-md);font-size:13px;cursor:pointer">Schließen</button>
       </div>
     </div>
-    <div style="padding:20px 22px">
+    <div style="padding:20px 22px;flex:1;overflow-y:auto;overflow-x:hidden;box-sizing:border-box">
       <input id="new-project-type" type="hidden" value="solo">
 
       <!-- Titel -->
@@ -9626,20 +9631,23 @@ input.youtube-force-invalid-v105{
 
 <!-- Projekt beitreten -->
 <div class="lr-modal-backdrop" id="join-project-modal">
-  <div class="lr-modal" role="dialog" aria-modal="true" style="max-width:380px">
-    <div class="lr-modal-header">
-      <div><div class="lr-modal-title">Projekt beitreten</div></div>
+  <div class="lr-modal toni-join-project-modal" role="dialog" aria-modal="true" style="padding:0;overflow:hidden;display:flex;flex-direction:column">
+    <div class="lr-modal-header lr-typed-head" style="padding:18px 22px;margin:0;display:flex;align-items:flex-start;justify-content:space-between">
+      <div>
+        <div class="lr-modal-title" style="color:#0C447C">Projekt beitreten</div>
+        <div style="font-size:13px;color:#185FA5;margin-top:2px">🔑 Tritt einer Gruppe bei</div>
+      </div>
       <div class="lr-modal-actions">
-        <button class="lr-close-btn" onclick="closeJoinProjectModal()">✕</button>
+        <button onclick="closeJoinProjectModal()" style="background:rgba(255,255,255,.6);border:0.5px solid #85B7EB;color:#185FA5;padding:6px 14px;border-radius:var(--border-radius-md);font-size:13px;cursor:pointer">Schließen</button>
       </div>
     </div>
-    <div style="padding:0 4px 16px">
+    <div style="padding:20px 22px;flex:1;overflow-y:auto;overflow-x:hidden;box-sizing:border-box">
       <div style="font-size:13px;color:var(--color-text-secondary);margin-bottom:12px">
         Gib den Einladungscode deiner Gruppe ein:
       </div>
       <input id="join-code-input" type="text" placeholder="z.B. a3f9b2c1" maxlength="8"
-        style="width:100%;padding:10px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:18px;text-align:center;letter-spacing:.15em;background:var(--color-background-primary);color:var(--color-text-primary);margin-bottom:12px">
-      <button onclick="joinProject()" style="width:100%;padding:10px;background:#185FA5;color:#fff;border:none;border-radius:var(--border-radius-md);font-size:14px;font-weight:500;cursor:pointer">
+        style="width:100%;padding:10px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:18px;text-align:center;letter-spacing:.15em;background:var(--color-background-primary);color:var(--color-text-primary);margin-bottom:16px">
+      <button onclick="joinProject()" style="width:100%;padding:11px;background:#185FA5;color:#fff;border:none;border-radius:var(--border-radius-md);font-size:14px;font-weight:500;cursor:pointer">
         Beitreten
       </button>
     </div>
@@ -9648,14 +9656,17 @@ input.youtube-force-invalid-v105{
 
 <!-- Aufgabe hinzufügen -->
 <div class="lr-modal-backdrop" id="add-task-modal">
-  <div class="lr-modal" role="dialog" aria-modal="true" style="max-width:380px">
-    <div class="lr-modal-header">
-      <div><div class="lr-modal-title">Aufgabe hinzufügen</div></div>
+  <div class="lr-modal toni-add-task-modal" role="dialog" aria-modal="true" style="padding:0;overflow:hidden;display:flex;flex-direction:column">
+    <div class="lr-modal-header lr-typed-head" style="padding:18px 22px;margin:0;display:flex;align-items:flex-start;justify-content:space-between">
+      <div>
+        <div class="lr-modal-title" style="color:#0C447C">Aufgabe hinzufügen</div>
+        <div style="font-size:13px;color:#185FA5;margin-top:2px">✏️ Neue Aufgabe im Projekt</div>
+      </div>
       <div class="lr-modal-actions">
-        <button class="lr-close-btn" onclick="closeAddTaskModal()">✕</button>
+        <button onclick="closeAddTaskModal()" style="background:rgba(255,255,255,.6);border:0.5px solid #85B7EB;color:#185FA5;padding:6px 14px;border-radius:var(--border-radius-md);font-size:13px;cursor:pointer">Schließen</button>
       </div>
     </div>
-    <div style="padding:0 4px 16px">
+    <div style="padding:20px 22px;flex:1;overflow-y:auto;overflow-x:hidden;box-sizing:border-box">
       <input id="add-task-col" type="hidden">
       <div style="margin-bottom:10px">
         <label style="font-size:12px;color:var(--color-text-secondary);display:block;margin-bottom:4px">Aufgabe *</label>
@@ -9665,7 +9676,7 @@ input.youtube-force-invalid-v105{
         <label style="font-size:12px;color:var(--color-text-secondary);display:block;margin-bottom:4px">Beschreibung</label>
         <textarea id="add-task-desc" rows="3" placeholder="Beschreibung (optional)…" style="width:100%;padding:8px 10px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;resize:vertical;background:var(--color-background-primary);color:var(--color-text-primary)"></textarea>
       </div>
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
         <div>
           <label style="font-size:12px;color:var(--color-text-secondary);display:block;margin-bottom:4px">Zugewiesen an</label>
           <select id="add-task-assigned" style="width:100%;padding:8px 10px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:13px;background:var(--color-background-primary);color:var(--color-text-primary)">
@@ -9677,7 +9688,7 @@ input.youtube-force-invalid-v105{
           <input id="add-task-due-date" type="date" style="width:100%;padding:8px 10px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:13px;background:var(--color-background-primary);color:var(--color-text-primary)">
         </div>
       </div>
-      <button onclick="saveNewTask()" style="width:100%;padding:10px;background:#185FA5;color:#fff;border:none;border-radius:var(--border-radius-md);font-size:14px;font-weight:500;cursor:pointer">
+      <button onclick="saveNewTask()" style="width:100%;padding:11px;background:#185FA5;color:#fff;border:none;border-radius:var(--border-radius-md);font-size:14px;font-weight:500;cursor:pointer">
         Aufgabe anlegen
       </button>
     </div>
@@ -9686,8 +9697,8 @@ input.youtube-force-invalid-v105{
 
 <!-- Aufgabe bearbeiten -->
 <div class="lr-modal-backdrop" id="task-detail-modal">
-  <div class="lr-modal" role="dialog" aria-modal="true" style="max-width:520px">
-    <div class="lr-modal-header lr-typed-head" id="ptask-header">
+  <div class="lr-modal toni-task-detail-modal" role="dialog" aria-modal="true" style="padding:0;overflow:hidden;display:flex;flex-direction:column">
+    <div class="lr-modal-header lr-typed-head" id="ptask-header" style="padding:18px 22px;margin:0;display:flex;align-items:flex-start;justify-content:space-between">
       <div>
         <div class="lr-modal-title" id="ptask-title">Aufgabe</div>
         <div class="lr-modal-sub" id="ptask-sub" style="font-size:12px;margin-top:2px"></div>
@@ -9696,7 +9707,7 @@ input.youtube-force-invalid-v105{
         <button class="lr-secondary-btn" onclick="closeTaskDetailModal()">Schließen</button>
       </div>
     </div>
-    <div style="padding:0 4px 16px">
+    <div style="padding:18px 22px;flex:1;overflow-y:auto;overflow-x:hidden;box-sizing:border-box">
       <input id="task-detail-id" type="hidden">
 
       <!-- Inhaber-Hinweis -->
@@ -9715,9 +9726,17 @@ input.youtube-force-invalid-v105{
         <textarea id="ptask-desc-edit" rows="3" placeholder="Beschreibung der Aufgabe…" style="display:none;width:100%;padding:8px 10px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;resize:vertical;background:var(--color-background-primary);color:var(--color-text-primary)"></textarea>
       </div>
 
-      <!-- Blocker-Anzeige (nur wenn vorhanden) -->
-      <div id="ptask-blocker-wrap" style="margin-bottom:14px;display:none">
-        <div id="ptask-blocker" style="font-size:13px;color:#993C1D;background:rgba(240,153,123,.12);border:0.5px solid #F0997B;border-radius:var(--border-radius-md);padding:8px 12px"></div>
+      <!-- Blocker (alle Mitglieder dürfen setzen/entfernen) -->
+      <div style="margin-bottom:16px;border:0.5px solid #F0997B;border-radius:var(--border-radius-md);background:rgba(240,153,123,.08);padding:10px 12px">
+        <label style="display:flex;align-items:center;gap:8px;cursor:pointer;font-size:13px;font-weight:600;color:#993C1D">
+          <input type="checkbox" id="ptask-blocker-check" onchange="toggleBlockerField()" style="width:16px;height:16px;cursor:pointer">
+          ⚠️ Diese Aufgabe ist blockiert
+        </label>
+        <div id="ptask-blocker-detail" style="display:none;margin-top:8px">
+          <textarea id="ptask-blocker-text" rows="2" placeholder="Was blockiert die Aufgabe? (optional)"
+            style="width:100%;padding:8px 10px;border:0.5px solid #F0997B;border-radius:var(--border-radius-md);font-size:13px;resize:vertical;background:var(--color-background-primary);color:var(--color-text-primary)"></textarea>
+          <button onclick="saveTaskBlocker()" style="margin-top:8px;padding:7px 14px;background:#993C1D;color:#fff;border:none;border-radius:var(--border-radius-md);font-size:12px;font-weight:500;cursor:pointer">Blocker speichern</button>
+        </div>
       </div>
 
       <!-- Status-Steuerung -->
@@ -9743,7 +9762,7 @@ input.youtube-force-invalid-v105{
           <label style="font-size:12px;color:var(--color-text-secondary);display:block;margin-bottom:4px">Zuständigkeit ändern (nur Projektmanager)</label>
           <div style="display:flex;gap:8px">
             <select id="ptask-reassign" style="flex:1;padding:8px 10px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:13px;background:var(--color-background-primary);color:var(--color-text-primary)"></select>
-            <button onclick="reassignCurrentTask()" style="padding:8px 14px;background:var(--color-background-secondary);border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:13px;cursor:pointer;color:var(--color-text-primary)">Umweisen</button>
+            <button onclick="reassignCurrentTask()" style="padding:8px 14px;background:var(--color-background-secondary);border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:13px;cursor:pointer;color:var(--color-text-primary)">Zuweisen</button>
           </div>
         </div>
         <button id="ptask-delete" onclick="deleteTask()" style="padding:7px 12px;font-size:12px;color:#A32D2D;border:0.5px solid #F09595;border-radius:8px;background:none;cursor:pointer;display:none">Aufgabe löschen</button>
@@ -9752,6 +9771,6 @@ input.youtube-force-invalid-v105{
   </div>
 </div>
 
-<script src="/projects.js?v=17"></script>
+<script src="/projects.js?v=29"></script>
 </body>
 </html>

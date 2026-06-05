@@ -818,10 +818,18 @@ function renderTaskCard(task, col) {
       ↺
     </button>`;
 
-  return `<div style="background:${pal.bg};border:0.5px solid ${pal.border};border-radius:8px;padding:9px 10px;margin-bottom:6px;cursor:pointer;transition:opacity .15s"
+  // Blockierte Aufgaben: roter Rand + Warnsymbol oben rechts
+  const isBlocked = !!task.blocker;
+  const cardBorder = isBlocked ? '2px solid #D8472B' : `0.5px solid ${pal.border}`;
+  const blockerBadge = isBlocked
+    ? `<span style="position:absolute;top:6px;right:8px;font-size:13px" title="${escapeHtml(task.blocker)}">⛔</span>`
+    : '';
+
+  return `<div style="position:relative;background:${pal.bg};border:${cardBorder};border-radius:8px;padding:9px 10px;margin-bottom:6px;cursor:pointer;transition:opacity .15s"
     onclick="openTaskDetail('${task.id}')"
     onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
-    <div style="font-size:13px;font-weight:500;color:${pal.text};line-height:1.3;${doneStyle}">${escapeHtml(task.title)}</div>
+    ${blockerBadge}
+    <div style="font-size:13px;font-weight:500;color:${pal.text};line-height:1.3;${doneStyle};${isBlocked?'padding-right:18px':''}">${escapeHtml(task.title)}</div>
     ${assigneeHtml}${dueHtml}${blockerHtml}
     <div style="display:flex;align-items:center;gap:6px;margin-top:7px">
       ${fwdBtn}${resetBtn}
@@ -934,12 +942,15 @@ async function openTaskDetail(taskId) {
       saveAllBtn.style.display = 'none';
     }
 
-    // Blocker
-    const blWrap = document.getElementById('ptask-blocker-wrap');
-    if (task.blocker) {
-      document.getElementById('ptask-blocker').textContent = '⚠️ ' + task.blocker;
-      blWrap.style.display = '';
-    } else { blWrap.style.display = 'none'; }
+    // Blocker (alle Mitglieder dürfen setzen/entfernen)
+    const blCheck = document.getElementById('ptask-blocker-check');
+    const blDetail = document.getElementById('ptask-blocker-detail');
+    const blText = document.getElementById('ptask-blocker-text');
+    const hasBlocker = !!task.blocker;
+    blCheck.checked = hasBlocker;
+    blDetail.style.display = hasBlocker ? '' : 'none';
+    // "Blockiert" ist der Standardtext bei Markierung ohne Begründung -> dann Feld leer zeigen
+    blText.value = (task.blocker && task.blocker !== 'Blockiert') ? task.blocker : '';
 
     // Status-Buttons (gleiche Kette wie im Board; nur Inhaber aktiv)
     renderTaskDetailStatus(task, isOwner);
@@ -999,25 +1010,48 @@ function renderTaskDetailStatus(task, isOwner) {
   const fwdEnabled = isOwner && !!nextCol;
   const resetEnabled = isOwner && !!prevCol;
 
-  // aktueller Status als Badge
-  const badge = `<div style="flex:1;text-align:center;padding:11px;border-radius:var(--border-radius-md);background:var(--color-background-secondary);font-size:13px;font-weight:600;color:var(--color-text-primary)">${colDE[col]||col}</div>`;
-
+  // Button 1: Vorwaerts – Label nach Status (Start/Review/Erledigt/Fertig).
+  // Bei done (kein nextCol) zeigt er "Fertig" und ist inaktiv.
+  const fwdText = nextCol ? fwdLabel : 'Fertig';
   const fwdBtn = `<button ${fwdEnabled ? `onclick="moveProjectTaskFromDetail('${task.id}','${nextCol}')"` : 'disabled'}
-    style="flex:1;padding:11px;border:none;border-radius:var(--border-radius-md);font-size:13px;font-weight:600;
-    background:${fwdEnabled?'#639922':'var(--color-background-secondary)'};color:${fwdEnabled?'#fff':'var(--color-text-tertiary)'};
-    cursor:${fwdEnabled?'pointer':'default'};opacity:${fwdEnabled?'1':'.5'}">${nextCol?(fwdLabel+' →'):'✓ Fertig'}</button>`;
+    style="padding:12px 4px;border:none;border-radius:var(--border-radius-md);
+    background:${fwdEnabled?'#639922':'var(--color-background-secondary)'};
+    cursor:${fwdEnabled?'pointer':'default'};opacity:${fwdEnabled?'1':'.5'};
+    display:flex;flex-direction:column;align-items:center;gap:4px">
+    <span style="font-size:16px;color:${fwdEnabled?'#fff':'var(--color-text-tertiary)'}">▶</span>
+    <span style="font-size:12px;font-weight:500;color:${fwdEnabled?'#fff':'var(--color-text-tertiary)'}">${fwdText}</span></button>`;
 
+  // Button 2: Zuruecksetzen
   const resetBtn = `<button ${resetEnabled ? `onclick="moveProjectTaskFromDetail('${task.id}','${prevCol}')"` : 'disabled'}
-    style="flex:1;padding:11px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:13px;font-weight:500;
-    background:var(--color-background-primary);color:var(--color-text-primary);
-    cursor:${resetEnabled?'pointer':'default'};opacity:${resetEnabled?'1':'.4'}">↺ Zurücksetzen</button>`;
+    style="padding:12px 4px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);
+    background:var(--color-background-primary);cursor:${resetEnabled?'pointer':'default'};opacity:${resetEnabled?'1':'.4'};
+    display:flex;flex-direction:column;align-items:center;gap:4px">
+    <span style="font-size:16px;color:var(--color-text-secondary)">↺</span>
+    <span style="font-size:12px;color:var(--color-text-primary)">Zurücksetzen</span></button>`;
 
-  document.getElementById('ptask-status-controls').style.display = 'flex';
-  document.getElementById('ptask-status-controls').style.gap = '8px';
-  document.getElementById('ptask-status-controls').innerHTML = badge + fwdBtn + resetBtn;
+  // Button 3: TONI-Hinweis (vorerst nur Optik, Funktion folgt)
+  const hintBtn = `<button onclick="toniProjectTaskHint()"
+    style="padding:12px 4px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);
+    background:var(--color-background-primary);cursor:pointer;
+    display:flex;flex-direction:column;align-items:center;gap:4px">
+    <span style="font-size:13px;font-weight:600;color:#185FA5">TONi</span>
+    <span style="font-size:12px;color:var(--color-text-primary)">Hinweis</span></button>`;
+
+  const wrap = document.getElementById('ptask-status-controls');
+  wrap.style.display = 'grid';
+  wrap.style.gridTemplateColumns = 'repeat(3, 1fr)';
+  wrap.style.gap = '8px';
+  wrap.innerHTML = fwdBtn + resetBtn + hintBtn;
 
   document.getElementById('ptask-status-note').textContent =
-    isOwner ? '' : 'Nur der Inhaber dieser Aufgabe kann den Status ändern.';
+    isOwner
+      ? `Aktueller Status: ${colDE[col]||col}`
+      : `Status: ${colDE[col]||col} – nur der Inhaber kann ihn ändern.`;
+}
+
+// Platzhalter fuer den TONI-Hinweis bei Projektaufgaben (Funktion folgt spaeter)
+function toniProjectTaskHint() {
+  alert('Der TONI-Hinweis für Projektaufgaben kommt in Kürze.');
 }
 
 // Status aus dem Detailfenster ändern -> danach Detail neu laden + Board aktualisieren
@@ -1031,6 +1065,36 @@ async function moveProjectTaskFromDetail(taskId, newStatus) {
   } catch (e) {
     console.warn('TONI Status (Detail):', e);
     alert(e.message || 'Statuswechsel nicht erlaubt.');
+  }
+}
+
+// Blocker-Checkbox: Textfeld ein/ausblenden. Beim Abwählen Blocker sofort entfernen.
+function toggleBlockerField() {
+  const checked = document.getElementById('ptask-blocker-check').checked;
+  document.getElementById('ptask-blocker-detail').style.display = checked ? '' : 'none';
+  if (!checked) {
+    // Markierung entfernt -> Blocker direkt löschen
+    saveTaskBlocker(true);
+  }
+}
+
+// Blocker speichern (alle Mitglieder dürfen). clear=true entfernt ihn.
+async function saveTaskBlocker(clear) {
+  const taskId = document.getElementById('task-detail-id').value;
+  if (!taskId) return;
+  let blocker = null;
+  if (!clear) {
+    const text = document.getElementById('ptask-blocker-text').value.trim();
+    // Markierung an, aber kein Text -> Standardtext "Blockiert"
+    blocker = text || 'Blockiert';
+  }
+  try {
+    await callRpc('set_task_blocker', { p_task_id: taskId, p_blocker: blocker });
+    if (window.TONI_ACTIVE_PROJECT_ID) loadProjectTasks(window.TONI_ACTIVE_PROJECT_ID);
+    loadProjects();
+  } catch (e) {
+    console.warn('TONI Blocker speichern:', e);
+    alert(e.message || 'Blocker konnte nicht gespeichert werden.');
   }
 }
 
