@@ -594,6 +594,10 @@ window.addEventListener("DOMContentLoaded", () => {
   }
 
   function checkAndHide(){
+    // Wenn der Login-Vorhang-Koordinator (V83) aktiv ist, NICHT eigenmächtig
+    // ausblenden – sonst blendet diese alte Logik den Vorhang zu früh aus
+    // (Dashboard sieht „fertig" aus, bevor es wirklich befüllt ist).
+    if(window.TONI_V73_LOGIN_LOADER_ACTIVE) return;
     if(dashboardLooksReady()){
       hideToniLoadingScreen();
     }
@@ -610,6 +614,7 @@ window.addEventListener("DOMContentLoaded", () => {
   });
 
   const observer = new MutationObserver(() => {
+    if(window.TONI_V73_LOGIN_LOADER_ACTIVE) return;
     if(dashboardLooksReady()){
       observer.disconnect();
       hideToniLoadingScreen();
@@ -797,15 +802,16 @@ function toniV73BuildLoaderElement(reason = "manual"){
 }
 
 function toniV73ShowLoader(durationMs = 4000, reason = "manual"){
-  // Nach erfolgreicher Anmeldung soll das Dashboard im Hintergrund sichtbar bleiben.
-  // Der Loader liegt deshalb nur als abgedunkeltes Overlay über dem geladenen Dashboard.
+  // Nach erfolgreicher Anmeldung bleibt der Vorhang sichtbar, bis der
+  // Lade-Koordinator (V83) meldet, dass Profil, Lernreisen und Projekte
+  // geladen sind – oder bis das Sicherheits-Timeout greift.
   let loader = document.getElementById("toni-loading-screen-v73");
 
   if(loader){
     loader.remove();
   }
 
-  // Falls der Start-Loader noch existiert, entfernen wir ihn und zeigen denselben Loader neu mit Login-Dauer.
+  // Falls der Start-Loader noch existiert, entfernen wir ihn und zeigen denselben Loader neu.
   const oldStartLoader = document.getElementById("toni-loading-screen-v69");
   if(oldStartLoader){
     oldStartLoader.remove();
@@ -816,13 +822,19 @@ function toniV73ShowLoader(durationMs = 4000, reason = "manual"){
 
   window.TONI_V73_LOGIN_LOADER_ACTIVE = true;
 
-  setTimeout(() => {
-    loader.classList.add("hidden");
+  // Beim Login (und Logout) den Koordinator die Steuerung übernehmen lassen.
+  if(window.toniReady && (reason === "password-login" || reason === "login")){
+    window.toniReady.begin();
+  } else {
+    // Andere Fälle (z.B. Logout): wie bisher feste Dauer.
     setTimeout(() => {
-      loader.remove();
-      window.TONI_V73_LOGIN_LOADER_ACTIVE = false;
-    }, 750);
-  }, Math.max(0, durationMs));
+      loader.classList.add("hidden");
+      setTimeout(() => {
+        loader.remove();
+        window.TONI_V73_LOGIN_LOADER_ACTIVE = false;
+      }, 750);
+    }, Math.max(0, durationMs));
+  }
 }
 
 // Zusätzliche Absicherung: Falls die Anmeldung über Email/Passwort durch bestehende
@@ -840,6 +852,9 @@ if(typeof window.signInWithPassword === "function" && !window.signInWithPassword
       const isModalClosed = !modal || !modal.classList.contains("open");
       if(password && isModalClosed && !window.TONI_V73_LOGIN_LOADER_ACTIVE){
         toniV73ShowLoader(4000, "password-login");
+        if (typeof window.toniV50RenderAllJourneysInActivities === "function") {
+          setTimeout(() => window.toniV50RenderAllJourneysInActivities(), 300);
+        }
       }
     }, 250);
 
@@ -1043,3 +1058,83 @@ window.addEventListener("DOMContentLoaded", () => {
   });
 });
 
+
+/* =========================================================
+   TONI V83 – Lade-Koordinator: Vorhang bleibt nach Login sichtbar,
+   bis Profil, Lernreisen und Projekte geladen sind (oder Timeout).
+   ========================================================= */
+(function(){
+  // Erwartete Quellen, auf die der Vorhang nach dem Login wartet.
+  const EXPECTED = ["profile", "journeys", "projects"];
+  // Hartes Sicherheitsnetz: Vorhang weicht spätestens nach dieser Zeit,
+  // auch wenn eine Quelle nie „fertig" meldet (verhindert Einfrieren).
+  const SAFETY_TIMEOUT_MS = 8000;
+  // Mindestanzeigedauer: Der Vorhang bleibt mindestens so lange, auch wenn
+  // alle Quellen sofort „fertig" melden. Verhindert das Aufblitzen des GIF
+  // und überdeckt den sichtbaren Dashboard-Aufbau. Meldungen können den
+  // Vorhang nur VERLÄNGERN (bei langsamer Verbindung), nicht verkürzen.
+  const MIN_VISIBLE_MS = 3000;
+
+  const state = {
+    active: false,
+    startedAt: 0,
+    done: {},          // welche Quellen schon fertig sind
+    safetyTimer: null,
+    hideScheduled: false
+  };
+
+  function loaderEl(){
+    // Der nach dem Login gezeigte Vorhang (V73), sonst der Start-Loader (V69).
+    return document.getElementById("toni-loading-screen-v73")
+        || document.getElementById("toni-loading-screen-v69");
+  }
+
+  function hideCurtain(){
+    const loader = loaderEl();
+    if(loader){
+      loader.classList.add("hidden");
+      setTimeout(() => { if(loader.isConnected) loader.remove(); }, 600);
+    }
+    state.active = false;
+    if(state.safetyTimer){ clearTimeout(state.safetyTimer); state.safetyTimer = null; }
+    window.TONI_V73_LOGIN_LOADER_ACTIVE = false;
+  }
+
+  function maybeHide(){
+    if(!state.active) return;
+    if(state.hideScheduled) return;            // nur EIN Hide-Timer
+    const allDone = EXPECTED.every(k => state.done[k]);
+    if(!allDone) return;
+    state.hideScheduled = true;
+    const elapsed = Date.now() - state.startedAt;
+    const wait = Math.max(0, MIN_VISIBLE_MS - elapsed);
+    setTimeout(hideCurtain, wait);
+  }
+
+  // Öffentliche API
+  window.toniReady = {
+    // Vorhang-Wartephase starten (vom Login ausgelöst). Der Vorhang bleibt
+    // für die Mindestanzeigedauer sichtbar und wird dann ausgeblendet –
+    // das überdeckt den Dashboard-Aufbau zuverlässig. Die done()-Meldungen
+    // werden weiter entgegengenommen (für Diagnose), steuern das Ausblenden
+    // aber NICHT mehr (sie kamen auf dem echten Login-Pfad nicht zuverlässig).
+    begin(){
+      state.active = true;
+      state.startedAt = Date.now();
+      state.done = {};
+      state.hideScheduled = false;
+      if(state.safetyTimer) clearTimeout(state.safetyTimer);
+      // Fester, verlässlicher Vorhang für die Mindestzeit.
+      state.safetyTimer = setTimeout(hideCurtain, MIN_VISIBLE_MS);
+    },
+    // Eine Quelle meldet sich fertig (nur noch informativ / für Diagnose).
+    done(key){
+      if(!EXPECTED.includes(key)) return;
+      state.done[key] = true;
+    },
+    // Status abfragen (für Debugging).
+    status(){
+      return { active: state.active, done: {...state.done} };
+    }
+  };
+})();

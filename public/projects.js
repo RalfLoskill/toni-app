@@ -165,10 +165,12 @@ async function loadProjects() {
     renderToniHint();
     await loadPersonalTasks();
     renderWeeklyPlan();
+    if (window.toniReady) window.toniReady.done("projects");
   } catch (e) {
     console.warn('TONI Projekte laden:', e);
     window.TONI_PROJECTS = [];
     renderProjectsDashboard();
+    if (window.toniReady) window.toniReady.done("projects");
   }
 }
 

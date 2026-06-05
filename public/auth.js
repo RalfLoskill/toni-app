@@ -118,6 +118,11 @@ async function signInWithPassword() {
       if (typeof toniV73ShowLoader === "function") {
         toniV73ShowLoader(4000, "login");
       }
+      // Lernreisen-Sektion nach Login explizit aufbauen, damit der
+      // Lade-Koordinator zuverlässig „journeys fertig" gemeldet bekommt.
+      if (typeof window.toniV50RenderAllJourneysInActivities === "function") {
+        setTimeout(() => window.toniV50RenderAllJourneysInActivities(), 300);
+      }
     }, 120);
   } catch (error) {
     console.error(error);
@@ -6984,6 +6989,10 @@ window.addEventListener("DOMContentLoaded", () => {
   const _orig = window.applyAuthProfile;
   window.applyAuthProfile = function(profile) {
     if (typeof _orig === 'function') _orig(profile);
+    // Profil ist gesetzt -> Lade-Koordinator informieren
+    if (profile?.id && window.toniReady) {
+      window.toniReady.done("profile");
+    }
     // Projekte laden sobald Profil gesetzt ist
     if (profile?.id && typeof loadProjects === 'function') {
       setTimeout(loadProjects, 400);

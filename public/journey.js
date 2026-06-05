@@ -1120,6 +1120,13 @@ window.addEventListener("DOMContentLoaded", () => {
         window.TONI_STARTSCREEN_LISTENER = true;
         client.auth.onAuthStateChange(function(event, session){
           if(session && session.user){
+            // Bei frischem Login (nicht beim Seitenstart mit bestehender
+            // Session) den Lade-Vorhang zeigen, damit der Nutzer nicht den
+            // weißen Dashboard-Aufbau sieht. Der Vorhang-Koordinator (V83)
+            // hält das TONi-GIF mindestens die eingestellte Mindestzeit.
+            if(event === "SIGNED_IN" && typeof window.toniV73ShowLoader === "function"){
+              window.toniV73ShowLoader(4000, "login");
+            }
             hideStartScreen();
           } else if(event === "SIGNED_OUT"){
             showStartScreen();
@@ -5544,6 +5551,7 @@ window.toniV50RenderAllJourneysInActivities = async function(){
     `;
   }finally{
     window.TONI_V50_ACTIVITY_RENDERING = false;
+    if(window.toniReady) window.toniReady.done("journeys");
   }
 };
 
