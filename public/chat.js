@@ -82,11 +82,43 @@ function toniBuildJourneyContext() {
         }
         if (found) {
           const t = found.task;
+          // Aufgabenstellung zusammenbauen. Bei Quiz-Aufgaben stecken die
+          // eigentlichen Fragen in quiz_data.questions – sonst wüsste TONi
+          // nicht, worum es geht (description ist beim Quiz oft leer).
+          let promptText = (t.description || t.content || '');
+          if (t.type && String(t.type).toLowerCase().includes('quiz') &&
+              t.quiz_data && Array.isArray(t.quiz_data.questions) && t.quiz_data.questions.length) {
+            // NUR die aktuelle Frage mitschicken (nicht alle), plus den Klick-Stand.
+            const qi = t._quizIndex || 0;
+            const q = t.quiz_data.questions[qi];
+            if (q) {
+              const opts = Array.isArray(q.options)
+                ? q.options.map((o, oi) => `${String.fromCharCode(65+oi)}) ${o}`).join('; ')
+                : '';
+              const lines = [
+                `Dies ist ein Quiz. Der Schüler ist bei Frage ${qi+1} von ${t.quiz_data.questions.length}.`,
+                `Aktuelle Frage: ${q.question || ''}`,
+                opts ? `Antwortmöglichkeiten: ${opts}` : ''
+              ];
+              // Klick-Stand: hat der Schüler schon geantwortet, und wenn ja, was?
+              if (q._answered && typeof q._selectedIndex === 'number') {
+                const gewaehlt = String.fromCharCode(65 + q._selectedIndex);
+                const richtig = (q._selectedIndex === q.correct_index);
+                lines.push(`Der Schüler hat bereits Antwort ${gewaehlt} angeklickt – diese ist ${richtig ? 'RICHTIG' : 'FALSCH'}.`);
+                lines.push(richtig
+                  ? 'Bestätige kurz und hilf ihm zu verstehen, WARUM die Antwort richtig ist – ohne nur die Lösung zu wiederholen.'
+                  : 'Verrate NICHT die richtige Antwort. Hilf ihm mit einer Frage, selbst zu erkennen, warum seine Wahl nicht passt.');
+              } else {
+                lines.push('Der Schüler hat noch nicht geantwortet. Hilf ihm beim Nachdenken über DIESE Frage, ohne die richtige Antwort zu nennen.');
+              }
+              promptText = (promptText ? promptText + '\n\n' : '') + lines.filter(Boolean).join('\n');
+            }
+          }
           openTask = {
             title: t.title || '',
             type: t.type || '',
             station: found.step.title || '',
-            prompt: (t.description || t.content || '').slice(0, 800),
+            prompt: promptText.slice(0, 1500),
             studentAnswer: (t.answer && String(t.answer).trim()) ? String(t.answer).trim().slice(0, 800) : ''
           };
         }
@@ -317,6 +349,92 @@ function closeMobileChat() { document.getElementById('mobile-chat').classList.re
     await window.agentAction('explanation_agent', txt, p);
   };
 })();
+
+// ══════════════════════════════════════
+// SOKRATISCHER TONI-HINWEIS (Lernreise-Aufgaben)
+// Gestufte Hinweise (Leitfrage → konkreter) KOMBINIERT mit Feedback auf die
+// bereits eingegebene Antwort. Verrät nie die Lösung. Erscheint direkt in der
+// Aufgabenansicht (lr-task-hint). Nutzt den bestehenden explanation_agent und
+// liefert die pädagogischen Regeln über den Kontext mit (Weg A, reines Frontend).
+// ══════════════════════════════════════
+window.toniHintLevels = window.toniHintLevels || {};   // taskId -> bisher angeforderte Stufe
+
+async function toniRequestSocraticHint() {
+  const hintEl = document.getElementById('lr-task-hint');
+  const taskId = (typeof STATE !== 'undefined' && STATE) ? STATE.selectedTaskId : null;
+  if (!taskId) return;
+  // Live-Antwort sichern, damit der aktuelle Stand in den Kontext geht
+  if (typeof window.saveSelectedTaskAnswer === 'function') {
+    try { window.saveSelectedTaskAnswer(); } catch (e) {}
+  }
+
+  // Stufe hochzählen (max 3 inhaltliche Stufen)
+  const prev = window.toniHintLevels[taskId] || 0;
+  const level = Math.min(prev + 1, 3);
+  window.toniHintLevels[taskId] = level;
+
+  // Journey-Kontext bauen (enthält openTask inkl. studentAnswer)
+  const jc = (typeof toniBuildJourneyContext === 'function') ? toniBuildJourneyContext() : null;
+
+  const stufenText = {
+    1: 'Hinweis-Stufe 1 von 3: Gib NUR eine offene Leitfrage oder einen Denkanstoß. Verrate nichts Konkretes.',
+    2: 'Hinweis-Stufe 2 von 3: Werde etwas konkreter – nenne den nächsten Denkschritt oder die relevante Idee, aber NICHT die Lösung.',
+    3: 'Hinweis-Stufe 3 von 3: Gib einen sehr konkreten Tipp, der fast zur Lösung führt – aber nenne die finale Antwort NICHT.'
+  }[level];
+
+  // WICHTIG: Der Server (api/agent.js) liest den Lernreise-Kontext aus
+  // ctx.journeyContext und baut die Aufgabenstellung aus openTask.prompt.
+  // Wir hängen die gestufte Hinweis-Anweisung an prompt an, damit sie
+  // garantiert im KI-Prompt landet (der Server kennt kein eigenes Stufen-Feld).
+  let journeyContext = jc;
+  if (jc && jc.openTask) {
+    journeyContext = {
+      ...jc,
+      openTask: {
+        ...jc.openTask,
+        prompt: (jc.openTask.prompt || '') +
+          `\n\n[Anweisung an TONi für den Hinweis: ${stufenText} ` +
+          `Verrate niemals die fertige Lösung. Wenn der Schüler schon etwas eingegeben hat, ` +
+          `gehe konkret darauf ein – was ist gut, was fehlt noch? Halte den Hinweis kurz (2–4 Sätze) und ermutigend.]`
+      }
+    };
+  }
+
+  // Server baut die eigentliche Frage aus chatHistory (lastUserMessage).
+  // Wir schicken eine Kopie des STATE (für ctx.user) mit angehängtem
+  // journeyContext und einer Hinweis-Bitte als letzte Nutzernachricht.
+  const baseState = (typeof STATE !== 'undefined' && STATE) ? STATE : {};
+  const payload = {
+    ...baseState,
+    journeyContext,
+    chatHistory: [
+      ...((baseState.chatHistory || []).slice(-8)),
+      { role: 'user', content: 'Gib mir bitte einen Hinweis zu dieser Aufgabe, ohne die Lösung zu verraten.' }
+    ]
+  };
+
+  if (hintEl) hintEl.innerHTML = '<em>TONi denkt nach…</em>';
+
+  try {
+    const result = await callAgent('explanation_agent', payload);
+    const msg = (result && result.message) ? result.message : 'Ich konnte gerade keinen Hinweis erstellen – versuch es gleich nochmal.';
+    if (hintEl) hintEl.innerHTML = msg;
+    setApiBadge(true);
+  } catch (err) {
+    // Fallback: bisheriger statischer Hinweis, damit der Button nie „tot“ wirkt
+    if (hintEl) {
+      const fb = (typeof hintForTask === 'function' && typeof findTask === 'function')
+        ? (findTask(taskId) ? hintForTask(findTask(taskId).task) : '') : '';
+      hintEl.innerHTML = (fb || 'TONi ist gerade nicht erreichbar. Versuch es gleich nochmal.') +
+        '<br><small style="color:var(--color-text-tertiary)">(Offline-Tipp)</small>';
+    }
+    setApiBadge(false);
+  }
+}
+window.toniRequestSocraticHint = toniRequestSocraticHint;
+
+// Stufenzähler zurücksetzen, wenn eine Aufgabe neu geöffnet wird.
+window.toniResetHintLevel = function(taskId){ if(taskId) window.toniHintLevels[taskId] = 0; };
 
 // ══════════════════════════════════════
 // INIT

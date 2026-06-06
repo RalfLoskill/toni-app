@@ -194,6 +194,7 @@ function openLearningTask(id){
   const f=findTask(id);
   if(!f) return;
   STATE.selectedTaskId=id;
+  if(typeof window.toniResetHintLevel === 'function') window.toniResetHintLevel(id);
   const task=f.task;
   const normType=toniNormalizeType(task.type);
   document.getElementById('lr-task-title').textContent=task.title;
@@ -207,7 +208,7 @@ function openLearningTask(id){
   switch(normType){
     case 'Lerninhalt': toniRenderLerninhalt(task,contentEl); if(answerEl){answerEl.style.display='';answerEl.value=task.answer||'';answerEl.placeholder='Notiere dir, was du Neues gelernt hast…';} break;
     case 'Video': toniRenderVideo(task,contentEl); if(answerEl){answerEl.style.display='';answerEl.value=task.answer||'';answerEl.placeholder='Notiere dir Kernaussagen aus dem Video…';} break;
-    case 'Quiz': task._quizIndex=0; task._quizCorrect=0; (task.quiz_data?.questions||[]).forEach(q=>{delete q._answered;}); toniRenderQuiz(task,contentEl); break;
+    case 'Quiz': task._quizIndex=0; task._quizCorrect=0; (task.quiz_data?.questions||[]).forEach(q=>{delete q._answered;}); toniRenderQuiz(task,contentEl); if(answerEl){answerEl.style.display='';answerEl.value=task.answer||'';answerEl.placeholder='Notiere dir Gedanken zum Quiz…';} break;
     case 'Reflexion': toniRenderReflexion(task,contentEl); if(answerEl){answerEl.style.display='';answerEl.value=task.answer||'';answerEl.placeholder='Schreib deine Gedanken auf…';} break;
     case 'Aufgabe': toniRenderAufgabe(task,contentEl); if(answerEl){answerEl.style.display='';answerEl.value=task.answer||'';answerEl.placeholder='Schreibe deinen Rechenweg oder deine Antwort…';} break;
     default:
@@ -215,7 +216,7 @@ function openLearningTask(id){
       if(answerEl){answerEl.style.display='';answerEl.value=task.answer||'';}
       break;
   }
-  if(hintEl) hintEl.innerHTML=hintForTask(task);
+  if(hintEl) hintEl.innerHTML='<span style="color:var(--color-text-tertiary)">💡 Klick auf „TONi Hinweis“ für Hilfe – ohne dass dir die Lösung verraten wird.</span>';
   document.getElementById('lr-task-modal').classList.add('open');
   toniSetTaskButtonStates({
     started: task.status==='in_progress'||task.status==='done',
@@ -366,6 +367,7 @@ window.toniQuizAnswer=function(idx){
   task._quizCorrect=task._quizCorrect||0;
   if(idx===q.correct_index && !q._answered){ task._quizCorrect++; }
   q._answered=true;
+  q._selectedIndex=idx;
   const fb=document.createElement('div');
   fb.style.cssText=`margin-top:10px;padding:10px;border-radius:8px;font-size:13px;background:${idx===q.correct_index?'#EAF3DE':'#FCEBEB'};color:${idx===q.correct_index?'#27500A':'#791F1F'}`;
   fb.innerHTML=idx===q.correct_index?'✅ Richtig! '+toniEsc(q.explanation||''):'❌ Leider falsch. '+toniEsc(q.explanation||'Richtig: '+q.options[q.correct_index]);
@@ -622,7 +624,16 @@ document.addEventListener('input',function(e){
   }
 });
 function completeLearningTask(id){const f=findTask(id);if(!f)return;f.task.status='done';if(f.task.title==='Praxisaufgabe bearbeiten'&&STATE.goals.open.includes('Praxisaufgabe bearbeiten')){STATE.goals.open=STATE.goals.open.filter(g=>g!=='Praxisaufgabe bearbeiten');STATE.goals.completed.push('Praxisaufgabe bearbeiten');}unlockJourneyTasks();syncJourneyToDashboard();renderLearningJourneyModal();showXPToast(20);appendMsg('toni',`✅ Gut gemacht! <strong>${f.task.title}</strong> ist erledigt. Dein Lernfortschritt liegt jetzt bei <strong>${journeyProgress()}%</strong>.`,time(),'desktop');}
-function showSelectedTaskHint(){const f=findTask(STATE.selectedTaskId);if(!f)return;const h=hintForTask(f.task);document.getElementById('lr-task-hint').innerHTML=h;appendMsg('toni',h,time(),'desktop');}
+function showSelectedTaskHint(){
+  const f=findTask(STATE.selectedTaskId);if(!f)return;
+  // Neuer Weg: kontextbewusster, gestufter KI-Hinweis (mit Feedback auf die Antwort).
+  // Fällt auf den statischen Hinweis zurück, falls die KI-Funktion nicht geladen ist.
+  if(typeof window.toniRequestSocraticHint === 'function'){
+    window.toniRequestSocraticHint();
+    return;
+  }
+  const h=hintForTask(f.task);document.getElementById('lr-task-hint').innerHTML=h;appendMsg('toni',h,time(),'desktop');
+}
 function hintForTask(task){if(task.type.includes('Rechen'))return'💡 Tipp: Schreibe zuerst die Formel auf. Bei I = U / R teilst du Spannung durch Widerstand.';if(task.type.includes('Praxis'))return'⚡ Tipp: Welche Werte sind gegeben? Welche Größe wird gesucht?';if(task.type.includes('Video'))return'🎥 Tipp: Notiere nach dem Video drei Kernaussagen.';return'Ich helfe dir Schritt für Schritt. Markiere zuerst, was gegeben und gesucht ist.';}
 window.addEventListener('DOMContentLoaded',()=>setTimeout(syncJourneyToDashboard,0));
 

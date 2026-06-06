@@ -712,6 +712,11 @@ function renderProjectKanban(tasks) {
   const cols = { todo: [], in_progress: [], review: [], done: [] };
   tasks.forEach(t => { if (cols[t.status]) cols[t.status].push(t); });
 
+  // Erledigt-Spalte: zuletzt fertiggestellte Aufgabe nach oben (neueste zuerst).
+  // updated_at wird beim Statuswechsel auf "done" gesetzt; created_at als Rückfall.
+  cols.done.sort((a, b) =>
+    String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || '')));
+
   const colConfig = {
     todo:        { label: 'Offen',     color: '#378ADD', bg: '#E6F1FB' },
     in_progress: { label: 'In Arbeit', color: '#EF9F27', bg: '#FAEEDA' },
@@ -918,6 +923,9 @@ async function openTaskDetail(taskId) {
     }
 
     document.getElementById('ptask-title').textContent = task.title;
+    // TONi-Rückmeldebox für die neue Aufgabe zurücksetzen
+    const ptaskHintBox = document.getElementById('ptask-toni-hint');
+    if (ptaskHintBox) { ptaskHintBox.style.display = 'none'; ptaskHintBox.innerHTML = ''; }
     document.getElementById('ptask-sub').textContent =
       `${p ? (p.title || 'Projekt') : 'Projekt'} · Inhaber: ${ownerName}`;
     document.getElementById('task-detail-id').value = taskId;
@@ -942,6 +950,25 @@ async function openTaskDetail(taskId) {
       descBox.style.display = '';
       descBox.textContent = task.description || 'Keine Beschreibung.';
       saveAllBtn.style.display = 'none';
+    }
+
+    // Fällig bis: Inhaber bekommt Datumsfeld (vorbelegt), sonst Nur-Lese-Anzeige.
+    const dueEdit = document.getElementById('ptask-due-edit');
+    const dueView = document.getElementById('ptask-due-view');
+    if (dueEdit && dueView) {
+      // due_date kommt als 'YYYY-MM-DD' (date) – passt direkt ins type=date-Feld.
+      const dueRaw = task.due_date ? String(task.due_date).slice(0, 10) : '';
+      if (isOwner) {
+        dueEdit.value = dueRaw;
+        dueEdit.style.display = '';
+        dueView.style.display = 'none';
+      } else {
+        dueEdit.style.display = 'none';
+        dueView.style.display = '';
+        dueView.textContent = dueRaw
+          ? (typeof formatDate === 'function' ? formatDate(task.due_date) : dueRaw)
+          : 'Kein Fälligkeitsdatum.';
+      }
     }
 
     // Blocker (alle Mitglieder dürfen setzen/entfernen)
@@ -1051,10 +1078,82 @@ function renderTaskDetailStatus(task, isOwner) {
       : `Status: ${colDE[col]||col} – nur der Inhaber kann ihn ändern.`;
 }
 
-// Platzhalter fuer den TONI-Hinweis bei Projektaufgaben (Funktion folgt spaeter)
-function toniProjectTaskHint() {
-  alert('Der TONI-Hinweis für Projektaufgaben kommt in Kürze.');
+// TONI-Hinweis bei Projektaufgaben: praktische, handlungsorientierte Hilfe.
+// Fokus: Vorankommen (nächster konkreter Schritt) + Blocker auflösen.
+// Anders als bei Lernreisen gibt es keine "Lösung" – TONi macht handlungsfähig.
+async function toniProjectTaskHint() {
+  const box = document.getElementById('ptask-toni-hint');
+  const taskId = document.getElementById('task-detail-id')?.value;
+  if (!taskId) return;
+
+  // Aktuelle Aufgabe + Projekt aus den geladenen Daten holen
+  const tasks = Array.isArray(window.TONI_PROJECT_TASKS) ? window.TONI_PROJECT_TASKS : [];
+  const task = tasks.find(t => String(t.id) === String(taskId));
+  const projects = Array.isArray(window.TONI_PROJECTS) ? window.TONI_PROJECTS : [];
+  const project = task ? projects.find(p => String(p.id) === String(task.project_id)) : null;
+
+  // Live-Werte aus dem Modal (Inhaber kann Titel/Beschreibung/Notiz gerade bearbeiten)
+  const liveDesc = document.getElementById('ptask-desc-edit');
+  const description = (liveDesc && liveDesc.style.display !== 'none' && liveDesc.value)
+    ? liveDesc.value : (task ? (task.description || '') : '');
+  const note = document.getElementById('ptask-note')?.value || (task ? (task.note || '') : '');
+  const hasBlocker = !!(document.getElementById('ptask-blocker-check')?.checked || (task && task.blocker));
+  const blockerText = document.getElementById('ptask-blocker-text')?.value
+    || (task && task.blocker && task.blocker !== 'Blockiert' ? task.blocker : '');
+
+  if (!box) return;
+  box.style.display = '';
+  box.innerHTML = '<em>TONi denkt nach…</em>';
+
+  // Projektaufgaben-Kontext für den project_agent zusammenbauen.
+  // Wir nutzen das gleiche Schema, das der Server in buildContextSummary liest
+  // (ctx.user, ctx.projectContext) und betten die konkrete Aufgabe samt
+  // praktischer Hinweis-Anweisung ein.
+  const baseState = (typeof STATE !== 'undefined' && STATE) ? STATE : {};
+  const aufgabenText = [
+    `Der Schüler arbeitet an einer Projektaufgabe und bittet um einen praktischen Hinweis.`,
+    `Projekt: ${project ? (project.title || 'Projekt') : 'Projekt'}`,
+    `Aufgabe: ${task ? (task.title || '') : ''}`,
+    description ? `Beschreibung: ${description}` : `Beschreibung: (keine)`,
+    hasBlocker ? `STATUS: Diese Aufgabe ist als BLOCKIERT markiert.${blockerText ? ' Grund: ' + blockerText : ' (kein Grund angegeben)'}` : `Status: nicht blockiert.`,
+    note ? `Bisherige Notiz des Schülers: ${note}` : `Der Schüler hat noch keine Notiz gemacht.`,
+    ``,
+    `Anweisung an TONi: Gib direkte, praktische Hilfe, damit der Schüler vorankommt.`,
+    hasBlocker
+      ? `Die Aufgabe ist blockiert – hilf konkret, die Blockade zu lösen: Was genau hält auf? Kann er es selbst lösen, oder muss er jemanden ansprechen? Schlage 1–3 konkrete nächste Schritte vor.`
+      : `Hilf ihm, den nächsten konkreten Schritt zu finden: Wie fängt er an bzw. kommt weiter? Zerlege die Aufgabe in 1–3 machbare Schritte.`,
+    `Sei konkret und ermutigend, kurz (3–5 Sätze). Sprich den Schüler mit Namen an. Antworte auf Deutsch.`
+  ].join('\n');
+
+  const payload = {
+    ...baseState,
+    projectContext: {
+      projectCount: projects.length,
+      projects: [],
+      currentTask: aufgabenText   // zusätzlicher Block; vom Server zwar nicht
+                                  // eigens gelesen, aber wir liefern den Text
+                                  // über die chatHistory-Nachricht (s.u.) an die KI.
+    },
+    chatHistory: [
+      ...((baseState.chatHistory || []).slice(-8)),
+      { role: 'user', content: aufgabenText }
+    ]
+  };
+
+  try {
+    const result = await (typeof callAgent === 'function'
+      ? callAgent('project_agent', payload)
+      : Promise.reject(new Error('callAgent fehlt')));
+    const msg = (result && result.message) ? result.message : 'Ich konnte gerade keinen Hinweis erstellen – versuch es gleich nochmal.';
+    box.innerHTML = msg;
+    if (typeof setApiBadge === 'function') setApiBadge(true);
+  } catch (err) {
+    box.innerHTML = 'TONi ist gerade nicht erreichbar. Versuch es gleich nochmal.' +
+      '<br><small style="color:var(--color-text-tertiary)">(Offline)</small>';
+    if (typeof setApiBadge === 'function') setApiBadge(false);
+  }
 }
+window.toniProjectTaskHint = toniProjectTaskHint;
 
 // Status aus dem Detailfenster ändern -> danach Detail neu laden + Board aktualisieren
 async function moveProjectTaskFromDetail(taskId, newStatus) {
@@ -1108,11 +1207,12 @@ async function saveTaskAll() {
   const title = document.getElementById('ptask-title-edit').value.trim();
   const description = document.getElementById('ptask-desc-edit').value;
   const note = document.getElementById('ptask-note').value;
+  const dueDate = document.getElementById('ptask-due-edit')?.value || null;
   if (!taskId) return;
   if (!title) { alert('Der Titel darf nicht leer sein.'); return; }
   try {
-    // Titel + Beschreibung speichern
-    await callRpc('set_task_details', { p_task_id: taskId, p_title: title, p_description: description });
+    // Titel + Beschreibung + Fälligkeit speichern (RPC erzwingt: nur Inhaber)
+    await callRpc('set_task_details', { p_task_id: taskId, p_title: title, p_description: description, p_due_date: dueDate });
     // Notiz speichern
     await callRpc('set_task_note', { p_task_id: taskId, p_note: note });
     closeTaskDetailModal();

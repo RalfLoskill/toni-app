@@ -9171,9 +9171,9 @@ input.youtube-force-invalid-v105{
   <div class="footer-links"><a href="#">Datenschutz</a><a href="#">Impressum</a><a href="#">Hilfe</a></div>
 </footer>
 
-<script src="/chat.js?v=7"></script>
+<script src="/chat.js?v=11"></script>
 
-<script src="/journey.js?v=57"></script>
+<script src="/journey.js?v=60"></script>
 <script src="/journey_editor_v111.js?v=55"></script>
 <script src="/admin.js"></script>
 <script src="/ui.js?v=7"></script>
@@ -9779,12 +9779,22 @@ input.youtube-force-invalid-v105{
         <div id="ptask-status-note" style="font-size:11px;color:var(--color-text-tertiary);margin-top:5px"></div>
       </div>
 
+      <!-- Fällig bis (nur Inhaber kann ändern; sonst Nur-Lese-Anzeige) -->
+      <div style="margin-bottom:16px">
+        <label style="font-size:12px;color:var(--color-text-secondary);display:block;margin-bottom:6px">Fällig bis</label>
+        <input id="ptask-due-edit" type="date" style="width:100%;padding:8px 10px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:13px;background:var(--color-background-primary);color:var(--color-text-primary);display:none">
+        <div id="ptask-due-view" style="font-size:13px;color:var(--color-text-primary);display:none"></div>
+      </div>
+
       <!-- Meine Lösung / Notiz -->
       <div style="margin-bottom:16px">
         <label style="font-size:13px;font-weight:600;color:var(--color-text-primary);display:block;margin-bottom:4px">Meine Lösung / Notiz</label>
         <textarea id="ptask-note" rows="5" placeholder="Schreibe deinen Rechenweg oder deine Antwort…" style="width:100%;padding:10px 12px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;resize:vertical;background:var(--color-background-primary);color:var(--color-text-primary)"></textarea>
         <div id="ptask-note-hint" style="font-size:11px;color:var(--color-text-tertiary);margin-top:4px"></div>
       </div>
+
+      <!-- TONi-Rückmeldebox für Projektaufgaben (analog zur Lernreise) -->
+      <div id="ptask-toni-hint" style="display:none;margin-bottom:16px;padding:12px 14px;background:#E6F1FB;border:0.5px solid #B9D6F2;border-radius:var(--border-radius-md);font-size:14px;line-height:1.5;color:var(--color-text-primary)"></div>
 
       <!-- Gemeinsamer Speichern-Button (nur Inhaber): Titel + Beschreibung + Notiz -->
       <button id="ptask-save-all" onclick="saveTaskAll()" style="width:100%;padding:11px;background:#185FA5;color:#fff;border:none;border-radius:var(--border-radius-md);font-size:14px;font-weight:500;cursor:pointer;margin-bottom:14px;display:none">Speichern & schließen</button>
@@ -9804,6 +9814,6 @@ input.youtube-force-invalid-v105{
   </div>
 </div>
 
-<script src="/projects.js?v=41"></script>
+<script src="/projects.js?v=44"></script>
 </body>
 </html>
