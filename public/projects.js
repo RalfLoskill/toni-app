@@ -1155,6 +1155,425 @@ async function toniProjectTaskHint() {
 }
 window.toniProjectTaskHint = toniProjectTaskHint;
 
+// ══════════════════════════════════════
+// PROJEKT-JOURNAL als PDF (jsPDF)
+// Chronologische Dokumentation der Projektentwicklung mit Durchlaufzeiten.
+// Nutzt die Helfer aus journey.js (toniLoadJsPDF, toniJournalLoadImage,
+// toniJournalProfile) – diese sind global verfügbar.
+// ══════════════════════════════════════
+
+// Lädt html2canvas einmalig vom CDN (für den Kanban-Snapshot im Journal).
+function toniLoadHtml2Canvas(){
+  return new Promise((resolve, reject) => {
+    if(window.html2canvas){ resolve(window.html2canvas); return; }
+    const s = document.createElement('script');
+    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/html2canvas/1.4.1/html2canvas.min.js';
+    s.onload = () => window.html2canvas ? resolve(window.html2canvas) : reject(new Error('html2canvas konnte nicht initialisiert werden.'));
+    s.onerror = () => reject(new Error('html2canvas konnte nicht geladen werden (CDN nicht erreichbar?).'));
+    document.head.appendChild(s);
+  });
+}
+
+// Schneidet eine Bild-Data-URL kreisförmig zu (für runde Avatare im PDF).
+// Gibt eine PNG-Data-URL mit transparenten Ecken zurück, oder das Original bei Fehler.
+async function toniCircleCrop(dataUrl){
+  return new Promise(resolve => {
+    try{
+      const img = new Image();
+      img.onload = () => {
+        try{
+          const size = Math.min(img.naturalWidth, img.naturalHeight);
+          const c = document.createElement('canvas');
+          c.width = size; c.height = size;
+          const ctx = c.getContext('2d');
+          ctx.beginPath();
+          ctx.arc(size/2, size/2, size/2, 0, Math.PI*2);
+          ctx.closePath();
+          ctx.clip();
+          // zentriert zuschneiden
+          const sx = (img.naturalWidth - size)/2;
+          const sy = (img.naturalHeight - size)/2;
+          ctx.drawImage(img, sx, sy, size, size, 0, 0, size, size);
+          resolve(c.toDataURL('image/png'));
+        }catch(e){ resolve(dataUrl); }
+      };
+      img.onerror = () => resolve(dataUrl);
+      img.src = dataUrl;
+    }catch(e){ resolve(dataUrl); }
+  });
+}
+
+// Rendert die Projektkachel (wie im Dashboard) temporär unsichtbar und fängt sie
+// als Bild ein. Gibt {dataUrl, w, h} zurück oder null. Unabhängig davon, was
+// gerade sichtbar ist (das Dashboard liegt beim Journal hinter dem Modal).
+async function toniSnapshotProjectTile(project){
+  let html2canvas, container;
+  try{
+    html2canvas = await toniLoadHtml2Canvas();
+  }catch(e){ return null; }
+  try{
+    const p = project;
+    const pct = p.task_total > 0 ? Math.round((p.task_done / p.task_total) * 100) : 0;
+    const pal = (typeof getProjectPalette === 'function') ? getProjectPalette(p.id) : { bg:'#FBE9E2', border:'#E0A38C', text:'#8A3A22', bar:'#D4694A' };
+    const members = (p.members || []).slice(0, 5);
+    const extra = (p.member_count||0) > 5 ? `<span style="font-size:11px;color:${pal.text};opacity:.7;margin-left:4px;align-self:center">+${p.member_count-5}</span>` : '';
+    const avatars = members.map(m => (typeof memberBlock === 'function') ? memberBlock(m, 32) : '').join('');
+    const overdue = p.deadline && (typeof isOverdue === 'function') && isOverdue(p.deadline) && p.status !== 'completed';
+    const deadlineHtml = p.deadline
+      ? `<span style="font-size:11px;color:${overdue?'#A32D2D':pal.text};opacity:${overdue?1:.8}">📅 ${(typeof formatDate==='function'?formatDate(p.deadline):p.deadline)}${overdue?' · überfällig':''}</span>`
+      : '';
+    const badges = [
+      p.has_blocker ? `<span style="font-size:10px;background:rgba(255,255,255,.6);color:#854F0B;padding:1px 6px;border-radius:10px;border:0.5px solid #FAC775">⚠ Blocker</span>` : '',
+    ].filter(Boolean).join(' ');
+
+    container = document.createElement('div');
+    container.style.cssText = 'position:fixed;left:-9999px;top:0;width:340px;background:#fff;padding:0;z-index:-1';
+    container.innerHTML = `<div style="background:${pal.bg};border:0.5px solid ${pal.border};border-radius:10px;padding:10px 12px;width:316px">
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:3px">
+        <div style="font-size:14px;font-weight:500;color:${pal.text};line-height:1.3">${escapeHtml(p.title||'')}</div>
+        <div style="font-size:13px;font-weight:500;color:${pal.bar};white-space:nowrap;flex-shrink:0">${pct}%</div>
+      </div>
+      ${p.description ? `<div style="font-size:12px;color:${pal.text};opacity:.75;margin-bottom:5px;line-height:1.4">${escapeHtml(p.description)}</div>` : ''}
+      <div style="height:4px;background:rgba(255,255,255,.5);border-radius:2px;margin:5px 0">
+        <div style="height:4px;width:${pct}%;background:${pal.bar};border-radius:2px"></div>
+      </div>
+      <div style="display:flex;align-items:flex-start;gap:6px;margin-top:6px;flex-wrap:wrap">
+        <div style="display:flex;gap:6px;max-width:100%">${avatars}${extra}</div>
+        <div style="display:flex;align-items:center;gap:6px;width:100%;margin-top:4px">
+          ${deadlineHtml}
+          <div style="margin-left:auto;display:flex;gap:4px">${badges}</div>
+        </div>
+      </div>
+    </div>`;
+    document.body.appendChild(container);
+    // kurz warten, damit Avatare (Base64) im DOM sind
+    await new Promise(r => setTimeout(r, 50));
+    const tile = container.firstElementChild;
+    const canvas = await html2canvas(tile, { backgroundColor:'#ffffff', scale:2, width: tile.offsetWidth, height: tile.offsetHeight });
+    return { dataUrl: canvas.toDataURL('image/jpeg', 0.92), w: canvas.width, h: canvas.height };
+  }catch(e){
+    return null;
+  }finally{
+    if(container && container.parentNode) container.parentNode.removeChild(container);
+  }
+}
+
+// Durchlaufzeit zwischen zwei Zeitpunkten als lesbarer deutscher Text.
+function toniProjDuration(fromIso, toIso){
+  if(!fromIso || !toIso) return null;
+  const ms = new Date(toIso).getTime() - new Date(fromIso).getTime();
+  if(!(ms >= 0)) return null;
+  const min = Math.round(ms / 60000);
+  if(min < 60) return `${min} Min.`;
+  const std = Math.round(min / 60);
+  if(std < 24) return `${std} Std.`;
+  const tage = Math.round(std / 24);
+  return `${tage} Tag${tage === 1 ? '' : 'e'}`;
+}
+
+// Deutsches Datum + Uhrzeit aus ISO-String, oder '—'.
+function toniProjDateTime(iso){
+  if(!iso) return '—';
+  try{
+    const d = new Date(iso);
+    return d.toLocaleDateString('de-DE', { year:'numeric', month:'long', day:'numeric' }) +
+      ' ' + d.toLocaleTimeString('de-DE', { hour:'2-digit', minute:'2-digit' });
+  }catch(e){ return '—'; }
+}
+
+async function toniGenerateProjectJournal(){
+  const projectId = window.TONI_ACTIVE_PROJECT_ID;
+  const project = (Array.isArray(window.TONI_PROJECTS) ? window.TONI_PROJECTS : []).find(p => p.id === projectId);
+  if(!project){ alert('Es ist kein Projekt geöffnet.'); return; }
+  const tasks = (Array.isArray(window.TONI_PROJECT_TASKS) ? window.TONI_PROJECT_TASKS : []).slice();
+
+  let jsPDF;
+  try{
+    jsPDF = await toniLoadJsPDF();
+  }catch(e){
+    alert('Das Projekt-Journal konnte nicht erstellt werden:\n' + (e.message || e));
+    return;
+  }
+
+  try{
+    const doc = new jsPDF({ unit:'mm', format:'a4' });
+    const pageW = 210, pageH = 297, margin = 18;
+    const contentW = pageW - 2 * margin;
+    let y = margin;
+    const prof = (typeof toniJournalProfile === 'function') ? toniJournalProfile() : { name:'', klasse:'', institution:'' };
+
+    const ensureSpace = (need) => { if(y + need > pageH - margin){ doc.addPage(); y = margin; } };
+    const setFont = (size, style='normal', color=[20,40,62]) => {
+      doc.setFont('helvetica', style); doc.setFontSize(size); doc.setTextColor(color[0],color[1],color[2]);
+    };
+    const writeText = (text, size=11, style='normal', color=[40,40,40], lineGap=1.4) => {
+      if(!text) return;
+      setFont(size, style, color);
+      const lines = doc.splitTextToSize(String(text), contentW);
+      for(const ln of lines){ ensureSpace(size*0.5); doc.text(ln, margin, y); y += size * 0.5 * lineGap; }
+    };
+
+    // Mitgliedsname zu einer assigned_to-ID
+    const members = project.members || [];
+    const nameFor = (id) => {
+      const m = members.find(x => x.id === id);
+      if(!m) return 'nicht zugewiesen';
+      return (typeof memberPrimaryName === 'function') ? memberPrimaryName(m) : (m.first_name || m.display_name || '–');
+    };
+
+    // Horizontale Trennlinie (mit etwas Abstand davor/danach)
+    const hr = (gapBefore=4, gapAfter=6, color=[200,200,200]) => {
+      y += gapBefore; ensureSpace(2);
+      doc.setDrawColor(color[0],color[1],color[2]);
+      doc.line(margin, y, pageW - margin, y);
+      y += gapAfter;
+    };
+
+    // ---------- DECKBLATT ----------
+    ensureSpace(60);
+    setFont(24, 'bold', [12,36,62]);
+    doc.splitTextToSize(project.title || 'Projekt', contentW).forEach(ln => { ensureSpace(11); doc.text(ln, margin, y); y += 11; });
+    y += 2;
+    hr(2, 6);
+    setFont(13, 'bold', [12,36,62]); doc.text('Projekt-Journal', margin, y); y += 8;
+
+    // Metadaten-Box (linke Spalte) + Projektkachel-Snapshot (rechte Spalte)
+    const pct = project.task_total > 0 ? Math.round((project.task_done / project.task_total) * 100) : 0;
+    const managerProfile = members.find(m => m.id === project.created_by);
+    const managerName = managerProfile
+      ? ((typeof memberPrimaryName === 'function') ? memberPrimaryName(managerProfile) : (managerProfile.first_name||managerProfile.display_name||''))
+      : '—';
+    const meta = [
+      ['Projektmanager', managerName],
+      ['Team', members.length ? members.map(m => (typeof memberPrimaryName === 'function') ? memberPrimaryName(m) : (m.first_name||m.display_name||'')).join(', ') : '—'],
+      ['Fortschritt', `${pct} % (${project.task_done||0} von ${project.task_total||0} Aufgaben)`],
+    ];
+    if(project.deadline) meta.push(['Deadline', (typeof formatDate === 'function' ? formatDate(project.deadline) : project.deadline) + (isOverdue(project.deadline) ? '  ⚠ überfällig' : '')]);
+    meta.push(['Erstellt am', toniProjDateTime(new Date().toISOString())]);
+    if(prof.name) meta.push(['Journal von', prof.name]);
+
+    // Kachel rechts: Snapshot vorab einfangen, Breite ~ 38% der Inhaltsbreite
+    const tileSnap = await toniSnapshotProjectTile(project);
+    const tileW = tileSnap ? Math.min(78, contentW * 0.42) : 0;
+    const leftW = tileSnap ? (contentW - tileW - 8) : contentW;   // linke Textspalte
+    const metaTop = y;
+
+    // Linke Spalte: Metadaten (Label + Wert), umbrochen auf leftW
+    const labelW = 34;
+    for(const [k,v] of meta){
+      ensureSpace(7);
+      setFont(11, 'bold', [70,70,70]); doc.text(k + ':', margin, y);
+      setFont(11, 'normal', [40,40,40]);
+      doc.splitTextToSize(String(v), leftW - labelW).forEach((ln, i) => { if(i>0){ y += 5.5; ensureSpace(6); } doc.text(ln, margin + labelW, y); });
+      y += 7;
+    }
+
+    // Rechte Spalte: Kachel-Snapshot auf Höhe der Metadaten
+    if(tileSnap){
+      const tileH = tileW * (tileSnap.h / tileSnap.w);
+      const tileX = margin + leftW + 8;
+      doc.addImage(tileSnap.dataUrl, 'JPEG', tileX, metaTop - 2, tileW, tileH);
+      // y auf den tieferen der beiden Spalten setzen
+      y = Math.max(y, metaTop - 2 + tileH + 2);
+    }
+
+    if(project.description){
+      hr(4, 6);
+      ensureSpace(10);
+      setFont(11, 'bold', [12,36,62]); doc.text('Beschreibung', margin, y); y += 6;
+      writeText(project.description, 11, 'normal', [40,40,40]);
+    }
+
+    // Team mit Profilbildern, Name und Klasse/Rolle
+    if(members.length){
+      hr(4, 6);
+      ensureSpace(14);
+      setFont(11, 'bold', [12,36,62]); doc.text('Team', margin, y); y += 7;
+      const avatarSize = 18;          // mm
+      const cellW = 42;               // Breite pro Mitglied
+      const perRow = Math.max(1, Math.floor(contentW / cellW));
+      let col = 0;
+      let rowTop = y;
+      for(const m of members){
+        if(col === 0){ ensureSpace(avatarSize + 12); rowTop = y; }
+        const cx = margin + col * cellW;
+        // Avatar (Bild oder farbiger Kreis mit Initiale)
+        const imgSrc = m.avatar_data_url || m.avatar_url || '';
+        let drewImg = false;
+        if(imgSrc){
+          const ai = await toniJournalLoadImage(imgSrc);
+          if(ai){
+            // rund zuschneiden, damit die Avatare als Kreis erscheinen
+            const round = await toniCircleCrop(ai.dataUrl);
+            doc.addImage(round, 'PNG', cx, rowTop, avatarSize, avatarSize);
+            drewImg = true;
+          }
+        }
+        if(!drewImg){
+          // Fallback: Kreis mit Initiale
+          const initial = ((m.first_name||'')[0] || (m.display_name||'?')[0] || '?').toUpperCase();
+          doc.setFillColor(200, 214, 235);
+          doc.circle(cx + avatarSize/2, rowTop + avatarSize/2, avatarSize/2, 'F');
+          setFont(11, 'bold', [12,68,124]);
+          doc.text(initial, cx + avatarSize/2, rowTop + avatarSize/2 + 1.5, { align:'center' });
+        }
+        // Name + Klasse/Rolle unter dem Avatar
+        const nm = (typeof memberPrimaryName === 'function') ? memberPrimaryName(m) : (m.first_name||m.display_name||'');
+        const sub = (typeof memberSubLabel === 'function') ? memberSubLabel(m) : (m.class_name||'');
+        setFont(9, 'bold', [40,40,40]);
+        doc.text(doc.splitTextToSize(nm, cellW - 3)[0] || nm, cx, rowTop + avatarSize + 4);
+        setFont(8, 'normal', [120,120,120]);
+        doc.text(doc.splitTextToSize(sub, cellW - 3)[0] || sub, cx, rowTop + avatarSize + 8.5);
+
+        col++;
+        if(col >= perRow){ col = 0; y = rowTop + avatarSize + 13; }
+      }
+      if(col !== 0){ y = rowTop + avatarSize + 13; }
+    }
+
+    // ---------- KANBAN-SNAPSHOT auf dem Deckblatt (unter den Profilbildern) ----------
+    // Das aktuell geöffnete Projekt-Board wird 1:1 als Bild eingefangen.
+    try{
+      const html2canvas = await toniLoadHtml2Canvas();
+      const board = document.getElementById('project-kanban');
+      if(board){
+        const canvas = await html2canvas(board, {
+          backgroundColor: '#ffffff',
+          scale: 2,
+          width: board.scrollWidth,
+          height: board.scrollHeight,
+          windowWidth: board.scrollWidth
+        });
+        const imgData = canvas.toDataURL('image/jpeg', 0.92);
+        // Trennlinie zwischen Profilbildern und Projektboard (Linie 4)
+        hr(2, 6);
+        setFont(13, 'bold', [12,36,62]); ensureSpace(8);
+        doc.text('Aktueller Stand (Projektboard)', margin, y); y += 7;
+        // Bild proportional einpassen; reicht der Platz auf dem Deckblatt nicht,
+        // bricht es auf die nächste Seite um (kein fest erzwungenes addPage).
+        const imgW = contentW;
+        let imgH = imgW * (canvas.height / canvas.width);
+        let drawW = imgW, drawH = imgH, drawX = margin;
+        const avail = pageH - margin - y;
+        if(imgH > avail){
+          if(avail < 60){
+            // zu wenig Platz -> neue Seite, dann volle Breite
+            doc.addPage(); y = margin;
+            drawH = Math.min(imgH, pageH - 2*margin);
+            drawW = drawH * (canvas.width / canvas.height);
+            if(drawW > contentW){ drawW = contentW; drawH = drawW * (canvas.height / canvas.width); }
+            drawX = margin + (contentW - drawW)/2;
+          }else{
+            // an verfügbarer Höhe ausrichten, zentriert
+            drawH = avail;
+            drawW = drawH * (canvas.width / canvas.height);
+            if(drawW > contentW){ drawW = contentW; drawH = drawW * (canvas.height / canvas.width); }
+            drawX = margin + (contentW - drawW)/2;
+          }
+        }
+        doc.addImage(imgData, 'JPEG', drawX, y, drawW, drawH);
+        y += drawH + 4;
+      }
+    }catch(snapErr){
+      // Snapshot ist optional – wenn html2canvas scheitert, Journal trotzdem erzeugen.
+      console.warn('Kanban-Snapshot übersprungen:', snapErr);
+    }
+
+    // ---------- CHRONOLOGISCHER VERLAUF ----------
+    // Sortierung: nach frühestem Aktivitätszeitpunkt (started_at, sonst created_at).
+    const sortKey = (t) => t.started_at || t.created_at || '';
+    tasks.sort((a,b) => String(sortKey(a)).localeCompare(String(sortKey(b))));
+
+    doc.addPage(); y = margin;
+    setFont(16, 'bold', [12,36,62]); doc.text('Projektverlauf', margin, y); y += 9;
+    setFont(10, 'italic', [110,110,110]);
+    doc.text('Aufgaben in der Reihenfolge ihrer Bearbeitung.', margin, y); y += 8;
+    doc.setDrawColor(200,200,200); doc.line(margin, y, pageW - margin, y); y += 8;
+
+    const statusTxt = (s) => s === 'done' ? 'erledigt' : (s === 'review' ? 'in Review' : (s === 'in_progress' ? 'in Arbeit' : 'offen'));
+
+    for(const t of tasks){
+      ensureSpace(20);
+      // Titel + Inhaber + Status
+      setFont(12, 'bold', [12,36,62]);
+      doc.splitTextToSize(t.title || 'Aufgabe', contentW).forEach(ln => { ensureSpace(7); doc.text(ln, margin, y); y += 6.5; });
+      setFont(9, 'normal', [130,130,130]);
+      doc.text(`Inhaber: ${nameFor(t.assigned_to)} · Status: ${statusTxt(t.status)}`, margin, y); y += 6;
+
+      // Beschreibung
+      if(t.description) writeText(t.description, 10.5, 'normal', [50,50,50]);
+
+      // Blocker (falls vorhanden)
+      if(t.blocker){
+        ensureSpace(6);
+        writeText(`⚠ Blocker: ${t.blocker}`, 10, 'normal', [163,45,45]);
+      }
+
+      // Zeitverlauf mit Durchlaufzeiten
+      y += 1; ensureSpace(8);
+      setFont(10, 'bold', [12,36,62]); doc.text('Zeitverlauf:', margin, y); y += 5.5;
+      const steps = [
+        ['Erstellt',  t.created_at],
+        ['Gestartet', t.started_at],
+        ['Review',    t.review_at],
+        ['Erledigt',  t.done_at],
+      ].filter(([,iso]) => iso);
+      if(steps.length <= 1 && !t.started_at){
+        setFont(10, 'italic', [150,150,150]); ensureSpace(6);
+        doc.text('(noch keine Bearbeitung begonnen)', margin + 4, y); y += 6;
+      }else{
+        for(const [label, iso] of steps){
+          ensureSpace(5.5);
+          setFont(9.5, 'normal', [90,90,90]);
+          doc.text(`• ${label}: ${toniProjDateTime(iso)}`, margin + 4, y); y += 5.5;
+        }
+        // Durchlaufzeit-Auswertung
+        const dStart = t.started_at && t.done_at ? toniProjDuration(t.started_at, t.done_at) : null;
+        const dInProg = t.started_at && t.review_at ? toniProjDuration(t.started_at, t.review_at) : null;
+        if(dStart){
+          ensureSpace(6); setFont(9.5, 'bold', [20,120,70]);
+          doc.text(`⏱ Durchlaufzeit (Start → Erledigt): ${dStart}`, margin + 4, y); y += 6;
+        }else if(dInProg){
+          ensureSpace(6); setFont(9.5, 'bold', [120,119,221]);
+          doc.text(`⏱ Bearbeitungszeit bis Review: ${dInProg}`, margin + 4, y); y += 6;
+        }
+      }
+
+      // Notiz / Lösung des Schülers (der inhaltliche Beitrag)
+      y += 1; ensureSpace(10);
+      setFont(10, 'bold', [12,36,62]); doc.text('Notiz / Lösung:', margin, y); y += 5.5;
+      if(t.note && String(t.note).trim()){
+        writeText(String(t.note).trim(), 10.5, 'normal', [30,30,30]);
+      }else{
+        setFont(10, 'italic', [150,150,150]); ensureSpace(6); doc.text('(keine Notiz)', margin, y); y += 6;
+      }
+
+      y += 4;
+      doc.setDrawColor(230,230,230); ensureSpace(2); doc.line(margin, y, pageW - margin, y); y += 6;
+    }
+
+    if(!tasks.length){
+      writeText('Dieses Projekt enthält noch keine Aufgaben.', 11, 'italic', [120,120,120]);
+    }
+
+    // Fußzeile mit Seitenzahlen
+    const total = doc.getNumberOfPages();
+    for(let p=1; p<=total; p++){
+      doc.setPage(p);
+      setFont(8, 'normal', [150,150,150]);
+      doc.text(`Projekt-Journal · ${project.title || ''}`, margin, pageH - 10);
+      doc.text(`Seite ${p} / ${total}`, pageW - margin, pageH - 10, { align:'right' });
+    }
+
+    const slug = (typeof toniSlugifyTitle === 'function') ? toniSlugifyTitle(project.title) : 'projekt';
+    doc.save(slug + '_projektjournal.pdf');
+  }catch(error){
+    console.error('Projekt-Journal:', error);
+    alert('Beim Erstellen des Projekt-Journals ist ein Fehler aufgetreten:\n' + (error.message || error));
+  }
+}
+window.toniGenerateProjectJournal = toniGenerateProjectJournal;
+
 // Status aus dem Detailfenster ändern -> danach Detail neu laden + Board aktualisieren
 async function moveProjectTaskFromDetail(taskId, newStatus) {
   try {
