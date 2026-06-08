@@ -610,10 +610,20 @@ body { font-family:'Inter',sans-serif; background:#f8fafc; font-size:13px; color
 .group-row:hover{background:#f8fafc}.group-row.active{border-color:#93c5fd;background:#eff6ff}
 .group-row-title{font-size:12px;font-weight:900;color:#0f172a;margin-bottom:2px}.group-row-meta{font-size:10px;color:#64748b}
 .group-actions{display:flex;flex-wrap:wrap;gap:8px;margin:10px 0 12px}
-.group-join-card{display:grid;grid-template-columns:170px 1fr;gap:14px;align-items:center;background:#f8fafc;border:1px solid var(--border);border-radius:12px;padding:14px;margin-bottom:12px}
+.group-join-card{display:flex;flex-direction:column;align-items:center;background:#f8fafc;border:1px solid var(--border);border-radius:12px;padding:16px;margin-bottom:12px;margin-top:12px}
+.group-join-actions{display:flex;gap:8px;justify-content:center;margin-top:12px;flex-wrap:wrap}
+.group-create-field{margin-bottom:10px}
+.group-create-label{display:block;font-size:12px;color:#64748b;margin-bottom:4px;font-weight:400}
+.group-create-field .lr-form-input,.group-create-field .lr-form-textarea{font-size:13px}
+.group-create-field .lr-form-input{min-height:48px !important;height:auto !important;padding:12px 14px !important}
+.group-create-field .lr-form-textarea{min-height:48px;padding:12px 14px}
 .qr-box{width:150px;height:150px;background:#fff;border:1px solid var(--border);border-radius:12px;display:flex;align-items:center;justify-content:center;overflow:hidden}
 .qr-box img{width:140px;height:140px;display:block}
 .join-link-box{background:#fff;border:1px solid var(--border);border-radius:10px;padding:9px;font-size:11px;color:#334155;word-break:break-all;margin-top:8px}
+.role-info-text{font-size:11px;color:#64748b;line-height:1.5}
+#group-members .member-table{border:1px solid var(--border);border-radius:12px;overflow:hidden}
+#group-members .member-table thead tr{background:#f8fafc}
+#group-members .member-table tr:last-child td{border-bottom:none}
 .member-table{width:100%;border-collapse:collapse;font-size:12px}.member-table th{text-align:left;color:#64748b;font-size:10px;text-transform:uppercase;letter-spacing:.03em;border-bottom:1px solid var(--border);padding:8px}
 .member-table td{border-bottom:1px solid #f1f5f9;padding:9px 8px;color:#0f172a}
 .group-badge{display:inline-flex;align-items:center;border-radius:999px;padding:2px 8px;font-size:10px;font-weight:900}
@@ -925,15 +935,9 @@ body { font-family:'Inter',sans-serif; background:#f8fafc; font-size:13px; color
 
 
 /* =========================================================
-   TONI – V18 / Lernreisen statt Lerngruppen
+   TONI – V18-Stilllegung aufgehoben: Lerngruppen wieder aktiv
+   (group-panel wird über .visible / applyRoleUI gesteuert, s. journey.js)
    ========================================================= */
-#group-panel,
-.group-panel,
-[id*="group-panel"],
-#learning-groups-panel,
-#group-admin-panel{
-  display:none !important;
-}
 .learning-journey-assignment-panel{
   display:none;
 }
@@ -8611,41 +8615,40 @@ input.youtube-force-invalid-v105{
       </div>
       <div class="group-layout">
         <aside class="group-form-card">
-          <div class="group-form-title">Neue Lerngruppe anlegen</div>
-          <div class="lr-form-group">
-            <label class="lr-form-label" for="group-name">Name der Lerngruppe</label>
-            <input class="lr-form-input" id="group-name" placeholder="z. B. ET23A Elektrotechnik"/>
-          </div>
-          <div class="lr-form-group">
-            <label class="lr-form-label" for="group-description">Beschreibung</label>
-            <textarea class="lr-form-textarea" id="group-description" placeholder="Kurzbeschreibung der Gruppe"></textarea>
-          </div>
-          <button class="lr-primary-btn" style="width:100%" onclick="createLearningGroup()">Lerngruppe anlegen</button>
-          <div class="group-form-title" style="margin-top:16px">Meine Lerngruppen</div>
+          <div class="group-form-title">Meine Lerngruppen</div>
           <div class="group-list" id="group-list"><div class="lr-editor-empty">Noch keine Lerngruppen geladen.</div></div>
+          <button class="lr-secondary-btn" style="width:100%;margin-top:12px" onclick="toggleCreateGroupForm()" id="toggle-create-group-btn">+ Neue Lerngruppe anlegen</button>
+          <div id="create-group-form" style="display:none;margin-top:10px;border:1px solid var(--border);border-radius:11px;padding:11px;background:#f8fafc">
+            <div class="group-create-field">
+              <label class="group-create-label" for="group-name">Name der Lerngruppe</label>
+              <input class="lr-form-input" id="group-name" placeholder="z. B. ET23A Elektrotechnik" style="width:100%"/>
+            </div>
+            <div class="group-create-field">
+              <label class="group-create-label" for="group-description">Beschreibung</label>
+              <textarea class="lr-form-textarea" id="group-description" placeholder="Kurzbeschreibung der Gruppe" style="width:100%"></textarea>
+            </div>
+            <button class="lr-primary-btn" style="width:100%" onclick="createLearningGroup()">Anlegen</button>
+          </div>
         </aside>
         <section class="group-main-card">
           <div class="card-header">
             <span class="card-title" id="active-group-title">Keine Lerngruppe ausgewählt</span>
-            <button class="lr-secondary-btn" onclick="loadTutorGroups()">Aktualisieren</button>
+            <button class="lr-secondary-btn" onclick="refreshGroupView()">Aktualisieren</button>
           </div>
           <div id="group-detail-empty" class="lr-editor-empty">Lege eine Lerngruppe an oder wähle links eine Lerngruppe aus.</div>
           <div id="group-detail" style="display:none">
-            <div class="group-actions">
-              <button class="lr-primary-btn" onclick="generateJoinQRCode()">Neuer Student · QR-Code anzeigen</button>
-              <button class="lr-secondary-btn" onclick="copyJoinLink()">Einladungslink kopieren</button>
-              <button class="lr-secondary-btn" onclick="refreshGroupMembers()">Mitglieder aktualisieren</button>
+            <div id="group-members"><div class="lr-editor-empty">Noch keine Mitglieder geladen.</div></div>
+            <div class="group-actions" style="margin-top:14px">
+              <button class="lr-primary-btn" onclick="generateJoinQRCode()">Neuer Student: QR-Code</button>
             </div>
             <div class="group-join-card" id="group-join-card" style="display:none">
+              <div class="role-info-text" style="text-align:center;margin-bottom:12px">Der QR-Code kann von mehreren Studenten genutzt werden. Nach Anmeldung oder Neuanmeldung wird der Student automatisch dieser Lerngruppe zugeordnet.</div>
               <div class="qr-box" id="qr-box"></div>
-              <div>
-                <div class="group-form-title">Student per QR-Code aufnehmen</div>
-                <div class="role-info-text">Der QR-Code kann von mehreren Studenten genutzt werden. Nach Anmeldung oder Neuanmeldung wird der Student automatisch dieser Lerngruppe zugeordnet.</div>
-                <div class="join-link-box" id="join-link-box"></div>
+              <div class="group-join-actions">
+                <button class="lr-secondary-btn" onclick="downloadGroupQrCode()">QR-Code Download</button>
+                <button class="lr-secondary-btn" onclick="copyJoinLink()">Einladungslink kopieren</button>
               </div>
             </div>
-            <div class="group-form-title">Mitglieder</div>
-            <div id="group-members"><div class="lr-editor-empty">Noch keine Mitglieder geladen.</div></div>
           </div>
         </section>
       </div>
@@ -9173,7 +9176,7 @@ input.youtube-force-invalid-v105{
 
 <script src="/chat.js?v=11"></script>
 
-<script src="/journey.js?v=60"></script>
+<script src="/journey.js?v=68"></script>
 <script src="/journey_editor_v111.js?v=55"></script>
 <script src="/admin.js"></script>
 <script src="/ui.js?v=7"></script>
@@ -9189,7 +9192,7 @@ input.youtube-force-invalid-v105{
 
 
 
-<script src="/auth.js?v=9"></script>
+<script src="/auth.js?v=12"></script>
 
 
 
@@ -9238,8 +9241,18 @@ input.youtube-force-invalid-v105{
       <button class="journey-modal-close" onclick="closeJourneyQrModal()">×</button>
     </div>
     <div class="journey-modal-body"><div class="journey-qr-box">
+      <div id="journey-qr-group-wrap" style="width:100%;margin-bottom:14px">
+        <label for="journey-qr-group-select" style="display:block;font-weight:600;font-size:14px;margin-bottom:6px;color:var(--slate-700,#334155)">Lerngruppe für diesen QR-Code</label>
+        <select id="journey-qr-group-select" class="auth-input" style="width:100%" onchange="onJourneyQrGroupChange()"></select>
+        <div id="journey-qr-group-hint" style="font-size:13px;color:#A33;margin-top:6px;display:none"></div>
+      </div>
       <img id="journey-qr-img" class="journey-qr-img" alt="QR-Code Lernreise" title="Klicken zum Herunterladen" onclick="downloadJourneyQrCode()"/>
-      <div class="journey-qr-code" id="journey-qr-code"></div>
+      <div class="journey-qr-code-row" style="display:flex;align-items:center;justify-content:center;gap:8px;width:100%">
+        <div class="journey-qr-code" id="journey-qr-code" style="word-break:break-all"></div>
+        <button id="journey-qr-copy-btn" type="button" title="Code kopieren" aria-label="Code kopieren" onclick="copyJourneyQrCode()" style="flex:0 0 auto;background:none;border:1px solid var(--border,#d8dee9);border-radius:8px;padding:6px 8px;cursor:pointer;line-height:0">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+        </button>
+      </div>
       <div class="journey-qr-actions"><button class="lr-primary-btn" onclick="downloadJourneyQrCode()">QR-Code herunterladen</button><button class="lr-secondary-btn" onclick="closeJourneyQrModal()">Schließen</button></div>
     </div></div>
   </div>

@@ -1109,17 +1109,50 @@ window.addEventListener("DOMContentLoaded", () => {
 
   // Schlanker Einschritt-Login: löst intern die bestehende zweistufige Logik aus
   // (continueLogin prüft E-Mail/Rolle, signInWithPassword meldet mit Passwort an).
-  window.toniSlimLogin = function(){
+  // NEU: Vor dem Passwort-Versuch wird geprüft, ob zu der E-Mail überhaupt ein Account
+  // existiert. Existiert keiner, wird KEIN Passwort-Login versucht (sonst käme die
+  // verwirrende Meldung "Invalid login credentials") und KEIN Magic Link versendet –
+  // stattdessen eine neutrale Meldung. Neue Zugänge entstehen nur über den Tutor-QR.
+  window.toniSlimLogin = async function(){
     const email = document.getElementById("auth-email")?.value.trim();
     const pw = document.getElementById("auth-password")?.value;
-    if(!email){ const m=document.getElementById("auth-message"); if(m) m.textContent="Bitte E-Mail eingeben."; return; }
-    if(!pw){ const m=document.getElementById("auth-message"); if(m) m.textContent="Bitte Passwort eingeben."; return; }
-    // Schritt 1: E-Mail prüfen (macht intern u.a. die Rolle/Passwortbereich bereit)
-    try{ if(typeof continueLogin === "function") continueLogin(); }catch(e){ /* weiter zu Passwort */ }
-    // Schritt 2: nach kurzer Pause mit Passwort anmelden
-    setTimeout(function(){
-      try{ if(typeof signInWithPassword === "function") signInWithPassword(); }catch(e){ console.warn("Slim-Login:", e); }
-    }, 350);
+    const msg = document.getElementById("auth-message");
+    if(!email){ if(msg) msg.textContent="Bitte E-Mail eingeben."; return; }
+    if(!pw){ if(msg) msg.textContent="Bitte Passwort eingeben."; return; }
+
+    const btn = document.getElementById("auth-continue-btn");
+    if(btn){ btn.disabled = true; btn.textContent = "Prüfe E-Mail…"; }
+    try{
+      // Account-Existenz prüfen – login-spezifisch (OHNE profile_complete, da aktive
+      // Accounts mit profile_complete=false trotzdem einlogg-fähig sind).
+      let exists = true;
+      if(typeof checkLoginAccountExists === "function"){
+        try{ exists = await checkLoginAccountExists(email); }
+        catch(e){ exists = true; /* im Zweifel den normalen Login-Versuch zulassen */ }
+      } else if(typeof checkProfileExistsByEmail === "function"){
+        // Fallback, falls die login-spezifische Prüfung (noch) nicht geladen ist
+        try{ exists = await checkProfileExistsByEmail(email); }
+        catch(e){ exists = true; }
+      }
+      if(!exists){
+        // Neutrale Meldung – verrät NICHT, ob die E-Mail existiert (Datenschutz).
+        if(typeof setAuthMessage === "function"){
+          setAuthMessage(
+            "Falls zu dieser E-Mail-Adresse ein Account besteht, kannst du dich mit deinem " +
+            "Passwort anmelden oder über „Passwort vergessen?“ ein neues Passwort setzen.<br><br>" +
+            "Neue Zugänge zu TONI werden über den QR-Code deiner Lehrkraft bzw. deines Tutors erstellt.",
+            "ok"
+          );
+        } else if(msg){
+          msg.textContent = "Falls zu dieser E-Mail ein Account besteht, melde dich mit Passwort an oder nutze „Passwort vergessen?“. Neue Zugänge gibt es über den QR-Code der Lehrkraft.";
+        }
+        return; // KEIN signInWithPassword, KEIN Magic Link
+      }
+      // Account existiert → wie bisher mit Passwort anmelden
+      if(typeof signInWithPassword === "function") await signInWithPassword();
+    } finally {
+      if(btn){ btn.disabled = false; btn.textContent = "Anmelden"; }
+    }
   };
 
   // Zuverlässiger eigener Auth-Listener: blendet Startbildschirm nach Login sicher aus.
@@ -1186,6 +1219,9 @@ async function createLearningGroup(){
     const rows=await supabaseRequest("learning_groups",{method:"POST",headers:{"Prefer":"return=representation"},body:JSON.stringify([{name,description,tutor_id:tutorId,join_code:generateJoinCode(),is_active:true}])});
     document.getElementById("group-name").value=""; document.getElementById("group-description").value="";
     appendMsg?.("toni",`✅ Lerngruppe <strong>${escapeHtml(name)}</strong> wurde angelegt.`,time?.()||"","desktop");
+    // Anlege-Formular wieder einklappen
+    const form=document.getElementById("create-group-form"); if(form)form.style.display="none";
+    const btn=document.getElementById("toggle-create-group-btn"); if(btn)btn.textContent="+ Neue Lerngruppe anlegen";
     await loadTutorGroups(); if(rows&&rows[0]) selectLearningGroup(rows[0].id);
   }catch(e){console.error(e);appendMsg?.("error",`⚠️ Lerngruppe konnte nicht angelegt werden.<br><small>${escapeHtml(e.message)}</small>`,time?.()||"","desktop");}
 }
@@ -1214,9 +1250,25 @@ async function selectLearningGroup(id){
   const g=TONI_GROUPS.find(x=>x.id===id); if(!g)return;
   document.getElementById("group-detail-empty").style.display="none";
   document.getElementById("group-detail").style.display="";
-  document.getElementById("active-group-title").textContent=g.name;
+  document.getElementById("active-group-title").textContent="Mitglieder der Lerngruppe "+g.name;
   document.getElementById("group-join-card").style.display="none";
   await refreshGroupMembers();
+}
+
+// Anlege-Formular ein-/ausklappen
+function toggleCreateGroupForm(){
+  const form=document.getElementById("create-group-form");
+  const btn=document.getElementById("toggle-create-group-btn");
+  if(!form)return;
+  const istVersteckt=form.style.display==="none";
+  form.style.display=istVersteckt?"":"none";
+  if(btn)btn.textContent=istVersteckt?"− Abbrechen":"+ Neue Lerngruppe anlegen";
+}
+
+// "Aktualisieren": Gruppen UND Mitglieder der aktiven Gruppe neu laden
+async function refreshGroupView(){
+  await loadTutorGroups();
+  if(ACTIVE_GROUP_ID) await refreshGroupMembers();
 }
 
 function generateJoinQRCode(){
@@ -1224,8 +1276,45 @@ function generateJoinQRCode(){
   const link=buildJoinLink(g);
   const qrUrl="https://api.qrserver.com/v1/create-qr-code/?size=180x180&data="+encodeURIComponent(link);
   document.getElementById("qr-box").innerHTML=`<img alt="QR-Code für Lerngruppe" src="${qrUrl}">`;
-  document.getElementById("join-link-box").textContent=link;
   document.getElementById("group-join-card").style.display="";
+}
+
+// Gruppen-QR herunterladen – mit Lerngruppe als Überschrift auf dem Bild.
+function downloadGroupQrCode(){
+  const g=TONI_GROUPS.find(x=>x.id===ACTIVE_GROUP_ID); if(!g)return;
+  const link=buildJoinLink(g);
+  const groupName=String(g.name||"Lerngruppe");
+  const qrUrl="https://api.qrserver.com/v1/create-qr-code/?size=640x640&margin=12&data="+encodeURIComponent(link);
+  const safeName=groupName.toLowerCase().replace(/[^a-z0-9äöüß]+/gi,"-").replace(/^-|-$/g,"");
+  const img=new Image();
+  img.crossOrigin="anonymous";
+  img.onload=function(){
+    try{
+      const pad=40, qrSize=img.width||640, headerH=80;
+      const canvas=document.createElement("canvas");
+      canvas.width=qrSize+pad*2;
+      canvas.height=qrSize+pad*2+headerH;
+      const ctx=canvas.getContext("2d");
+      ctx.fillStyle="#ffffff";
+      ctx.fillRect(0,0,canvas.width,canvas.height);
+      ctx.fillStyle="#1f2d3d";
+      ctx.textAlign="center";
+      ctx.font="bold 30px Arial, sans-serif";
+      ctx.fillText("Lerngruppe: "+groupName, canvas.width/2, pad+40, canvas.width-pad*2);
+      ctx.drawImage(img, pad, headerH+pad, qrSize, qrSize);
+      const a=document.createElement("a");
+      a.href=canvas.toDataURL("image/png");
+      a.download=`toni-lerngruppe-${safeName||"qr"}.png`;
+      document.body.appendChild(a);a.click();a.remove();
+    }catch(e){
+      console.warn("Gruppen-QR-Beschriftung fehlgeschlagen, lade unbeschriftet:",e);
+      const a=document.createElement("a");a.href=qrUrl;a.download=`toni-lerngruppe-${safeName||"qr"}.png`;a.target="_blank";document.body.appendChild(a);a.click();a.remove();
+    }
+  };
+  img.onerror=function(){
+    const a=document.createElement("a");a.href=qrUrl;a.download=`toni-lerngruppe-${safeName||"qr"}.png`;a.target="_blank";document.body.appendChild(a);a.click();a.remove();
+  };
+  img.src=qrUrl;
 }
 
 async function copyJoinLink(){
@@ -1247,7 +1336,20 @@ async function refreshGroupMembers(){
 async function handleJoinLinkAfterLogin(){
   const joinCode=getJoinCodeFromUrl(); if(!joinCode)return;
   const banner=document.getElementById("join-banner");
-  if(!window.TONI_AUTH_SESSION?.user){if(banner){banner.className="join-banner visible";banner.innerHTML="Du möchtest einer Lerngruppe beitreten. Bitte melde dich zuerst an. Danach ordnet TONI dich automatisch zu.";}openAuthModal?.();return;}
+  // Eingeloggt-Erkennung robust über die TATSÄCHLICH befüllten Quellen:
+  // - TONI_AUTH_SESSION (modul-lokal, gesetzt in handleAuthSession)
+  // - TONI_AUTH_PROFILE (modul-lokal, gesetzt nach Profil-Load)
+  // - getActiveProfileIdForGroups() (window.TONI_ACTIVE_PROFILE_ID / localStorage)
+  // Früher wurde fälschlich window.TONI_AUTH_SESSION geprüft – das wird nie gesetzt,
+  // wodurch eingeloggte Studenten irrtümlich ins Registrierungsfenster gerieten.
+  const istEingeloggt = !!(
+    (typeof TONI_AUTH_SESSION !== "undefined" && TONI_AUTH_SESSION?.user) ||
+    (typeof TONI_AUTH_PROFILE !== "undefined" && TONI_AUTH_PROFILE?.id) ||
+    (window.TONI_AUTH_SESSION?.user) ||
+    (window.TONI_AUTH_PROFILE?.id) ||
+    (typeof getActiveProfileIdForGroups === "function" && getActiveProfileIdForGroups())
+  );
+  if(!istEingeloggt){if(banner){banner.className="join-banner visible";banner.innerHTML="Du möchtest einer Lerngruppe beitreten. Bitte melde dich zuerst an. Danach ordnet TONI dich automatisch zu.";}openAuthModal?.();return;}
   try{
     const result=await supabaseRequest("rpc/join_learning_group_by_code",{method:"POST",body:JSON.stringify({p_join_code:joinCode})});
     if(banner){banner.className="join-banner visible";banner.innerHTML=`✅ Du bist der Lerngruppe <strong>${escapeHtml(result.group_name||"Lerngruppe")}</strong> beigetreten.`;}
@@ -2455,28 +2557,11 @@ function setLocalAssignmentsV18(rows){
 }
 
 function hideLegacyGroupViewsV18(){
-  ["group-panel","group-admin-panel","learning-groups-panel"].forEach(id => {
-    const el = document.getElementById(id);
-    if(el){
-      el.style.display = "none";
-      el.classList.remove("visible");
-    }
-  });
-
-  document.querySelectorAll(".group-panel,[data-panel='groups'],[data-section='groups']").forEach(el => {
-    el.style.display = "none";
-    el.classList.remove("visible");
-  });
-
-  [...document.querySelectorAll("*")].forEach(el => {
-    const txt = (el.textContent || "").trim();
-    if(txt === "Lerngruppen verwalten" || txt === "Lerngruppe verwalten"){
-      const card = el.closest(".card") || el.closest("section") || el.closest("div");
-      if(card && card.id !== "learning-journey-assignment-panel"){
-        card.style.display = "none";
-      }
-    }
-  });
+  // V18-Stilllegung aufgehoben: Lerngruppen werden wieder als eigener Tutor-Bereich
+  // genutzt (Konzept Lerngruppen-Verteilweg). Das Einblenden steuert applyRoleUI
+  // (group-panel.visible = canManageGroups()). Diese Funktion bleibt als No-Op
+  // bestehen, damit ihre 6 Aufrufstellen (inkl. showAssignmentPanelV18) unverändert
+  // weiterlaufen können, ohne das Gruppen-Panel zu verstecken.
 }
 
 function showAssignmentPanelV18(){
@@ -2933,15 +3018,163 @@ function toniV20Role(){return (window.TONI_AUTH_PROFILE&&TONI_AUTH_PROFILE.role)
 function toniV20Profile(){return window.TONI_AUTH_PROFILE||{id:window.TONI_ACTIVE_PROFILE_ID||localStorage.getItem("toni_profile_id")||null,role:localStorage.getItem("toni_role")||"student"};}
 function toniV20Escape(value){if(typeof escapeHtml==="function")return escapeHtml(value);return String(value??"").replace(/[&<>"']/g,s=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#039;'}[s]));}
 function toniV20UuidLike(value){const v=String(value||"").trim();return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(v);}
-function journeyQrPayloadV20(journeyId){return "TONI-JOURNEY:"+String(journeyId||"").trim();}
-function parseJourneyQrPayloadV20(raw){const text=String(raw||"").trim();if(!text)throw new Error("Kein QR-Code erkannt.");if(text.startsWith("TONI-JOURNEY:")){const id=text.replace("TONI-JOURNEY:","").trim();if(!id)throw new Error("Der QR-Code enthält keine Lernreise-ID.");return id;}try{const url=new URL(text);const id=url.searchParams.get("journey")||url.searchParams.get("journey_id")||url.searchParams.get("lernreise");if(id)return id.trim();}catch{}if(toniV20UuidLike(text)||text.length>=12)return text;throw new Error("Der QR-Code ist kein gültiger TONI-Lernreise-Code.");}
+function journeyQrPayloadV20(journeyId, groupCode){
+  // Format: TONI-JOURNEY:<id>            (alt, ohne Gruppe – weiter unterstützt)
+  //         TONI-JOURNEY:<id>:<GRP-code> (neu, mit Lerngruppe)
+  const id = String(journeyId||"").trim();
+  const grp = String(groupCode||"").trim();
+  return "TONI-JOURNEY:" + id + (grp ? ":" + grp : "");
+}
+function parseJourneyQrPayloadV20(raw){const text=String(raw||"").trim();if(!text)throw new Error("Kein QR-Code erkannt.");if(text.startsWith("TONI-JOURNEY:")){const rest=text.replace("TONI-JOURNEY:","").trim();const id=rest.split(":")[0].trim();if(!id)throw new Error("Der QR-Code enthält keine Lernreise-ID.");return id;}try{const url=new URL(text);const id=url.searchParams.get("journey")||url.searchParams.get("journey_id")||url.searchParams.get("lernreise");if(id)return id.trim();}catch{}/* Fallback ohne Präfix: evtl. ist ein Gruppencode mit ':' angehängt (z.B. manuelle Eingabe ohne TONI-JOURNEY:). Erste Komponente als ID nehmen. */const firstPart=text.split(":")[0].trim();if(toniV20UuidLike(firstPart))return firstPart;if(toniV20UuidLike(text)||text.length>=12)return text;throw new Error("Der QR-Code ist kein gültiger TONI-Lernreise-Code.");}
+// Extrahiert den optionalen Lerngruppencode aus dem Lernreise-Payload.
+// Gibt den Gruppencode (z.B. "GRP-XXXX") zurück oder null, wenn keiner enthalten ist.
+function parseGroupCodeFromQrPayloadV20(raw){
+  const text=String(raw||"").trim();
+  if(text.startsWith("TONI-JOURNEY:")){
+    const rest=text.replace("TONI-JOURNEY:","").trim();
+    const parts=rest.split(":");
+    if(parts.length>=2){
+      const grp=parts.slice(1).join(":").trim();   // alles nach der ersten ID-Komponente
+      return grp || null;
+    }
+    return null;
+  }
+  // URL-Variante: optionaler ?group=<code>
+  try{const url=new URL(text);const g=url.searchParams.get("group")||url.searchParams.get("gruppe");if(g)return g.trim();}catch{}
+  // Fallback ohne Präfix: <uuid>:<grp> (z.B. manuelle Eingabe ohne TONI-JOURNEY:)
+  const parts=text.split(":");
+  if(parts.length>=2 && toniV20UuidLike(parts[0].trim())){
+    const grp=parts.slice(1).join(":").trim();
+    return grp || null;
+  }
+  return null;
+}
 function qrImageUrlV20(payload,size=320){return `https://api.qrserver.com/v1/create-qr-code/?size=${size}x${size}&margin=12&data=${encodeURIComponent(payload)}`;}
 window.openAssignStudentModal=function(journeyId){openJourneyQrModal(journeyId);};
 function findJourneyRowV20(journeyId){return (window.TONI_JOURNEY_ASSIGNMENT_ROWS||window.TONI_ADMIN_JOURNEYS||[]).find(r=>String(r.id)===String(journeyId));}
 function journeyTitleV20(row){const json=row?.journey_json||{};return row?.title||json.title||"Lernreise";}
-function openJourneyQrModal(journeyId){const row=findJourneyRowV20(journeyId);const title=journeyTitleV20(row);window.TONI_QR_CURRENT_JOURNEY_ID=journeyId;window.TONI_QR_CURRENT_JOURNEY_TITLE=title;const payload=journeyQrPayloadV20(journeyId);const img=document.getElementById("journey-qr-img");const code=document.getElementById("journey-qr-code");const sub=document.getElementById("journey-qr-subtitle");if(img)img.src=qrImageUrlV20(payload,360);if(code)code.textContent=payload;if(sub)sub.textContent=`Lernreise: ${title}. Der QR-Code bleibt für diese Lernreise gleich.`;document.getElementById("journey-qr-modal")?.classList.add("open");}
+async function openJourneyQrModal(journeyId){
+  const row=findJourneyRowV20(journeyId);
+  const title=journeyTitleV20(row);
+  window.TONI_QR_CURRENT_JOURNEY_ID=journeyId;
+  window.TONI_QR_CURRENT_JOURNEY_TITLE=title;
+  const sub=document.getElementById("journey-qr-subtitle");
+  if(sub)sub.textContent=`Lernreise: ${title}. Wähle eine Lerngruppe – Studenten werden beim Scannen der Lernreise UND der Gruppe zugeordnet.`;
+  document.getElementById("journey-qr-modal")?.classList.add("open");
+  // Lerngruppen sicherstellen (laden, falls noch nicht geschehen)
+  try{ if((!Array.isArray(TONI_GROUPS)||!TONI_GROUPS.length) && typeof loadTutorGroups==="function") await loadTutorGroups(); }catch(e){ console.warn(e); }
+  renderJourneyQrGroupOptions();
+}
+// Füllt das Gruppen-Dropdown im QR-Modal; behandelt den Pflicht-Fall "keine Gruppe".
+function renderJourneyQrGroupOptions(){
+  const sel=document.getElementById("journey-qr-group-select");
+  const hint=document.getElementById("journey-qr-group-hint");
+  const img=document.getElementById("journey-qr-img");
+  const code=document.getElementById("journey-qr-code");
+  const groups=Array.isArray(TONI_GROUPS)?TONI_GROUPS:[];
+  if(!sel)return;
+  if(!groups.length){
+    // Pflicht: ohne Lerngruppe kein QR-Code
+    sel.innerHTML=`<option value="">– keine Lerngruppe vorhanden –</option>`;
+    sel.disabled=true;
+    if(hint){hint.style.display="block";hint.textContent="Bitte lege zuerst eine Lerngruppe an. Erst dann kann ein Lernreise-QR-Code erzeugt werden.";}
+    if(img)img.style.display="none";
+    if(code)code.textContent="";
+    return;
+  }
+  sel.disabled=false;
+  if(hint)hint.style.display="none";
+  if(img)img.style.display="";
+  // bevorzugt die aktive Gruppe vorauswählen
+  const preferred=(typeof ACTIVE_GROUP_ID!=="undefined"&&ACTIVE_GROUP_ID)?ACTIVE_GROUP_ID:groups[0].id;
+  sel.innerHTML=groups.map(g=>`<option value="${escapeHtml(g.join_code)}" data-gid="${g.id}" ${g.id===preferred?"selected":""}>${escapeHtml(g.name)} (${escapeHtml(g.join_code)})</option>`).join("");
+  renderJourneyQrImage();
+}
+// Erzeugt den QR-Code aus aktueller Lernreise + gewählter Lerngruppe.
+function renderJourneyQrImage(){
+  const id=window.TONI_QR_CURRENT_JOURNEY_ID;
+  const sel=document.getElementById("journey-qr-group-select");
+  const img=document.getElementById("journey-qr-img");
+  const code=document.getElementById("journey-qr-code");
+  const grp=sel&&sel.value?sel.value:"";
+  if(!id||!grp){ if(code)code.textContent=""; return; }
+  const payload=journeyQrPayloadV20(id,grp);
+  if(img)img.src=qrImageUrlV20(payload,360);
+  if(code)code.textContent=payload;
+}
+function onJourneyQrGroupChange(){ renderJourneyQrImage(); }
+function copyJourneyQrCode(){
+  const code=document.getElementById("journey-qr-code")?.textContent?.trim();
+  if(!code)return;
+  const btn=document.getElementById("journey-qr-copy-btn");
+  const showOk=()=>{ if(btn){ const old=btn.innerHTML; btn.innerHTML='<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>'; setTimeout(()=>{btn.innerHTML=old;},1200); } };
+  if(navigator.clipboard&&navigator.clipboard.writeText){
+    navigator.clipboard.writeText(code).then(showOk).catch(()=>fallbackCopyJourneyCode(code,showOk));
+  }else{
+    fallbackCopyJourneyCode(code,showOk);
+  }
+}
+function fallbackCopyJourneyCode(text,onOk){
+  try{
+    const ta=document.createElement("textarea");
+    ta.value=text; ta.style.position="fixed"; ta.style.opacity="0";
+    document.body.appendChild(ta); ta.focus(); ta.select();
+    document.execCommand("copy"); ta.remove();
+    onOk&&onOk();
+  }catch(e){ console.warn("Kopieren fehlgeschlagen:",e); }
+}
 function closeJourneyQrModal(){document.getElementById("journey-qr-modal")?.classList.remove("open");}
-function downloadJourneyQrCode(){const id=window.TONI_QR_CURRENT_JOURNEY_ID;if(!id)return;const payload=journeyQrPayloadV20(id);const url=qrImageUrlV20(payload,640);const a=document.createElement("a");const safeTitle=String(window.TONI_QR_CURRENT_JOURNEY_TITLE||"lernreise").toLowerCase().replace(/[^a-z0-9äöüß]+/gi,"-").replace(/^-|-$/g,"");a.href=url;a.download=`toni-qr-${safeTitle||id}.png`;a.target="_blank";document.body.appendChild(a);a.click();a.remove();}
+function downloadJourneyQrCode(){
+  const id=window.TONI_QR_CURRENT_JOURNEY_ID;if(!id)return;
+  const sel=document.getElementById("journey-qr-group-select");
+  const grp=sel&&sel.value?sel.value:"";
+  if(!grp){return;} // ohne Gruppe kein Download (Pflicht)
+  const journeyTitle=String(window.TONI_QR_CURRENT_JOURNEY_TITLE||"Lernreise");
+  // Gruppenname aus der gewählten Option (Text ist "Name (CODE)")
+  const optText=sel&&sel.selectedOptions&&sel.selectedOptions[0]?sel.selectedOptions[0].textContent.trim():grp;
+  const groupName=optText.replace(/\s*\([^)]*\)\s*$/,"").trim()||grp; // "(CODE)" entfernen
+  const payload=journeyQrPayloadV20(id,grp);
+  const qrUrl=qrImageUrlV20(payload,640);
+  const safeTitle=journeyTitle.toLowerCase().replace(/[^a-z0-9äöüß]+/gi,"-").replace(/^-|-$/g,"");
+
+  // QR-Bild laden und mit Beschriftung (Lernreise + Lerngruppe) auf ein Canvas zeichnen.
+  const img=new Image();
+  img.crossOrigin="anonymous";
+  img.onload=function(){
+    try{
+      const pad=40, qrSize=img.width||640, headerH=120;
+      const canvas=document.createElement("canvas");
+      canvas.width=qrSize+pad*2;
+      canvas.height=qrSize+pad*2+headerH;
+      const ctx=canvas.getContext("2d");
+      ctx.fillStyle="#ffffff";
+      ctx.fillRect(0,0,canvas.width,canvas.height);
+      // Beschriftung oben
+      ctx.fillStyle="#1f2d3d";
+      ctx.textAlign="center";
+      ctx.font="bold 30px Arial, sans-serif";
+      ctx.fillText("Lernreise: "+journeyTitle, canvas.width/2, pad+34, canvas.width-pad*2);
+      ctx.fillStyle="#334155";
+      ctx.font="24px Arial, sans-serif";
+      ctx.fillText("Lerngruppe: "+groupName, canvas.width/2, pad+76, canvas.width-pad*2);
+      // QR-Bild
+      ctx.drawImage(img, pad, headerH+pad, qrSize, qrSize);
+      const a=document.createElement("a");
+      a.href=canvas.toDataURL("image/png");
+      a.download=`toni-qr-${safeTitle||id}.png`;
+      document.body.appendChild(a);a.click();a.remove();
+    }catch(e){
+      // Falls Canvas (z.B. CORS) scheitert: auf direkten Bild-Download zurückfallen.
+      console.warn("QR-Beschriftung fehlgeschlagen, lade unbeschriftet:",e);
+      const a=document.createElement("a");a.href=qrUrl;a.download=`toni-qr-${safeTitle||id}.png`;a.target="_blank";document.body.appendChild(a);a.click();a.remove();
+    }
+  };
+  img.onerror=function(){
+    // Bild konnte nicht geladen werden → direkter Download als Fallback.
+    const a=document.createElement("a");a.href=qrUrl;a.download=`toni-qr-${safeTitle||id}.png`;a.target="_blank";document.body.appendChild(a);a.click();a.remove();
+  };
+  img.src=qrUrl;
+}
 function updateAssignmentHeaderV20(){const table=document.querySelector(".assignment-table");if(!table)return;const ths=table.querySelectorAll("thead th");if(ths[2])ths[2].textContent="QR-Code";}
 function installStudentJourneyButtonsV20(){if(document.getElementById("student-journey-actions-v20"))return;const cards=[...document.querySelectorAll(".card")];const journeyCard=cards.find(card=>{const title=card.querySelector(".card-title")?.textContent||"";return title.includes("Deine Lernreise")||title.includes("Lernreise");});if(!journeyCard)return;const header=journeyCard.querySelector(".card-header")||journeyCard;const actions=document.createElement("div");actions.className="student-journey-actions student-only";actions.id="student-journey-actions-v20";actions.innerHTML=`<button class="student-journey-btn" onclick="openJourneyScanModal()">+ Lernreise hinzufügen</button><button class="student-journey-btn" onclick="openJourneySwitchModal()">Lernreise wechseln</button>`;header.insertAdjacentElement("afterend",actions);}
 function setScanStatusV20(message,type=""){const el=document.getElementById("journey-scan-status");if(!el)return;el.className="scan-status"+(type?" "+type:"");el.innerHTML=message;}
@@ -4292,6 +4525,39 @@ if(typeof window.assignJourneyFromCodeV20 === "function"){
   window.assignJourneyFromCodeV20 = async function(...args){
     const result = await TONI_V40_ORIGINAL_ASSIGN_CODE.apply(this, args);
     setTimeout(toniV40LoadMostRecentAssignedProgress, 700);
+    return result;
+  };
+}
+
+/* =========================================================
+   TONI V41 – Lernreise-QR mit Lerngruppe: nach erfolgreicher
+   Lernreise-Zuordnung zusätzlich der Lerngruppe beitreten.
+   Additiv als äußerster Wrapper: erst läuft die komplette
+   bestehende Zuordnungskette, dann (falls der QR-Payload einen
+   Gruppencode enthält) der Gruppenbeitritt. Ein Fehler beim
+   Gruppenbeitritt lässt die bereits erfolgte Lernreise-Zuordnung
+   NICHT scheitern (nur Hinweis), da die Lernreise schon zugeordnet ist.
+   ========================================================= */
+if(typeof window.assignJourneyFromCodeV20 === "function"){
+  const TONI_V41_ORIGINAL_ASSIGN_CODE = window.assignJourneyFromCodeV20;
+  window.assignJourneyFromCodeV20 = async function(rawCode){
+    const result = await TONI_V41_ORIGINAL_ASSIGN_CODE.apply(this, arguments);
+    // Optionalen Lerngruppencode aus dem QR-Payload lesen
+    let groupCode = null;
+    try{ if(typeof parseGroupCodeFromQrPayloadV20 === "function") groupCode = parseGroupCodeFromQrPayloadV20(rawCode); }
+    catch(e){ groupCode = null; }
+    if(groupCode && typeof supabaseRequest === "function"){
+      try{
+        const joinRes = await supabaseRequest("rpc/join_learning_group_by_code",{method:"POST",body:JSON.stringify({p_join_code:groupCode})});
+        const gname = (joinRes && joinRes.group_name) ? joinRes.group_name : "Lerngruppe";
+        appendMsg?.("toni",`✅ Du wurdest zusätzlich der Lerngruppe <strong>${escapeHtml(gname)}</strong> zugeordnet.`,time?.()||"","desktop");
+        if(typeof setScanStatusV20==="function") setScanStatusV20(`✅ Lernreise + Lerngruppe <strong>${escapeHtml(gname)}</strong> zugeordnet.`,"ok");
+      }catch(joinErr){
+        // Lernreise ist bereits zugeordnet – Gruppenbeitritt nur als Hinweis, kein harter Fehler.
+        console.warn("Lerngruppen-Beitritt beim Lernreise-Scan fehlgeschlagen:", joinErr);
+        appendMsg?.("toni","⚠️ Die Lernreise wurde zugeordnet, der Lerngruppen-Beitritt hat aber nicht geklappt. Bitte sag deiner Lehrkraft Bescheid.",time?.()||"","desktop");
+      }
+    }
     return result;
   };
 }

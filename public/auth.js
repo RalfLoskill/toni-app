@@ -64,7 +64,21 @@ async function continueLogin() {
     if (exists) {
       showPasswordLogin(email);
     } else {
-      await sendMagicLink(false);
+      // Keine offene Selbstregistrierung mehr: für unbekannte E-Mails wird KEIN Magic
+      // Link mehr versendet. Neue Zugänge entstehen ausschließlich über den QR-Code
+      // einer Lehrkraft/eines Tutors. Die Meldung ist bewusst NEUTRAL formuliert
+      // (Konjunktiv), damit sie nicht verrät, ob die E-Mail existiert
+      // (Datenschutz / keine account enumeration, v.a. bei minderjährigen Nutzern).
+      // Passwort-Reset bleibt über den separaten Weg (sendPasswordReset) möglich.
+      // Passwortfeld + Reset im NEUTRALEN Modus anzeigen (showPasswordLogin setzt dann
+      // selbst KEINE existenz-verratende Meldung); unsere Meldung danach setzen.
+      showPasswordLogin(email, true);
+      setAuthMessage(
+        "Falls zu dieser E-Mail-Adresse ein Account besteht, kannst du dich mit deinem " +
+        "Passwort anmelden oder über „Passwort vergessen?“ ein neues Passwort setzen.<br><br>" +
+        "Neue Zugänge zu TONI werden über den QR-Code deiner Lehrkraft bzw. deines Tutors erstellt.",
+        "ok"
+      );
     }
   } catch (error) {
     console.error(error);
@@ -77,7 +91,7 @@ async function continueLogin() {
   }
 }
 
-function showPasswordLogin(email) {
+function showPasswordLogin(email, neutral) {
   const emailEl = document.getElementById("auth-email");
   const area = document.getElementById("auth-password-area");
   const mode = document.getElementById("auth-login-mode");
@@ -86,6 +100,17 @@ function showPasswordLogin(email) {
   if (emailEl) emailEl.disabled = true;
   if (area) area.classList.add("visible");
   if (btn) btn.style.display = "none";
+
+  if (neutral) {
+    // Neutraler Modus: KEINE Aussage darüber, ob das Profil existiert (Datenschutz).
+    // Meldung + Hinweistext werden vom Aufrufer (continueLogin) gesetzt.
+    if (mode) {
+      mode.innerHTML = `Melde dich mit deinem Passwort an oder nutze „Passwort vergessen?“.`;
+    }
+    setTimeout(() => document.getElementById("auth-password")?.focus(), 80);
+    return;
+  }
+
   if (mode) {
     mode.innerHTML = `Zu <strong>${escapeHtml(email)}</strong> existiert bereits ein TONI-Profil. Bitte melde dich mit Passwort an.`;
   }
@@ -904,6 +929,31 @@ async function checkProfileExistsByEmail(email) {
     }
   }
 }
+
+// Login-spezifische Existenzprüfung: Existiert zu dieser E-Mail ein AKTIVER Account,
+// mit dem man sich grundsätzlich einloggen kann? Bewusst OHNE profile_complete-Kriterium
+// (anders als checkProfileExistsByEmail): In der DB existieren aktive Accounts mit
+// profile_complete=false, die ein Passwort haben und einlogg-fähig sind.
+// WICHTIG: Nutzt die SECURITY-DEFINER-RPC check_login_account_exists, weil ein direkter
+// REST-Select auf profiles an der RLS scheitert (Anon-Key sieht fremde Profile nicht) –
+// das hätte sonst ALLE normalen Accounts ausgesperrt.
+async function checkLoginAccountExists(email) {
+  const cleanEmail = String(email || "").trim().toLowerCase();
+  if (!cleanEmail) return false;
+  try {
+    const result = await supabaseRequest("rpc/check_login_account_exists", {
+      method: "POST",
+      body: JSON.stringify({ p_email: cleanEmail })
+    });
+    return !!result?.exists;
+  } catch (error) {
+    console.warn("Login-E-Mail-Prüfung fehlgeschlagen, lasse Login-Versuch zu:", error);
+    // Im Zweifel NICHT aussperren: true zurückgeben, damit der normale Passwort-Login
+    // (mit seiner eigenen Fehlermeldung) greifen kann.
+    return true;
+  }
+}
+window.checkLoginAccountExists = checkLoginAccountExists;
 
 // Weiter-Button mit Timeout, Rücksetzung des Button-Texts und klaren Fehlermeldungen.
 async function continueLogin() {
