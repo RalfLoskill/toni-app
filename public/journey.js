@@ -1049,6 +1049,39 @@ window.getCurrentRole = function() {
 async function handleAuthSession(session) {
   TONI_AUTH_SESSION = session || null;
 
+  // P3: ZENTRALE Weiche – bevor irgendein Fenster (Login/Start-Screen ODER Dashboard)
+  // aufgebaut wird. Steht ein Onboarding-Code in der URL und es gibt KEINE vollständige
+  // Anmeldung (kein User ODER Profil unvollständig), dann gehört der Nutzer in den
+  // Onboarding-/Registrierungsfluss – NICHT ins Login und NICHT ins Dashboard.
+  const onboardingCode = (typeof getJoinCodeFromUrl==="function" && getJoinCodeFromUrl())
+                      || (typeof getJourneyCodeFromUrl==="function" && getJourneyCodeFromUrl());
+  // Baustein 3: ?register=1 löst ebenfalls den Onboarding-Einstieg aus (reine Registrierung).
+  let reinReg=false; try{ reinReg = new URL(window.location.href).searchParams.get("register")==="1"; }catch(e){}
+  // P3: Beim Magic-Link-Rücksprung (registration=1 / Token im Hash / code) NICHT die
+  // Onboarding-Weiche nehmen – dann übernimmt toniV12HandleCallback (Registrierung
+  // abschließen). Sonst legt sich das E-Mail-Eingabe-Fenster über das Passwort-Fenster.
+  const _u = new URL(window.location.href);
+  const _h = new URLSearchParams((window.location.hash||"").replace(/^#/,""));
+  const istCallbackRueckkehr =
+    _u.searchParams.get("registration") === "1" ||
+    _u.searchParams.has("code") || _u.searchParams.has("token_hash") ||
+    _h.has("access_token") || _h.has("refresh_token") || _h.has("error") ||
+    window.TONI_AUTH_CALLBACK_HANDLED === true;
+  if ((onboardingCode || reinReg) && !istCallbackRueckkehr) {
+    if (!session?.user) {
+      // Neuer/abgemeldeter Nutzer mit Code → direkt Zugang-anlegen, nichts anderes zeigen.
+      document.documentElement.classList.add("toni-onboarding-pending");
+      updateAuthUI(null, null);
+      // Start-Screen als deckenden (weißen) Hintergrund zeigen; sein Login-Slot ist per
+      // CSS verborgen. Darüber öffnet handleJoinLinkAfterLogin das Zugang-anlegen-Modal.
+      if (typeof window.toniShowStartScreen === "function") window.toniShowStartScreen();
+      if (typeof handleJoinLinkAfterLogin === "function") handleJoinLinkAfterLogin();
+      return;
+    }
+    // Eingeloggt mit Code: Profil prüfen – unvollständig → Registrierung (auth.js V13/V77
+    // übernimmt), vollständig → Dashboard + Code direkt einlösen (unten regulär).
+  }
+
   if (!session?.user) {
     updateAuthUI(null, null);
     localStorage.setItem("toni_role", "student");
@@ -1099,6 +1132,20 @@ window.addEventListener("DOMContentLoaded", () => {
     if(!ss) return;
     moveLoginIntoStartScreen();
     ss.classList.remove("hidden");
+    // P3: Steht ein Onboarding-Code in der URL (?join= / ?journey=) UND ist niemand
+    // eingeloggt, dann NICHT das normale Login zeigen, sondern direkt den
+    // Onboarding-Einstieg (E-Mail → Magic-Link). Sonst landet ein neuer Student im
+    // Passwort-Login, das seine noch nicht existierende E-Mail abweist.
+    try{
+      const hatCode = (typeof getJoinCodeFromUrl==="function" && getJoinCodeFromUrl())
+                   || (typeof getJourneyCodeFromUrl==="function" && getJourneyCodeFromUrl());
+      const eingeloggt = (typeof getActiveProfileIdForGroups==="function" && getActiveProfileIdForGroups())
+                   || (window.TONI_AUTH_PROFILE?.id);
+      if(hatCode && !eingeloggt && typeof handleJoinLinkAfterLogin==="function"){
+        // handleJoinLinkAfterLogin merkt den Code und öffnet openOnboardingModal().
+        setTimeout(handleJoinLinkAfterLogin, 50);
+      }
+    }catch(e){ console.warn("Onboarding-Weiche im Start-Screen:", e); }
   }
   function hideStartScreen(){
     const ss = document.getElementById("toni-startscreen");
@@ -1205,6 +1252,73 @@ let TONI_GROUPS=[]; let ACTIVE_GROUP_ID=null;
 function generateJoinCode(){const a="ABCDEFGHJKLMNPQRSTUVWXYZ23456789";let c="GRP-";for(let i=0;i<8;i++)c+=a[Math.floor(Math.random()*a.length)];return c;}
 function getActiveProfileIdForGroups(){return window.TONI_ACTIVE_PROFILE_ID || localStorage.getItem("toni_profile_id") || null;}
 function getJoinCodeFromUrl(){return new URL(window.location.href).searchParams.get("join");}
+// P3: Lernreise-Code aus der URL (für Neu-Registrierung via Lernreise-QR).
+// Format in der URL: ?journey=<TONI-JOURNEY:...> ODER ?journey=<id>&group=<grp>
+function getJourneyCodeFromUrl(){
+  try{
+    const u=new URL(window.location.href);
+    const j=u.searchParams.get("journey");
+    if(!j) return null;
+    const grp=u.searchParams.get("group")||u.searchParams.get("gruppe");
+    // Wenn schon der volle Payload kodiert ist, direkt zurückgeben; sonst zusammensetzen.
+    if(j.startsWith("TONI-JOURNEY:")) return j;
+    return "TONI-JOURNEY:"+j+(grp?":"+grp:"");
+  }catch(e){ return null; }
+}
+
+/* =========================================================
+   TONI – P3 / Registrierungs-Kette: Code-Merk-Schicht
+   =========================================================
+   Ein gescannter Code (Lerngruppe ODER Lernreise+Gruppe) muss den
+   E-Mail-Roundtrip überleben (Student verlässt die Seite, klickt den
+   Magic-Link, kommt FRISCH zurück). Wir merken den Code in
+   sessionStorage mit Zeitstempel; eigene Ablauffrist (Standard 2 h).
+   ========================================================= */
+window.TONI_PENDING_CODE_KEY = "toni_pending_code";
+window.TONI_PENDING_CODE_MAX_AGE_MS = 2 * 60 * 60 * 1000; // 2 Stunden
+
+// type: "group" (reiner Gruppen-Code) | "journey_group" (TONI-JOURNEY:<id>[:<grp>])
+function rememberPendingCode(rawCode, type){
+  try{
+    const code = String(rawCode || "").trim();
+    if(!code) return false;
+    const payload = { code, type: (type === "journey_group" ? "journey_group" : "group"), ts: Date.now() };
+    sessionStorage.setItem(window.TONI_PENDING_CODE_KEY, JSON.stringify(payload));
+    return true;
+  }catch(e){ console.warn("rememberPendingCode fehlgeschlagen:", e); return false; }
+}
+
+// Liefert {code,type,ts} oder null (auch null bei abgelaufen oder kaputt).
+function readPendingCode(){
+  try{
+    const raw = sessionStorage.getItem(window.TONI_PENDING_CODE_KEY);
+    if(!raw) return null;
+    const obj = JSON.parse(raw);
+    if(!obj || !obj.code || !obj.ts) { clearPendingCode(); return null; }
+    if(Date.now() - obj.ts > window.TONI_PENDING_CODE_MAX_AGE_MS){ clearPendingCode(); return null; }
+    return obj;
+  }catch(e){ console.warn("readPendingCode fehlgeschlagen:", e); clearPendingCode(); return null; }
+}
+
+function clearPendingCode(){
+  try{ sessionStorage.removeItem(window.TONI_PENDING_CODE_KEY); }catch(e){}
+}
+
+// Hilfsfunktion: erkennt aus einem rohen Code den Typ (für UI/Einstieg).
+function classifyPendingCode(rawCode){
+  const code = String(rawCode || "").trim();
+  if(!code) return null;
+  // Lernreise-QR (mit/ohne Präfix, mit/ohne Gruppe)
+  if(code.startsWith("TONI-JOURNEY:")) return "journey_group";
+  // URL mit ?journey=
+  try{ const u=new URL(code); if(u.searchParams.get("journey")||u.searchParams.get("journey_id")) return "journey_group"; }catch{}
+  // reiner Gruppencode GRP-...
+  if(/^GRP-/i.test(code)) return "group";
+  // <uuid>:<grp> ohne Präfix → Lernreise+Gruppe
+  if(typeof toniV20UuidLike==="function" && code.includes(":") && toniV20UuidLike(code.split(":")[0].trim())) return "journey_group";
+  return "group";
+}
+
 function buildJoinLink(g){return `${window.location.origin}${window.location.pathname}?join=${encodeURIComponent(g.join_code)}`;}
 function canManageGroups(){const r=typeof getCurrentRole==="function"?getCurrentRole():localStorage.getItem("toni_role");return r==="tutor"||r==="admin";}
 
@@ -1224,6 +1338,217 @@ async function createLearningGroup(){
     const btn=document.getElementById("toggle-create-group-btn"); if(btn)btn.textContent="+ Neue Lerngruppe anlegen";
     await loadTutorGroups(); if(rows&&rows[0]) selectLearningGroup(rows[0].id);
   }catch(e){console.error(e);appendMsg?.("error",`⚠️ Lerngruppe konnte nicht angelegt werden.<br><small>${escapeHtml(e.message)}</small>`,time?.()||"","desktop");}
+}
+
+/* =========================================================
+   STUDENTENVERWALTUNG (Baustein 1: Datenabruf)
+   Lädt alle Studenten der Institution des Tutors. Die RLS-Policy profiles_select
+   filtert serverseitig bereits auf die eigene Institution (institution_id =
+   get_my_institution_id()), daher kein zusätzlicher Frontend-Institutionsfilter nötig.
+   ========================================================= */
+let TONI_INSTITUTION_STUDENTS=[];
+
+async function loadInstitutionStudents(){
+  if(!canManageGroups())return [];
+  try{
+    // RLS gibt einem Tutor nur Profile seiner Institution frei; role=student grenzt ein.
+    const students = await supabaseRequest(
+      "profiles?is_active=eq.true&role=eq.student" +
+      "&select=id,display_name,first_name,last_name,email,class_name,profile_complete" +
+      "&order=class_name.asc,display_name.asc"
+    ) || [];
+
+    // Lerngruppen-Zugehörigkeit dazuladen: members → groups(name).
+    // Wir holen die Mitgliedschaften der sichtbaren Studenten in einem Rutsch.
+    let membersByProfile = {};
+    try{
+      const ids = students.map(s=>s.id);
+      if(ids.length){
+        const inList = "(" + ids.join(",") + ")";
+        const members = await supabaseRequest(
+          `learning_group_members?profile_id=in.${inList}` +
+          `&select=profile_id,learning_groups(name)`
+        ) || [];
+        members.forEach(m=>{
+          const nm = m.learning_groups?.name;
+          if(!nm) return;
+          (membersByProfile[m.profile_id] = membersByProfile[m.profile_id] || []).push(nm);
+        });
+      }
+    }catch(e){ console.warn("Gruppen-Zuordnung der Studenten:", e); }
+
+    TONI_INSTITUTION_STUDENTS = students.map(s=>({
+      id: s.id,
+      name: s.display_name || `${s.first_name||""} ${s.last_name||""}`.trim() || s.email,
+      email: s.email || "",
+      klasse: s.class_name || "",
+      gruppen: membersByProfile[s.id] || [],
+      registriert: s.profile_complete === true
+    }));
+    return TONI_INSTITUTION_STUDENTS;
+  }catch(e){
+    console.warn("loadInstitutionStudents:", e);
+    TONI_INSTITUTION_STUDENTS=[];
+    return [];
+  }
+}
+
+function renderStudentList(){
+  const root=document.getElementById("student-list"); if(!root)return;
+  const list=TONI_INSTITUTION_STUDENTS||[];
+  // Löschen nur für Admin/SuperAdmin (Tutor darf fremde Profile nicht löschen).
+  const darfLoeschen = (typeof getCurrentRole==="function" ? getCurrentRole() : localStorage.getItem("toni_role")) === "admin"
+                    || (typeof isSuperAdmin==="function" && isSuperAdmin());
+  if(!list.length){
+    root.innerHTML=`<div class="lr-editor-empty">Noch keine Studenten in deiner Institution.<br>Lade über „+ Student einladen" den ersten Studenten ein.</div>`;
+    return;
+  }
+  const rows=list.map(s=>{
+    const gruppen = s.gruppen.length
+      ? s.gruppen.map(g=>`<span class="student-chip">${escapeHtml(g)}</span>`).join(" ")
+      : `<span class="student-muted">–</span>`;
+    const status = s.registriert
+      ? `<span class="student-status ok">Registriert</span>`
+      : `<span class="student-status pending">Eingeladen</span>`;
+    const del = darfLoeschen
+      ? `<button class="student-del-btn" title="Studenten vollständig löschen" onclick="confirmDeleteStudent('${s.id}', '${escapeHtml(s.name).replace(/'/g,"\\'")}')">−</button>`
+      : "";
+    return `<tr>
+      <td>${escapeHtml(s.name)}</td>
+      <td>${s.klasse?escapeHtml(s.klasse):'<span class="student-muted">–</span>'}</td>
+      <td>${gruppen}</td>
+      <td><span class="student-muted">${escapeHtml(s.email)}</span></td>
+      <td>${status}</td>
+      ${darfLoeschen?`<td style="text-align:right">${del}</td>`:""}
+    </tr>`;
+  }).join("");
+  root.innerHTML=`<table class="student-table">
+    <thead><tr><th>Name</th><th>Klasse</th><th>Lerngruppe(n)</th><th>E-Mail</th><th>Status</th>${darfLoeschen?"<th></th>":""}</tr></thead>
+    <tbody>${rows}</tbody>
+  </table>`;
+}
+
+// Vollständiges Löschen eines Studenten (Admin). Reihenfolge: Zuordnungen → Profil.
+// Der Auth-User in auth.users bleibt als leere Hülle zurück (nur über Dashboard/Service-
+// Role entfernbar) – das Profil und alle Zuordnungen sind danach weg.
+async function confirmDeleteStudent(studentId, studentName){
+  if(!studentId) return;
+  const ok = window.confirm(
+    `Studenten „${studentName}" wirklich vollständig löschen?\n\n` +
+    `Entfernt werden: das Profil, alle Lerngruppen-Mitgliedschaften und alle Lernreise-Zuordnungen.\n\n` +
+    `Diese Aktion kann nicht rückgängig gemacht werden.`
+  );
+  if(!ok) return;
+  await deleteStudentCompletely(studentId);
+}
+
+async function deleteStudentCompletely(studentId){
+  try{
+    // 1) Lerngruppen-Mitgliedschaften
+    await supabaseRequest(`learning_group_members?profile_id=eq.${studentId}`, { method:"DELETE" });
+    // 2) Lernreise-Zuordnungen
+    await supabaseRequest(`learning_journey_assignments?student_profile_id=eq.${studentId}`, { method:"DELETE" });
+    // 3) Profil
+    await supabaseRequest(`profiles?id=eq.${studentId}`, { method:"DELETE" });
+    // Liste neu laden
+    await refreshStudentList();
+    appendMsg?.("toni", "🗑️ Student wurde gelöscht (Profil und alle Zuordnungen entfernt).", time?.()||"", "desktop");
+  }catch(e){
+    console.error("deleteStudentCompletely:", e);
+    alert("Löschen fehlgeschlagen: " + (e.message||e));
+  }
+}
+
+// Baustein 3 + Weg A: Einladungs-Modal für reine Registrierung (ohne Lerngruppe).
+// Der Link trägt ?register=1 und die institution_id des einladenden Tutors (&inst=…),
+// damit der neue Student der RICHTIGEN Institution zugeordnet wird (sonst sieht ihn
+// nur der Admin, nicht der Tutor – RLS filtert auf institution_id).
+let TONI_TUTOR_INSTITUTION_ID = null;
+
+async function getTutorInstitutionId(){
+  if(TONI_TUTOR_INSTITUTION_ID) return TONI_TUTOR_INSTITUTION_ID;
+  // Aus dem geladenen Profil, falls vorhanden:
+  const fromProfile = (window.TONI_AUTH_PROFILE && window.TONI_AUTH_PROFILE.institution_id) || null;
+  if(fromProfile){ TONI_TUTOR_INSTITUTION_ID = fromProfile; return fromProfile; }
+  // Sonst frisch laden:
+  const pid = getActiveProfileIdForGroups();
+  if(!pid) return null;
+  try{
+    const rows = await supabaseRequest(`profiles?id=eq.${pid}&select=institution_id&limit=1`);
+    TONI_TUTOR_INSTITUTION_ID = rows?.[0]?.institution_id || null;
+    return TONI_TUTOR_INSTITUTION_ID;
+  }catch(e){ console.warn("getTutorInstitutionId:", e); return null; }
+}
+
+async function buildRegisterLink(){
+  const base = `${window.location.origin}${window.location.pathname}?register=1`;
+  const inst = await getTutorInstitutionId();
+  return inst ? `${base}&inst=${encodeURIComponent(inst)}` : base;
+}
+async function toniOpenStudentInvite(){
+  if(!canManageGroups()) return;
+  const link = await buildRegisterLink();
+  const inst = await getTutorInstitutionId();
+  const qrUrl="https://api.qrserver.com/v1/create-qr-code/?size=200x200&data="+encodeURIComponent(link);
+  const box=document.getElementById("register-qr-box");
+  if(box) box.innerHTML=`<img alt="QR-Code für die Registrierung" src="${qrUrl}" width="200" height="200">`;
+  const msg=document.getElementById("register-invite-message");
+  if(msg){
+    if(!inst){
+      msg.className="auth-message visible"; 
+      msg.innerHTML="⚠️ Deiner Tutor-Kennung ist keine Institution zugeordnet. Der eingeladene Student kann dann nicht automatisch deiner Institution zugewiesen werden. Bitte wende dich an die Administration.";
+    }else{
+      msg.className="auth-message"; msg.innerHTML="";
+    }
+  }
+  document.getElementById("student-invite-modal")?.classList.add("open");
+}
+function closeStudentInviteModal(){
+  document.getElementById("student-invite-modal")?.classList.remove("open");
+}
+async function copyRegisterLink(){
+  const link=await buildRegisterLink();
+  const msg=document.getElementById("register-invite-message");
+  try{
+    await navigator.clipboard.writeText(link);
+    if(msg){ msg.className="auth-message visible ok"; msg.innerHTML="✅ Registrierungslink kopiert."; }
+  }catch(e){
+    if(msg){ msg.className="auth-message visible"; msg.innerHTML="Link: <span style='word-break:break-all'>"+escapeHtml(link)+"</span>"; }
+  }
+}
+async function downloadRegisterQrCode(){
+  const link=await buildRegisterLink();
+  const qrUrl="https://api.qrserver.com/v1/create-qr-code/?size=640x640&margin=12&data="+encodeURIComponent(link);
+  const img=new Image();
+  img.crossOrigin="anonymous";
+  img.onload=function(){
+    try{
+      const pad=40, headH=70, W=img.width+pad*2, H=img.height+pad*2+headH;
+      const c=document.createElement("canvas"); c.width=W; c.height=H;
+      const ctx=c.getContext("2d");
+      ctx.fillStyle="#ffffff"; ctx.fillRect(0,0,W,H);
+      ctx.fillStyle="#0f172a"; ctx.font="bold 26px sans-serif"; ctx.textAlign="center";
+      ctx.fillText("TONI – Registrierung", W/2, 44);
+      ctx.drawImage(img, pad, pad+headH);
+      const a=document.createElement("a");
+      a.href=c.toDataURL("image/png"); a.download="toni-registrierung-qr.png"; a.click();
+    }catch(e){ window.open(qrUrl,"_blank"); }
+  };
+  img.onerror=function(){ window.open(qrUrl,"_blank"); };
+  img.src=qrUrl;
+}
+
+async function refreshStudentList(){
+  const root=document.getElementById("student-list");
+  if(root) root.innerHTML=`<div class="lr-editor-empty">Studenten werden geladen …</div>`;
+  await loadInstitutionStudents();
+  renderStudentList();
+}
+
+// Baustein 3 (folgt): Einladungs-Modal für reine Registrierung.
+function openStudentInviteModal(){
+  if(typeof toniOpenStudentInvite==="function"){ toniOpenStudentInvite(); return; }
+  alert("Die Einladungsfunktion wird im nächsten Schritt ergänzt.");
 }
 
 async function loadTutorGroups(){
@@ -1334,37 +1659,289 @@ async function refreshGroupMembers(){
 }
 
 async function handleJoinLinkAfterLogin(){
-  const joinCode=getJoinCodeFromUrl(); if(!joinCode)return;
+  // P3: Code kann aus zwei URL-Quellen kommen:
+  //  - ?join=<GRP-code>            (reine Lerngruppe)
+  //  - ?journey=<id>[&group=<grp>] (Lernreise + optional Gruppe)
+  const joinCode=getJoinCodeFromUrl();
+  const journeyCode=getJourneyCodeFromUrl();
   const banner=document.getElementById("join-banner");
-  // Eingeloggt-Erkennung robust über die TATSÄCHLICH befüllten Quellen:
-  // - TONI_AUTH_SESSION (modul-lokal, gesetzt in handleAuthSession)
-  // - TONI_AUTH_PROFILE (modul-lokal, gesetzt nach Profil-Load)
-  // - getActiveProfileIdForGroups() (window.TONI_ACTIVE_PROFILE_ID / localStorage)
-  // Früher wurde fälschlich window.TONI_AUTH_SESSION geprüft – das wird nie gesetzt,
-  // wodurch eingeloggte Studenten irrtümlich ins Registrierungsfenster gerieten.
+
+  // Eingeloggt-Erkennung NUR über eine ECHTE Supabase-Session.
+  // WICHTIG: NICHT über localStorage (toni_profile_id) oder TONI_AUTH_PROFILE.id prüfen –
+  // diese können nach einem früheren Versuch VERWAIST zurückbleiben, ohne dass eine echte
+  // Session existiert. Folge wäre fälschlich "eingeloggt" → redeemPendingOrUrlCode →
+  // Server-Fehler "not_authenticated" und das Onboarding-Modal erscheint nicht.
   const istEingeloggt = !!(
     (typeof TONI_AUTH_SESSION !== "undefined" && TONI_AUTH_SESSION?.user) ||
-    (typeof TONI_AUTH_PROFILE !== "undefined" && TONI_AUTH_PROFILE?.id) ||
-    (window.TONI_AUTH_SESSION?.user) ||
-    (window.TONI_AUTH_PROFILE?.id) ||
-    (typeof getActiveProfileIdForGroups === "function" && getActiveProfileIdForGroups())
+    (window.TONI_AUTH_SESSION?.user)
   );
-  if(!istEingeloggt){if(banner){banner.className="join-banner visible";banner.innerHTML="Du möchtest einer Lerngruppe beitreten. Bitte melde dich zuerst an. Danach ordnet TONI dich automatisch zu.";}openAuthModal?.();return;}
-  try{
-    const result=await supabaseRequest("rpc/join_learning_group_by_code",{method:"POST",body:JSON.stringify({p_join_code:joinCode})});
-    if(banner){banner.className="join-banner visible";banner.innerHTML=`✅ Du bist der Lerngruppe <strong>${escapeHtml(result.group_name||"Lerngruppe")}</strong> beigetreten.`;}
-    appendMsg?.("toni",`✅ Du bist der Lerngruppe <strong>${escapeHtml(result.group_name||"Lerngruppe")}</strong> zugeordnet.`,time?.()||"","desktop");
-    const url=new URL(window.location.href); url.searchParams.delete("join"); window.history.replaceState({},"",url.toString());
-  }catch(e){console.error(e);if(banner){banner.className="join-banner visible err";banner.innerHTML=`⚠️ Beitritt fehlgeschlagen.<br><small>${escapeHtml(e.message)}</small>`;}}
+
+  // Quelle 1: Code aus der URL (direkter Scan im selben Tab).
+  let rawCode = journeyCode || joinCode;
+  let codeType = journeyCode ? "journey_group" : "group";
+
+  // Quelle 2 (P3-3): Nach dem Magic-Link-Roundtrip steht KEIN Code mehr in der URL
+  // (Supabase überschreibt sie). Dann den beim Mailversand GEMERKTEN Code verwenden.
+  if(!rawCode && typeof readPendingCode === "function"){
+    const pending = readPendingCode();
+    if(pending && pending.code){
+      rawCode = pending.code;
+      codeType = pending.type || (typeof classifyPendingCode==="function" ? classifyPendingCode(pending.code) : "group");
+    }
+  }
+
+  // Gar nichts zu tun? (weder URL noch gemerkt)
+  if(!rawCode){
+    // Baustein 3: ?register=1 = reine Registrierung (kein Code). Wenn NICHT eingeloggt,
+    // das Onboarding-Fenster öffnen; eingeloggt ist nichts zu tun.
+    const reinReg = new URL(window.location.href).searchParams.get("register") === "1";
+    if(reinReg && !istEingeloggt){
+      if(typeof openOnboardingModal === "function") openOnboardingModal();
+    }
+    return;
+  }
+
+  if(!istEingeloggt){
+    // P3: Code für den E-Mail-Roundtrip MERKEN, bevor der Student die Seite verlässt.
+    if(typeof rememberPendingCode === "function") rememberPendingCode(rawCode, codeType);
+    if(banner){
+      banner.className="join-banner visible";
+      banner.innerHTML = codeType === "journey_group"
+        ? "Du möchtest mit einer Lernreise starten. Lege zuerst deinen Zugang an – danach ordnet TONI dich automatisch zu."
+        : "Du möchtest einer Lerngruppe beitreten. Lege zuerst deinen Zugang an – danach ordnet TONI dich automatisch zu.";
+    }
+    // Onboarding-Einstieg öffnen (eigener Weg, NICHT der normale Passwort-Login).
+    if(typeof openOnboardingModal === "function") openOnboardingModal();
+    else openAuthModal?.();
+    return;
+  }
+
+  // --- Eingeloggt: Code direkt einlösen (URL ODER gemerkt) ---
+  await redeemPendingOrUrlCode(rawCode, codeType, banner);
 }
 
-const toniGroupsOriginalApplyRoleUI=window.applyRoleUI;
-window.applyRoleUI=function(){if(typeof toniGroupsOriginalApplyRoleUI==="function")toniGroupsOriginalApplyRoleUI();const panel=document.getElementById("group-panel");if(panel)panel.classList.toggle("visible",canManageGroups());if(canManageGroups())setTimeout(loadTutorGroups,100);};
+// P3: Einlösen eines Codes (Gruppe und/oder Lernreise) – idempotent, fehlertolerant.
+// Wird sowohl beim direkten (eingeloggten) Scan als auch nach Abschluss der
+// Registrierung aufgerufen. rawCode kann GRP-... oder TONI-JOURNEY:<id>[:<grp>] sein.
+async function redeemPendingOrUrlCode(rawCode, codeType, banner){
+  if(typeof supabaseRequest !== "function") return;
+  const setBanner=(html,err)=>{ if(banner){ banner.className="join-banner visible"+(err?" err":""); banner.innerHTML=html; } };
+  let okMsgs=[];
+  try{
+    if(codeType === "journey_group"){
+      // Lernreise zuordnen (per bestehender Kette) …
+      const journeyId = (typeof parseJourneyQrPayloadV20==="function") ? parseJourneyQrPayloadV20(rawCode) : null;
+      const groupCode = (typeof parseGroupCodeFromQrPayloadV20==="function") ? parseGroupCodeFromQrPayloadV20(rawCode) : null;
+      if(journeyId){
+        try{
+          await supabaseRequest("rpc/assign_learning_journey_to_me",{method:"POST",body:JSON.stringify({p_template_id:journeyId})});
+          okMsgs.push("deiner Lernreise");
+        }catch(e){ console.warn("Lernreise-Zuordnung nach Registrierung fehlgeschlagen:",e); }
+      }
+      if(groupCode){
+        try{
+          const r=await supabaseRequest("rpc/join_learning_group_by_code",{method:"POST",body:JSON.stringify({p_join_code:groupCode})});
+          okMsgs.push(`der Lerngruppe <strong>${escapeHtml(r?.group_name||"Lerngruppe")}</strong>`);
+        }catch(e){ console.warn("Gruppenbeitritt nach Registrierung fehlgeschlagen:",e); }
+      }
+    } else {
+      // reiner Gruppen-Code
+      const r=await supabaseRequest("rpc/join_learning_group_by_code",{method:"POST",body:JSON.stringify({p_join_code:rawCode})});
+      okMsgs.push(`der Lerngruppe <strong>${escapeHtml(r?.group_name||"Lerngruppe")}</strong>`);
+    }
+
+    if(okMsgs.length){
+      setBanner("✅ Du bist jetzt "+okMsgs.join(" und ")+" zugeordnet.");
+      appendMsg?.("toni","✅ Du bist jetzt "+okMsgs.join(" und ")+" zugeordnet.",time?.()||"","desktop");
+    }else{
+      setBanner("⚠️ Dein Zugang ist fertig, aber die Zuordnung wurde nicht gefunden. Bitte wende dich an deine Lehrkraft.",true);
+    }
+    if(typeof clearPendingCode==="function") clearPendingCode();
+    // URL-Parameter entfernen, damit ein Reload nicht erneut auslöst.
+    try{const url=new URL(window.location.href);url.searchParams.delete("join");url.searchParams.delete("journey");url.searchParams.delete("group");url.searchParams.delete("gruppe");window.history.replaceState({},"",url.toString());}catch(e){}
+  }catch(e){
+    console.error(e);
+    setBanner(`⚠️ Zuordnung fehlgeschlagen.<br><small>${escapeHtml(e.message)}</small>`,true);
+  }
+}
+
+/* =========================================================
+   TONI – P3-2 / Onboarding-Einstieg für NEUE Studenten
+   =========================================================
+   Eigener Weg (NICHT der normale Passwort-Login): Student gibt
+   E-Mail ein, TONI merkt den gescannten Code (falls noch nicht
+   geschehen) und sendet die Verifizierungs-Mail. Re-Send mit Sperre.
+   ========================================================= */
+window.TONI_ONBOARDING_RESEND_LOCK_MS = 30 * 1000; // 30 s Sperre gegen Mehrfach-Klick
+window.TONI_ONBOARDING_LAST_SENT = 0;
+
+function openOnboardingModal(){
+  const m=document.getElementById("onboarding-modal"); if(!m)return;
+  m.classList.add("open");
+  // Untertitel je nach Code-Typ anpassen
+  const pending = (typeof readPendingCode==="function") ? readPendingCode() : null;
+  const sub=document.getElementById("onboarding-sub");
+  if(sub && pending){
+    sub.textContent = pending.type === "journey_group"
+      ? "Du startest mit einer Lernreise. Gib deine E-Mail-Adresse ein – TONI sendet dir einen Bestätigungs-Link."
+      : "Du trittst einer Lerngruppe bei. Gib deine E-Mail-Adresse ein – TONI sendet dir einen Bestätigungs-Link.";
+  }
+  setTimeout(()=>document.getElementById("onboarding-email")?.focus(),100);
+}
+
+function closeOnboardingModal(){
+  document.getElementById("onboarding-modal")?.classList.remove("open");
+  // Guard aufheben, damit der Start-Screen wieder erscheint (Student hat abgebrochen).
+  document.documentElement.classList.remove("toni-onboarding-pending");
+}
+
+function setOnboardingMessage(html, kind){
+  const el=document.getElementById("onboarding-message");
+  if(!el)return;
+  el.className="auth-message visible"+(kind?" "+kind:"");
+  el.innerHTML=html;
+}
+
+async function startOnboardingVerification(){
+  const email=document.getElementById("onboarding-email")?.value.trim();
+  if(!email){ setOnboardingMessage("Bitte gib deine E-Mail-Adresse ein.","err"); return; }
+  // einfache Plausibilität (kein strenger Validator – Supabase prüft serverseitig)
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)){ setOnboardingMessage("Bitte gib eine gültige E-Mail-Adresse ein.","err"); return; }
+
+  // Re-Send-Sperre
+  const now=Date.now();
+  if(now - window.TONI_ONBOARDING_LAST_SENT < window.TONI_ONBOARDING_RESEND_LOCK_MS){
+    const wait=Math.ceil((window.TONI_ONBOARDING_RESEND_LOCK_MS-(now-window.TONI_ONBOARDING_LAST_SENT))/1000);
+    setOnboardingMessage(`Bitte warte ${wait} Sekunden, bevor du erneut sendest.`,"err");
+    return;
+  }
+
+  // Sicherstellen, dass der Code gemerkt ist (falls Modal ohne vorheriges handleJoinLinkAfterLogin geöffnet wurde)
+  if(typeof readPendingCode==="function" && !readPendingCode()){
+    const fromUrl = (typeof getJourneyCodeFromUrl==="function" && getJourneyCodeFromUrl())
+                 || (typeof getJoinCodeFromUrl==="function" && getJoinCodeFromUrl());
+    if(fromUrl && typeof rememberPendingCode==="function"){
+      const t=(typeof classifyPendingCode==="function")?classifyPendingCode(fromUrl):"group";
+      rememberPendingCode(fromUrl, t);
+    }
+  }
+
+  const btn=document.getElementById("onboarding-send-btn");
+  if(btn){ btn.disabled=true; btn.textContent="Sende Link…"; }
+  try{
+    // Eigener Versand DIREKT über signInWithOtp, damit Erfolg/Fehler im Onboarding-Modal
+    // sichtbar werden (das bestehende sendVerificationMail schreibt in 'auth-message',
+    // das hier nicht sichtbar ist – Fehler blieben unbemerkt).
+    const client = (typeof getSupabaseClient==="function") ? getSupabaseClient() : null;
+    if(!client || !client.auth){ throw new Error("Verbindung zu TONI nicht verfügbar."); }
+    // Redirect-URL: aktuelle URL (enthält ?join=/?journey=) + registration=1,
+    // damit die Rückkehr-Logik (toniV12HandleCallback) den Registrierungsabschluss erkennt
+    // UND der Code als zusätzlicher Fallback in der URL bleibt.
+    // Redirect-URL: aktuelle URL + registration=1.
+    const redirectUrl = new URL(window.location.href);
+    redirectUrl.searchParams.set("registration","1");
+    // P3-5 (URL-Fallback): Den gemerkten Code IN die Redirect-URL einbetten, damit er den
+    // Magic-Link-Roundtrip GARANTIERT übersteht – auch wenn der Link in einem neuen Tab
+    // geöffnet wird (dann ist sessionStorage leer). Der Callback bereinigt zwar
+    // code/type/token_hash/registration, aber NICHT join/journey – die bleiben erhalten,
+    // bis handleJoinLinkAfterLogin sie eingelöst hat.
+    try{
+      const pend = (typeof readPendingCode==="function") ? readPendingCode() : null;
+      const code = pend?.code
+                || (typeof getJourneyCodeFromUrl==="function" && getJourneyCodeFromUrl())
+                || (typeof getJoinCodeFromUrl==="function" && getJoinCodeFromUrl());
+      const type = pend?.type
+                || (typeof classifyPendingCode==="function" && code ? classifyPendingCode(code) : null);
+      if(code){
+        if(type === "journey_group"){
+          // Lernreise-Payload (TONI-JOURNEY:<id>[:<grp>]) als ?journey= mitgeben.
+          redirectUrl.searchParams.set("journey", code);
+          redirectUrl.searchParams.delete("join");
+        }else{
+          redirectUrl.searchParams.set("join", code);
+          redirectUrl.searchParams.delete("journey");
+        }
+      }
+    }catch(e){ console.warn("Redirect-Code-Einbettung:", e); }
+    const result = await Promise.race([
+      client.auth.signInWithOtp({ email, options:{ emailRedirectTo: redirectUrl.toString() } }),
+      new Promise((_,rej)=>setTimeout(()=>rej(new Error("Senden dauert zu lange – bitte später erneut versuchen.")),15000))
+    ]);
+    if(result && result.error) throw result.error;
+    window.TONI_ONBOARDING_LAST_SENT=Date.now();
+    setOnboardingMessage(`✅ Wir haben dir einen Bestätigungs-Link an <strong>${escapeHtml(email)}</strong> gesendet. Bitte öffne ihn auf diesem Gerät. Danach legst du dein Passwort fest.`,"ok");
+    const ra=document.getElementById("onboarding-resend-area"); if(ra)ra.style.display="";
+  }catch(e){
+    console.error("Onboarding-Versand:",e);
+    setOnboardingMessage("⚠️ Der Link konnte nicht gesendet werden:<br>"+escapeHtml(e.message||String(e)),"err");
+  }finally{
+    if(btn){ btn.disabled=false; btn.textContent="Bestätigungs-Link senden"; }
+  }
+}
+
+function resendOnboardingVerification(){ startOnboardingVerification(); }
+
+window.applyRoleUI=function(){if(typeof toniGroupsOriginalApplyRoleUI==="function")toniGroupsOriginalApplyRoleUI();const panel=document.getElementById("group-panel");if(panel)panel.classList.toggle("visible",canManageGroups());const sp=document.getElementById("student-panel");if(sp)sp.classList.toggle("visible",canManageGroups());if(canManageGroups()){setTimeout(loadTutorGroups,100);setTimeout(refreshStudentList,150);}};
 
 const toniGroupsOriginalHandleAuthSession=window.handleAuthSession;
 window.handleAuthSession=async function(session){if(typeof toniGroupsOriginalHandleAuthSession==="function")await toniGroupsOriginalHandleAuthSession(session);setTimeout(handleJoinLinkAfterLogin,300);};
 
-window.addEventListener("DOMContentLoaded",()=>setTimeout(()=>{if(typeof applyRoleUI==="function")applyRoleUI();handleJoinLinkAfterLogin();},1300));
+// P3: Onboarding-Weiche – unabhängig vom konkreten Start-/Login-Pfad.
+// Steht ein Code in der URL (?join=/?journey=) und ist niemand eingeloggt, das
+// Onboarding-Modal öffnen (statt den neuen Studenten im Passwort-Login zu lassen).
+// Mehrfach wiederholt, weil verschiedene Startpfade (V13/V77/Start-Screen) zu
+// unterschiedlichen Zeitpunkten feuern. Sobald das Modal offen ist, wird gestoppt.
+function toniMaybeOpenOnboarding(reason){
+  try{
+    // P3: NICHT eingreifen, wenn wir gerade aus dem Magic-Link zurückkommen
+    // (Registrierungs-Rückkehr). Dann gehört die Bühne toniV12HandleCallback, das
+    // "Registrierung abschließen" zeigt – sonst legt sich fälschlich das
+    // E-Mail-Eingabe-Fenster darüber.
+    const url = new URL(window.location.href);
+    const hash = new URLSearchParams((window.location.hash||"").replace(/^#/,""));
+    const istCallbackRueckkehr =
+      url.searchParams.get("registration") === "1" ||
+      url.searchParams.has("code") || url.searchParams.has("token_hash") ||
+      hash.has("access_token") || hash.has("refresh_token") || hash.has("error") ||
+      window.TONI_AUTH_CALLBACK_HANDLED === true ||
+      document.getElementById("registration-required-modal")?.classList.contains("open") ||
+      document.getElementById("password-required-modal")?.classList.contains("open");
+    if(istCallbackRueckkehr){ document.documentElement.classList.remove("toni-onboarding-pending"); return false; }
+
+    const m=document.getElementById("onboarding-modal");
+    if(m && m.classList.contains("open")) return true; // schon offen → fertig
+    const hatCode = (typeof getJoinCodeFromUrl==="function" && getJoinCodeFromUrl())
+                 || (typeof getJourneyCodeFromUrl==="function" && getJourneyCodeFromUrl());
+    // Baustein 3: ?register=1 löst REINE Registrierung aus (kein Code, keine Zuordnung).
+    const reinReg = url.searchParams.get("register") === "1";
+    if(!hatCode && !reinReg){ document.documentElement.classList.remove("toni-onboarding-pending"); return false; }
+    const eingeloggt = (typeof TONI_AUTH_SESSION!=="undefined" && TONI_AUTH_SESSION?.user)
+                 || (window.TONI_AUTH_SESSION?.user);
+    if(eingeloggt){
+      // Eingeloggt → kein Onboarding-Modal; ein evtl. Code löst handleJoinLinkAfterLogin
+      // direkt ein. Bei reiner Registrierung (register=1) ist nichts zu tun.
+      document.documentElement.classList.remove("toni-onboarding-pending");
+      if(hatCode && typeof handleJoinLinkAfterLogin==="function") handleJoinLinkAfterLogin();
+      return false;
+    }
+    if(typeof handleJoinLinkAfterLogin==="function"){ handleJoinLinkAfterLogin(); return true; }
+  }catch(e){ console.warn("toniMaybeOpenOnboarding:", reason, e); }
+  return false;
+}
+window.addEventListener("DOMContentLoaded",()=>{
+  if(typeof applyRoleUI==="function") setTimeout(applyRoleUI,1300);
+  // Mehrere Versuche, bis der Start-Screen/Login wirklich da ist.
+  [600,1300,2300,4300,6300].forEach(ms=>setTimeout(()=>toniMaybeOpenOnboarding("t"+ms),ms));
+  // Sicherheitsnetz: Falls nach allen Versuchen KEIN Onboarding-Modal offen ist
+  // (z.B. ungültiger Code), den Guard aufheben, damit der Start-Screen nicht
+  // dauerhaft unsichtbar bleibt.
+  setTimeout(()=>{
+    const m=document.getElementById("onboarding-modal");
+    if(!(m && m.classList.contains("open"))){
+      document.documentElement.classList.remove("toni-onboarding-pending");
+    }
+  },7000);
+});
 
 /* =========================================================
    TONI – AUTH V15 / Registrierung-Fenster schließen

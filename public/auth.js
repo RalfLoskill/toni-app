@@ -4038,8 +4038,10 @@ window.completeSelfRegistration = async function() {
 
     const displayName = `${first} ${last}`.trim();
 
-    setRegistrationMessage("3/3 Profil wird gespeichert …", "ok");
-    const savedProfile = await toniV14PatchProfileDirect(accessToken, user, {
+    // Weg A: institution_id aus dem Einladungslink (?inst=…) übernehmen, damit der neue
+    // Student der Institution des einladenden Tutors zugeordnet wird (sonst sieht ihn nur
+    // der Admin). Nur setzen, wenn ein gültiger Wert vorliegt.
+    const profilePatch = {
       first_name: first,
       last_name: last,
       display_name: displayName,
@@ -4048,7 +4050,17 @@ window.completeSelfRegistration = async function() {
       profile_complete: true,
       force_password_change: false,
       updated_at: new Date().toISOString()
-    });
+    };
+    try{
+      const inst = new URL(window.location.href).searchParams.get("inst");
+      // grobe UUID-Plausibilität, um Müll nicht zu speichern
+      if(inst && /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(inst)){
+        profilePatch.institution_id = inst;
+      }
+    }catch(e){ console.warn("institution_id aus URL:", e); }
+
+    setRegistrationMessage("3/3 Profil wird gespeichert …", "ok");
+    const savedProfile = await toniV14PatchProfileDirect(accessToken, user, profilePatch);
 
     toniV14ApplyCompletedProfile(savedProfile);
 
