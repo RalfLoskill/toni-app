@@ -247,7 +247,7 @@ async function agentAction(agentType, label, panel) {
     }
     const result = await callAgent(agentType, payload);
     removeTyping(tid);
-    appendMsg('toni', result.message, time(), p);
+    appendMsg('toni', toniRenderMarkdown(result.message), time(), p);
     STATE.chatHistory.push({role:'assistant',content:result.message});
     if (result.ui_updates) applyUpdates(result.ui_updates);
     setApiBadge(true); saveState(STATE);
@@ -359,6 +359,54 @@ function closeMobileChat() { document.getElementById('mobile-chat').classList.re
 // ══════════════════════════════════════
 window.toniHintLevels = window.toniHintLevels || {};   // taskId -> bisher angeforderte Stufe
 
+// ══════════════════════════════════════
+// Markdown → HTML für KI-Texte (Hinweise + Chat-Antworten).
+// Sicher: escapt zuerst alles, wandelt dann ein bewusst kleines, vorhersehbares
+// Subset um (fett, kursiv, Code, Listen, Absätze). Kein <script>/HTML aus dem
+// KI-Text kann durchschlagen, weil vor der Umwandlung escapt wird.
+// ══════════════════════════════════════
+function toniRenderMarkdown(raw) {
+  let s = String(raw == null ? '' : raw);
+  // 1) HTML neutralisieren
+  s = s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  // 2) Inline-Code `…` (vor fett/kursiv, damit Sterne darin nicht greifen)
+  s = s.replace(/`([^`]+)`/g, '<code style="background:var(--color-background-secondary,#f1f5f9);padding:1px 5px;border-radius:4px;font-size:.92em">$1</code>');
+  // 3) Fett **…** und __…__
+  s = s.replace(/\*\*([^*]+)\*\*/g, '<strong>$1</strong>').replace(/__([^_]+)__/g, '<strong>$1</strong>');
+  // 4) Kursiv *…* (einzelne Sterne, nicht an Wortgrenzen klebend)
+  s = s.replace(/(^|[\s(])\*([^*\n]+)\*(?=[\s).,!?:;]|$)/g, '$1<em>$2</em>');
+  // 5) In Zeilen aufteilen, Listen erkennen, sonst Absätze
+  const lines = s.split(/\r?\n/);
+  let html = '', list = null;
+  const closeList = () => { if (list) { html += '</' + list + '>'; list = null; } };
+  for (let line of lines) {
+    const t = line.trim();
+    if (!t) { closeList(); continue; }
+    const ul = t.match(/^[-•*]\s+(.*)$/);
+    const ol = t.match(/^\d+[.)]\s+(.*)$/);
+    if (ul) { if (list !== 'ul') { closeList(); html += '<ul style="margin:6px 0;padding-left:20px">'; list = 'ul'; } html += '<li style="margin:3px 0">' + ul[1] + '</li>'; }
+    else if (ol) { if (list !== 'ol') { closeList(); html += '<ol style="margin:6px 0;padding-left:20px">'; list = 'ol'; } html += '<li style="margin:3px 0">' + ol[1] + '</li>'; }
+    else { closeList(); html += '<p style="margin:0 0 10px">' + t + '</p>'; }
+  }
+  closeList();
+  return html || '<p style="margin:0"></p>';
+}
+window.toniRenderMarkdown = toniRenderMarkdown;
+
+// Wrappt einen formatierten KI-Hinweis in die TONi-Hinweis-Box (Kopfzeile +
+// optionaler Tipp-Hervorhebung). Erwartet bereits gerendertes Markdown-HTML.
+function toniRenderHintBox(rawText) {
+  const body = toniRenderMarkdown(rawText);
+  return '<div style="background:var(--color-background-secondary,#f1f5f9);border:1px solid var(--color-border-tertiary,#e2e8f0);border-radius:12px;overflow:hidden">' +
+      '<div style="display:flex;align-items:center;gap:8px;background:var(--blue-light,#dbeafe);padding:9px 14px;border-bottom:1px solid #bfdbfe">' +
+        '<span style="font-size:16px">💡</span>' +
+        '<span style="font-weight:500;font-size:13px;color:var(--blue-dark,#1d4ed8)">TONi Hinweis</span>' +
+      '</div>' +
+      '<div style="padding:13px 15px;font-size:14px;line-height:1.6;color:var(--color-text-primary,#1e293b)">' + body + '</div>' +
+    '</div>';
+}
+window.toniRenderHintBox = toniRenderHintBox;
+
 async function toniRequestSocraticHint() {
   const hintEl = document.getElementById('lr-task-hint');
   const taskId = (typeof STATE !== 'undefined' && STATE) ? STATE.selectedTaskId : null;
@@ -418,7 +466,7 @@ async function toniRequestSocraticHint() {
   try {
     const result = await callAgent('explanation_agent', payload);
     const msg = (result && result.message) ? result.message : 'Ich konnte gerade keinen Hinweis erstellen – versuch es gleich nochmal.';
-    if (hintEl) hintEl.innerHTML = msg;
+    if (hintEl) hintEl.innerHTML = toniRenderHintBox(msg);
     setApiBadge(true);
   } catch (err) {
     // Fallback: bisheriger statischer Hinweis, damit der Button nie „tot“ wirkt

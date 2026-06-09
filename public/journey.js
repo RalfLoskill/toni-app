@@ -413,7 +413,7 @@ function toniRenderReflexion(task,el){
     return '';
   }).join('');
 
-  const scalesHtml = scales.map((sc,si)=>`<div style="margin-bottom:10px"><div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:6px">${toniEsc(sc.label||'Wie gut verstehst du das Thema?')}</div><div style="display:flex;gap:6px" class="reflexion-stars" data-scale="${si}">${[1,2,3,4,5].map(i=>`<button onclick="toniReflexionStar(${si},${i})" style="font-size:22px;background:none;border:none;cursor:pointer;opacity:.35" data-star="${i}">⭐</button>`).join('')}</div></div>`).join('');
+  const scalesHtml = scales.map((sc,si)=>`<div style="background:var(--blue-light,#dbeafe);border:1px solid var(--color-border-tertiary,#e2e8f0);border-radius:10px;padding:12px 14px;margin-bottom:10px"><div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:6px">${toniEsc(sc.label||'Wie gut verstehst du das Thema?')}</div><div style="display:flex;gap:6px" class="reflexion-stars" data-scale="${si}">${[1,2,3,4,5].map(i=>`<button onclick="toniReflexionStar(${si},${i})" style="font-size:22px;background:none;border:none;cursor:pointer;opacity:.35" data-star="${i}">⭐</button>`).join('')}</div></div>`).join('');
 
   const helpersHtml = helpers.length
     ? `<div style="background:var(--color-background-secondary);border-radius:8px;padding:10px 12px;margin-bottom:12px"><div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:6px">Denk auch daran:</div>${helpers.map(h=>`<div style="font-size:13px;color:var(--color-text-primary);line-height:1.6;margin-bottom:4px">• ${toniEsc(h)}</div>`).join('')}</div>`

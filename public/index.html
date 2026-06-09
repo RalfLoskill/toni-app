@@ -379,8 +379,8 @@ body { font-family:'Inter',sans-serif; background:#f8fafc; font-size:13px; color
 .lr-station-status{width:26px;height:26px;border-radius:50%;display:flex;align-items:center;justify-content:center;background:#e2e8f0;color:#64748b;font-size:12px;font-weight:800;margin-bottom:8px}
 .lr-station-card.done .lr-station-status{background:var(--blue);color:#fff}.lr-station-card.current .lr-station-status{background:var(--blue);color:#fff;box-shadow:0 0 0 4px #dbeafe}
 .lr-station-name{font-size:12px;font-weight:800;color:#0f172a;margin-bottom:3px}.lr-station-sub{font-size:10px;color:#64748b;line-height:1.25}.lr-station-progress{font-size:10px;color:#64748b;margin-top:7px}
-.lr-task-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
-@media(max-width:560px){.lr-task-grid{grid-template-columns:1fr}}
+.lr-task-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr));gap:10px}
+@media(max-width:980px){.lr-task-grid{grid-template-columns:1fr}}
 .lr-top-split{display:grid;grid-template-columns:240px 1fr;grid-template-areas:"stations right";gap:20px;align-items:start}
 .lr-top-split .lr-stations{grid-area:stations}
 .lr-top-split .lr-right-col{grid-area:right;min-width:0}
@@ -431,6 +431,10 @@ body { font-family:'Inter',sans-serif; background:#f8fafc; font-size:13px; color
 .lr-header-progress .lr-track-fill{height:100%;background:var(--blue,#185FA5);border-radius:3px;transition:width .3s}
 .lr-header-pct{font-size:13px;font-weight:700;color:var(--blue,#185FA5)}
 @media(max-width:560px){.lr-modal-backdrop{padding:0}.lr-modal{max-height:100vh;height:100vh;border-radius:0}.toni-create-project-modal{width:100%;max-width:100%;height:auto;max-height:90vh;border-radius:18px}.toni-join-project-modal{width:100%;max-width:100%;height:auto;max-height:90vh;border-radius:18px}.toni-add-task-modal{width:100%;max-width:100%;height:auto;max-height:90vh;border-radius:18px}.toni-task-detail-modal{width:100%;max-width:100%;height:auto;max-height:90vh;border-radius:18px}.toni-project-modal{width:90%;max-width:90%;height:auto;max-height:90vh;border-radius:18px}.lr-modal-header{flex-direction:column}.lr-modal-actions{width:100%}.lr-modal-actions button{flex:1}}
+/* Mobil (hochkant + quer): lange Lernreise-Beschreibung im Kopf ausblenden,
+   damit die Stationen schneller sichtbar sind. Nur die Lernreise-Beschreibung
+   (#lr-modal-sub), nicht die Aufgaben-/Projekt-Subtitel. */
+@media(max-width:760px){#lr-modal-sub{display:none}}
 
 
 /* =========================================================
@@ -9272,9 +9276,9 @@ input.youtube-force-invalid-v105{
   <div class="footer-links"><a href="#">Datenschutz</a><a href="#">Impressum</a><a href="#">Hilfe</a></div>
 </footer>
 
-<script src="/chat.js?v=11"></script>
+<script src="/chat.js?v=12"></script>
 
-<script src="/journey.js?v=83"></script>
+<script src="/journey.js?v=84"></script>
 <script src="/journey_editor_v111.js?v=55"></script>
 <script src="/admin.js"></script>
 <script src="/ui.js?v=7"></script>
