@@ -437,7 +437,10 @@ function saveSelectedTaskAnswer(){const f=findTask(STATE.selectedTaskId);if(!f)r
 function toniRenderAufgabe(task,el){
   if(!el) return;
   const media=toniRenderTaskMedia(task);
-  const prompt=task.content||task.description||task.title||'';
+  // Anzeige-Text: nimm das inhaltlich gefüllte Feld. content und description
+  // können auseinanderlaufen (Editor schreibt primär description, Seed-Daten
+  // nutzen content). Das längere der beiden ist der ausführliche Auftrag.
+  const prompt=[task.content,task.description].map(v=>String(v||'').trim()).filter(Boolean).sort((a,b)=>b.length-a.length)[0]||task.title||'';
   const hasCheck=String(task.expected_answer||'').trim()!=='';
   const hasSolution=String(task.solution||'').trim()!=='';
   const unit=task.expected_unit?`<span style="color:var(--color-text-secondary);font-size:14px;font-weight:500">${toniEsc(task.expected_unit)}</span>`:'';
