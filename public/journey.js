@@ -6578,7 +6578,6 @@ window.addEventListener("resize", () => {
       <div class="step v53-icon-step v53-start-step">
         <div class="step-circle">▶</div>
         <div class="step-label">Start</div>
-        <div class="step-sublabel">Beginn</div>
       </div>`;
 
     const stepsHtml = steps.map((s, i) => {
@@ -6598,15 +6597,11 @@ window.addEventListener("resize", () => {
       }
 
       const title = toniV53Esc(s.title || `Station ${i+1}`);
-      const subtitle = toniV53Esc(s.subtitle || s.type || '');
-      const currentBadge = st === 'current' ? '<div class="step-badge">Du bist hier</div>' : '';
 
       return `
         <div class="step">
           <div class="step-circle ${circleClass}">${circleContent}</div>
           <div class="step-label ${st === 'current' ? 'cur' : ''}">${title}</div>
-          <div class="step-sublabel">${subtitle}</div>
-          ${currentBadge}
         </div>`;
     }).join('');
 
@@ -6614,7 +6609,6 @@ window.addEventListener("resize", () => {
       <div class="step v53-icon-step v53-goal-step ${isComplete ? 'done' : ''}">
         <div class="step-circle">🏁</div>
         <div class="step-label">Ziel</div>
-        <div class="step-sublabel">Abschluss</div>
       </div>`;
 
     wrap.innerHTML = `
