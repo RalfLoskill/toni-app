@@ -6,7 +6,7 @@
 // Build-Stempel: im Browser per `window.TONI_JOURNEY_BUILD` abfragbar.
 // Wenn dieser Wert NICHT "v86-assignments-progress-group" ist, lädt der
 // Browser eine veraltete Datei (Cache/Deploy), nicht diese Version.
-window.TONI_JOURNEY_BUILD = "v100-reg-url-cleanup";
+window.TONI_JOURNEY_BUILD = "v106-student-mgmt";
 
 /* Lernreisen V1: ergänzt das bestehende Dashboard, ohne das Design zu ersetzen. */
 const DEFAULT_LEARNING_JOURNEYS = [{
@@ -1422,6 +1422,8 @@ async function loadInstitutionStudents(){
     TONI_INSTITUTION_STUDENTS = students.map(s=>({
       id: s.id,
       name: s.display_name || `${s.first_name||""} ${s.last_name||""}`.trim() || s.email,
+      firstName: s.first_name || "",
+      lastName: s.last_name || "",
       email: s.email || "",
       klasse: s.class_name || "",
       gruppen: membersByProfile[s.id] || [],
@@ -1435,6 +1437,61 @@ async function loadInstitutionStudents(){
   }
 }
 
+// === Studentenverwaltung: Anzeige-State (Seite, Sortierung, Namensformat) ===
+window.TONI_STUDENT_VIEW = window.TONI_STUDENT_VIEW || {
+  page: 0,            // 0-basiert
+  pageSize: 10,
+  sortKey: "name",    // "name" | "klasse" | "status"
+  sortDir: 1,         // 1 = aufsteigend, -1 = absteigend
+  nameFormat: "first" // "first" = "Vorname Nachname", "last" = "Nachname, Vorname"
+};
+
+function toniStudentDisplayName(s){
+  const v = window.TONI_STUDENT_VIEW;
+  const fn = (s.firstName || "").trim();
+  const ln = (s.lastName || "").trim();
+  if(v.nameFormat === "last" && (fn || ln)){
+    return ln ? (ln + (fn ? ", " + fn : "")) : fn;
+  }
+  // Standard: "Vorname Nachname"; Fallback auf bestehendes name-Feld.
+  return (fn || ln) ? `${fn}${fn && ln ? " " : ""}${ln}`.trim() : (s.name || s.email || "");
+}
+
+function toniStudentSortValue(s, key){
+  if(key === "klasse") return (s.klasse || "").toLowerCase();
+  if(key === "status") return s.registriert ? "1" : "0"; // Registriert vor Eingeladen
+  return toniStudentDisplayName(s).toLowerCase();
+}
+
+// Sortier-Symbol (auf/ab/neutral) für einen Spaltenkopf.
+function toniStudentSortIcon(key){
+  const v = window.TONI_STUDENT_VIEW;
+  const active = v.sortKey === key;
+  const arrow = !active ? "↕" : (v.sortDir === 1 ? "↑" : "↓");
+  const cls = active ? "student-sort-btn active" : "student-sort-btn";
+  return `<button type="button" class="${cls}" title="Alphabetisch sortieren" onclick="toniStudentSort('${key}')">${arrow}</button>`;
+}
+
+window.toniStudentSort = function(key){
+  const v = window.TONI_STUDENT_VIEW;
+  if(v.sortKey === key){ v.sortDir = -v.sortDir; }
+  else { v.sortKey = key; v.sortDir = 1; }
+  v.page = 0; // bei Sortierwechsel auf Seite 1
+  renderStudentList();
+};
+
+window.toniStudentToggleNameFormat = function(){
+  const v = window.TONI_STUDENT_VIEW;
+  v.nameFormat = v.nameFormat === "first" ? "last" : "first";
+  renderStudentList();
+};
+
+window.toniStudentPage = function(delta){
+  const v = window.TONI_STUDENT_VIEW;
+  v.page = Math.max(0, v.page + delta);
+  renderStudentList();
+};
+
 function renderStudentList(){
   const root=document.getElementById("student-list"); if(!root)return;
   const list=TONI_INSTITUTION_STUDENTS||[];
@@ -1445,7 +1502,26 @@ function renderStudentList(){
     root.innerHTML=`<div class="lr-editor-empty">Noch keine Studenten in deiner Institution.<br>Lade über „+ Student einladen" den ersten Studenten ein.</div>`;
     return;
   }
-  const rows=list.map(s=>{
+
+  const v = window.TONI_STUDENT_VIEW;
+
+  // 1) Sortieren (Kopie, Originaldaten bleiben unangetastet)
+  const sorted = [...list].sort((a,b)=>{
+    const va = toniStudentSortValue(a, v.sortKey);
+    const vb = toniStudentSortValue(b, v.sortKey);
+    if(va < vb) return -1 * v.sortDir;
+    if(va > vb) return  1 * v.sortDir;
+    return 0;
+  });
+
+  // 2) Paginieren (max. pageSize pro Seite)
+  const total = sorted.length;
+  const pageCount = Math.max(1, Math.ceil(total / v.pageSize));
+  if(v.page > pageCount - 1) v.page = pageCount - 1; // falls Liste geschrumpft ist
+  const start = v.page * v.pageSize;
+  const pageItems = sorted.slice(start, start + v.pageSize);
+
+  const rows=pageItems.map(s=>{
     const gruppen = s.gruppen.length
       ? s.gruppen.map(g=>`<span class="student-chip">${escapeHtml(g)}</span>`).join(" ")
       : `<span class="student-muted">–</span>`;
@@ -1456,7 +1532,7 @@ function renderStudentList(){
       ? `<button class="student-del-btn" title="Studenten vollständig löschen" onclick="confirmDeleteStudent('${s.id}', '${escapeHtml(s.name).replace(/'/g,"\\'")}')">−</button>`
       : "";
     return `<tr>
-      <td>${escapeHtml(s.name)}</td>
+      <td>${escapeHtml(toniStudentDisplayName(s))}</td>
       <td>${s.klasse?escapeHtml(s.klasse):'<span class="student-muted">–</span>'}</td>
       <td>${gruppen}</td>
       <td><span class="student-muted">${escapeHtml(s.email)}</span></td>
@@ -1464,10 +1540,32 @@ function renderStudentList(){
       ${darfLoeschen?`<td style="text-align:right">${del}</td>`:""}
     </tr>`;
   }).join("");
+
+  // Kopfzeile mit Sortier-Symbolen (Name, Klasse, Status) + Namensformat-Umschalter
+  const nameHead = `Name ${toniStudentSortIcon("name")}<button type="button" class="student-nameswap-btn" title="Anzeige Vorname/Nachname wechseln" onclick="toniStudentToggleNameFormat()">⇄</button>`;
+  const klasseHead = `Klasse ${toniStudentSortIcon("klasse")}`;
+  const statusHead = `Status ${toniStudentSortIcon("status")}`;
+
+  // Pagination-Fußzeile (nur wenn mehr als eine Seite)
+  let pager = "";
+  if(pageCount > 1){
+    const prevDisabled = v.page <= 0;
+    const nextDisabled = v.page >= pageCount - 1;
+    const prevBtn = `<button type="button" class="student-pager-btn" ${prevDisabled?"disabled":""} title="Zurück" onclick="toniStudentPage(-1)">←</button>`;
+    const nextBtn = `<button type="button" class="student-pager-btn" ${nextDisabled?"disabled":""} title="Weiter" onclick="toniStudentPage(1)">→</button>`;
+    const von = start + 1;
+    const bis = Math.min(start + v.pageSize, total);
+    pager = `<div class="student-pager">
+      ${prevBtn}
+      <span class="student-pager-info">${von}–${bis} von ${total} · Seite ${v.page+1}/${pageCount}</span>
+      ${nextBtn}
+    </div>`;
+  }
+
   root.innerHTML=`<table class="student-table">
-    <thead><tr><th>Name</th><th>Klasse</th><th>Lerngruppe(n)</th><th>E-Mail</th><th>Status</th>${darfLoeschen?"<th></th>":""}</tr></thead>
+    <thead><tr><th>${nameHead}</th><th>${klasseHead}</th><th>Lerngruppe(n)</th><th>E-Mail</th><th>${statusHead}</th>${darfLoeschen?"<th></th>":""}</tr></thead>
     <tbody>${rows}</tbody>
-  </table>`;
+  </table>${pager}`;
 }
 
 // Vollständiges Löschen eines Studenten (Admin). Reihenfolge: Zuordnungen → Profil.
