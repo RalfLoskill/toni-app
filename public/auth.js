@@ -6020,76 +6020,12 @@ function toniV36JourneyMetaFromRow(row){
   };
 }
 
+// ALT (auth.js V?) – stillgelegt: delegiert an die finale window-Version weiter unten,
+// damit es nur EINEN Renderer gibt (mit Fortschritt + Lerngruppe). Egal ob über window.
+// oder den lokalen Namen aufgerufen wird – beide landen bei derselben Funktion.
 async function loadJourneyAssignmentTable(){
-  const tbody = document.getElementById("journey-assignment-table-body");
-  if(!tbody) return;
-
-  if(typeof toniV18CanManage === "function" && !toniV18CanManage()){
-    tbody.innerHTML = `<tr><td colspan="3"><div class="assignment-empty">🔒 Nur Admins und Tutoren können Lernreisen zuordnen.</div></td></tr>`;
-    return;
-  }
-
-  tbody.innerHTML = `<tr><td colspan="3"><div class="assignment-empty">Lernreisen und Zuordnungen werden geladen …</div></td></tr>`;
-
-  try{
-    const journeys = typeof loadJourneyTemplatesForAssignmentsV18 === "function"
-      ? await loadJourneyTemplatesForAssignmentsV18()
-      : [];
-
-    const assignments = await toniV36LoadJourneyAssignments();
-
-    window.TONI_JOURNEY_ASSIGNMENT_ROWS = journeys;
-    window.TONI_JOURNEY_ASSIGNMENTS = assignments;
-
-    if(!journeys.length){
-      tbody.innerHTML = `<tr><td colspan="3"><div class="assignment-empty">Noch keine Lernreisen vorhanden. Lege zuerst im Bereich „Lernreisen verwalten“ eine Lernreise an.</div></td></tr>`;
-      return;
-    }
-
-    tbody.innerHTML = journeys.map(journey => {
-      const meta = toniV36JourneyMetaFromRow(journey);
-      const related = assignments.filter(a => String(a.learning_journey_template_id) === String(journey.id));
-
-      const studentHtml = related.length
-        ? `<div class="assigned-student-list">` + related.map(a => {
-            const s = toniV36StudentFromAssignment(a);
-            return `
-              <div class="assigned-student-pill">
-                <div class="assigned-student-content-v36">
-                  ${toniV36StudentAvatarHtml(s)}
-                  <div class="assigned-student-main">
-                    <div class="assigned-student-name">${toniV36Escape(s.display)}</div>
-                    <div class="assigned-student-class">${toniV36Escape(s.className || "ohne Klasse")} · ${toniV36Escape(s.email || "ohne E-Mail")}</div>
-                  </div>
-                </div>
-                <button class="assignment-remove-btn" title="Zuordnung löschen" onclick="deleteJourneyStudentAssignment('${a.id}')">×</button>
-              </div>`;
-          }).join("") + `</div>`
-        : `<div class="assignment-empty">Noch keinem Studenten zugeordnet.</div>`;
-
-      return `
-        <tr>
-          <td>
-            <div class="assignment-journey-title">${toniV36Escape(toniV36JourneyTitleFromRow(journey))}</div>
-            <div class="assignment-journey-meta">
-              ${toniV36Escape(meta.subject)} · ${meta.steps || 0} Station(en)<br>
-              ${meta.goal ? "Ziel: " + toniV36Escape(meta.goal) : ""}
-            </div>
-          </td>
-          <td>${studentHtml}</td>
-          <td>
-            <button class="assignment-add-btn" title="QR-Code anzeigen" onclick="openAssignStudentModal('${journey.id}')">+</button>
-          </td>
-        </tr>
-      `;
-    }).join("");
-
-    if(typeof updateAssignmentHeaderV20 === "function"){
-      updateAssignmentHeaderV20();
-    }
-  }catch(error){
-    console.error("TONI V36: Zuordnungstabelle konnte nicht geladen werden:", error);
-    tbody.innerHTML = `<tr><td colspan="3"><div class="assignment-empty">⚠️ Tabelle konnte nicht geladen werden:<br>${toniV36Escape(error.message)}</div></td></tr>`;
+  if(window.loadJourneyAssignmentTable && window.loadJourneyAssignmentTable !== loadJourneyAssignmentTable){
+    return window.loadJourneyAssignmentTable();
   }
 }
 
@@ -6135,10 +6071,10 @@ window.addEventListener("DOMContentLoaded", () => {
 */
 
 async function toniV37LoadJourneyAssignmentsWithAvatars(){
-  // 1. Bevorzugt: RPC mit sicherem Join auf profiles inkl. avatar_data_url.
+  // 1. Bevorzugt: RPC mit Profil-Join, Lerngruppe UND Fortschritt.
   if(typeof supabaseRequest === "function"){
     try{
-      const rows = await supabaseRequest("rpc/get_learning_journey_assignments_with_profiles", {
+      const rows = await supabaseRequest("rpc/get_learning_journey_assignments_with_profiles_and_progress", {
         method: "POST",
         body: JSON.stringify({})
       });
@@ -6153,8 +6089,11 @@ async function toniV37LoadJourneyAssignmentsWithAvatars(){
         student_display_name: row.student_display_name,
         student_class_name: row.student_class_name,
         student_avatar_data_url: row.student_avatar_data_url || "",
+        student_group_name: row.student_group_name || "",
         assigned_by_profile_id: row.assigned_by_profile_id,
-        status: row.status,
+        status: row.assignment_status || row.status,
+        progress_percent: (row.progress_percent === null || row.progress_percent === undefined) ? null : row.progress_percent,
+        progress_status: row.progress_status || "",
         created_at: row.created_at,
         updated_at: row.updated_at,
         profiles: {
@@ -6168,7 +6107,7 @@ async function toniV37LoadJourneyAssignmentsWithAvatars(){
         }
       }));
     }catch(error){
-      console.warn("TONI V37: RPC für Zuordnungen mit Profilbildern nicht verfügbar, nutze Fallback:", error);
+      console.warn("TONI V37: RPC mit Fortschritt nicht verfügbar, nutze Fallback:", error);
     }
   }
 
@@ -6192,8 +6131,11 @@ function toniV37StudentFromAssignment(a){
   const display = a.student_display_name || p.display_name || `${first} ${last}`.trim() || email || "Student";
   const className = a.student_class_name || p.class_name || "";
   const avatar = a.student_avatar_data_url || p.avatar_data_url || "";
+  const groupName = a.student_group_name || a.group_name || "";
+  const progressPercent = (a.progress_percent === null || a.progress_percent === undefined) ? null : Number(a.progress_percent);
+  const progressStatus = a.progress_status || "";
 
-  return {display, email, className, avatar};
+  return {display, email, className, avatar, groupName, progressPercent, progressStatus};
 }
 
 // V36-Funktion bewusst überschreiben: avatar_data_url wird jetzt zuverlässig berücksichtigt.
@@ -6249,8 +6191,9 @@ window.loadJourneyAssignmentTable = async function(){
                 <div class="assigned-student-content-v36">
                   ${avatarHtml}
                   <div class="assigned-student-main">
-                    <div class="assigned-student-name">${toniV36Escape ? toniV36Escape(s.display) : s.display}</div>
-                    <div class="assigned-student-class">${toniV36Escape ? toniV36Escape(s.className || "ohne Klasse") : (s.className || "ohne Klasse")} · ${toniV36Escape ? toniV36Escape(s.email || "ohne E-Mail") : (s.email || "ohne E-Mail")}</div>
+                    <div class="assigned-student-name">${toniV36Escape ? toniV36Escape(s.display) : s.display}${(s.groupName || s.className) ? ` <span class="assigned-student-tags-v85">${[s.groupName, s.className].filter(Boolean).map(x=>`<span class="assigned-student-tag-v85">${toniV36Escape ? toniV36Escape(x) : x}</span>`).join("")}</span>` : ""}</div>
+                    <div class="assigned-student-class">${toniV36Escape ? toniV36Escape(s.email || "ohne E-Mail") : (s.email || "ohne E-Mail")}</div>
+                    ${(s.progressPercent !== null && typeof toniV41ProgressHtml === "function") ? toniV41ProgressHtml(a) : ""}
                   </div>
                 </div>
                 <button class="assignment-remove-btn" title="Zuordnung löschen" onclick="deleteJourneyStudentAssignment('${a.id}')">×</button>

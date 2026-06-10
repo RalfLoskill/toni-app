@@ -3,6 +3,10 @@
    Lernreise, Stationen, Aufgaben, Video, Fortschritt
    Ausgelagert aus index.html (V110)
    ============================================================ */
+// Build-Stempel: im Browser per `window.TONI_JOURNEY_BUILD` abfragbar.
+// Wenn dieser Wert NICHT "v86-assignments-progress-group" ist, lädt der
+// Browser eine veraltete Datei (Cache/Deploy), nicht diese Version.
+window.TONI_JOURNEY_BUILD = "v88-auth-render-fix";
 
 /* Lernreisen V1: ergänzt das bestehende Dashboard, ohne das Design zu ersetzen. */
 const DEFAULT_LEARNING_JOURNEYS = [{
@@ -3151,7 +3155,7 @@ function showAssignmentPanelV18(){
   const show = toniV18CanManage();
   panel.style.display = show ? "" : "none";
   panel.classList.toggle("visible", show);
-  if(show) setTimeout(loadJourneyAssignmentTable, 200);
+  if(show) setTimeout(window.loadJourneyAssignmentTable, 200);
 }
 
 async function loadJourneyTemplatesForAssignmentsV18(){
@@ -3238,68 +3242,15 @@ function studentFromAssignmentV18(a){
   return {display, email, className: cls};
 }
 
+// ALT (V18) – stillgelegt: delegiert an den aktiven v41-Render-Pfad, damit es
+// nur EINEN Renderer gibt (mit Fortschritt + Lerngruppe). Egal ob über window.
+// oder den lokalen Namen aufgerufen wird – beide landen bei v41.
 async function loadJourneyAssignmentTable(){
-  const tbody = document.getElementById("journey-assignment-table-body");
-  if(!tbody) return;
-
-  if(!toniV18CanManage()){
-    tbody.innerHTML = `<tr><td colspan="3"><div class="assignment-empty">🔒 Nur Admins und Tutoren können Lernreisen zuordnen.</div></td></tr>`;
-    return;
+  if(typeof toniV41RenderAssignmentTable === 'function'){
+    return toniV41RenderAssignmentTable();
   }
-
-  tbody.innerHTML = `<tr><td colspan="3"><div class="assignment-empty">Lernreisen und Zuordnungen werden geladen …</div></td></tr>`;
-
-  try{
-    const [journeys, assignments] = await Promise.all([
-      loadJourneyTemplatesForAssignmentsV18(),
-      loadJourneyAssignmentsV18()
-    ]);
-
-    window.TONI_JOURNEY_ASSIGNMENT_ROWS = journeys;
-    window.TONI_JOURNEY_ASSIGNMENTS = assignments;
-
-    if(!journeys.length){
-      tbody.innerHTML = `<tr><td colspan="3"><div class="assignment-empty">Noch keine Lernreisen vorhanden. Lege zuerst im Bereich „Lernreisen verwalten“ eine Lernreise an.</div></td></tr>`;
-      return;
-    }
-
-    tbody.innerHTML = journeys.map(journey => {
-      const meta = journeyMetaFromRowV18(journey);
-      const related = assignments.filter(a => String(a.learning_journey_template_id) === String(journey.id));
-
-      const studentHtml = related.length
-        ? `<div class="assigned-student-list">` + related.map(a => {
-            const s = studentFromAssignmentV18(a);
-            return `
-              <div class="assigned-student-pill">
-                <div class="assigned-student-main">
-                  <div class="assigned-student-name">${toniV18Escape(s.display)}</div>
-                  <div class="assigned-student-class">${toniV18Escape(s.className || "ohne Klasse")} · ${toniV18Escape(s.email || "ohne E-Mail")}</div>
-                </div>
-                <button class="assignment-remove-btn" title="Zuordnung löschen" onclick="deleteJourneyStudentAssignment('${a.id}')">×</button>
-              </div>`;
-          }).join("") + `</div>`
-        : `<div class="assignment-empty">Noch keinem Studenten zugeordnet.</div>`;
-
-      return `
-        <tr>
-          <td>
-            <div class="assignment-journey-title">${toniV18Escape(journeyTitleFromRowV18(journey))}</div>
-            <div class="assignment-journey-meta">
-              ${toniV18Escape(meta.subject)} · ${meta.steps || 0} Station(en)<br>
-              ${meta.goal ? "Ziel: " + toniV18Escape(meta.goal) : ""}
-            </div>
-          </td>
-          <td>${studentHtml}</td>
-          <td>
-            <button class="assignment-add-btn" title="Student zuordnen" onclick="openAssignStudentModal('${journey.id}')">+</button>
-          </td>
-        </tr>
-      `;
-    }).join("");
-  }catch(error){
-    console.error("Zuordnungstabelle konnte nicht geladen werden:", error);
-    tbody.innerHTML = `<tr><td colspan="3"><div class="assignment-empty">⚠️ Tabelle konnte nicht geladen werden:<br>${toniV18Escape(error.message)}</div></td></tr>`;
+  if(typeof window.loadJourneyAssignmentTable === 'function' && window.loadJourneyAssignmentTable !== loadJourneyAssignmentTable){
+    return window.loadJourneyAssignmentTable();
   }
 }
 
@@ -3402,7 +3353,7 @@ async function saveJourneyStudentAssignment(){
     }
 
     closeAssignStudentModal();
-    await loadJourneyAssignmentTable();
+    await window.loadJourneyAssignmentTable();
     appendMsg?.("toni", "✅ Lernreise wurde dem Studenten zugeordnet.", typeof time === "function" ? time() : "", "desktop");
   }catch(error){
     console.error("Zuordnung speichern:", error);
@@ -3421,7 +3372,7 @@ async function deleteJourneyStudentAssignment(assignmentId){
       setLocalAssignmentsV18(rows);
     }
 
-    await loadJourneyAssignmentTable();
+    await window.loadJourneyAssignmentTable();
     appendMsg?.("toni", "🗑️ Zuordnung wurde gelöscht.", typeof time === "function" ? time() : "", "desktop");
   }catch(error){
     console.error("Zuordnung löschen:", error);
@@ -3543,7 +3494,7 @@ function toniV19ToggleSection(panelId, sectionKey) {
       setTimeout(loadAdminLearningJourneys, 100);
     }
     if (sectionKey === "assign" && typeof loadJourneyAssignmentTable === "function") {
-      setTimeout(loadJourneyAssignmentTable, 100);
+      setTimeout(window.loadJourneyAssignmentTable, 100);
     }
   }
 }
@@ -5304,6 +5255,7 @@ async function toniV41LoadAssignmentsWithProgress(){
         student_display_name: row.student_display_name,
         student_class_name: row.student_class_name,
         student_avatar_data_url: row.student_avatar_data_url || "",
+        student_group_name: row.student_group_name || "",
         assigned_by_profile_id: row.assigned_by_profile_id,
         status: row.assignment_status || row.status || "assigned",
         progress_percent: row.progress_percent ?? 0,
@@ -5345,21 +5297,30 @@ async function toniV41LoadAssignmentsWithProgress(){
 }
 
 function toniV41StudentFromAssignment(a){
+  // Basis-Felder über den evtl. vorhandenen älteren Mapper (toniV37/V36) holen ...
+  let base;
   if(typeof toniV37StudentFromAssignment === "function"){
-    return toniV37StudentFromAssignment(a);
-  }
-  if(typeof toniV36StudentFromAssignment === "function"){
-    return toniV36StudentFromAssignment(a);
+    base = toniV37StudentFromAssignment(a);
+  } else if(typeof toniV36StudentFromAssignment === "function"){
+    base = toniV36StudentFromAssignment(a);
+  } else {
+    const p = a.profiles || {};
+    const email = a.student_email || p.email || "";
+    const first = a.student_first_name || p.first_name || "";
+    const last = a.student_last_name || p.last_name || "";
+    const display = a.student_display_name || p.display_name || `${first} ${last}`.trim() || email || "Student";
+    const className = a.student_class_name || p.class_name || "";
+    const avatar = a.student_avatar_data_url || p.avatar_data_url || "";
+    base = {display, email, className, avatar};
   }
 
-  const p = a.profiles || {};
-  const email = a.student_email || p.email || "";
-  const first = a.student_first_name || p.first_name || "";
-  const last = a.student_last_name || p.last_name || "";
-  const display = a.student_display_name || p.display_name || `${first} ${last}`.trim() || email || "Student";
-  const className = a.student_class_name || p.class_name || "";
-  const avatar = a.student_avatar_data_url || p.avatar_data_url || "";
-  return {display, email, className, avatar};
+  // ... und die erweiterten Felder IMMER ergänzen — unabhängig davon, welcher
+  // Mapper die Basis erzeugt hat. (Ältere Mapper kennen Gruppe/Fortschritt nicht.)
+  const groupName = a.student_group_name || a.group_name || base.groupName || "";
+  const className = base.className || a.student_class_name || (a.profiles && a.profiles.class_name) || "";
+  const progressPercent = (a.progress_percent === null || a.progress_percent === undefined) ? null : Number(a.progress_percent);
+  const progressStatus = a.progress_status || base.progressStatus || "";
+  return { ...base, className, groupName, progressPercent, progressStatus };
 }
 
 function toniV41StudentAvatarHtml(student){
@@ -5369,7 +5330,7 @@ function toniV41StudentAvatarHtml(student){
   return `<div class="assigned-student-avatar-v36"><span class="assigned-student-avatar-initials-v36">👤</span></div>`;
 }
 
-window.loadJourneyAssignmentTable = async function(){
+async function toniV41RenderAssignmentTable(){
   const tbody = document.getElementById("journey-assignment-table-body");
   if(!tbody) return;
 
@@ -5418,9 +5379,9 @@ window.loadJourneyAssignmentTable = async function(){
                 <div class="assigned-student-content-v36">
                   ${avatarHtml}
                   <div class="assigned-student-main">
-                    <div class="assigned-student-name">${esc(s.display)}</div>
-                    <div class="assigned-student-class">${esc(s.className || "ohne Klasse")} · ${esc(s.email || "ohne E-Mail")}</div>
-                    ${toniV41ProgressHtml(a)}
+                    <div class="assigned-student-name">${esc(s.display)}${(s.groupName || s.className) ? ` <span class="assigned-student-tags-v85">${[s.groupName, s.className].filter(Boolean).map(x=>`<span class="assigned-student-tag-v85">${esc(x)}</span>`).join("")}</span>` : ""}</div>
+                    <div class="assigned-student-class">${esc(s.email || "ohne E-Mail")}</div>
+                    ${s.progressPercent !== null ? toniV41ProgressHtml(a) : ""}
                   </div>
                 </div>
                 <button class="assignment-remove-btn" title="Zuordnung löschen" onclick="deleteJourneyStudentAssignment('${a.id}')">×</button>
@@ -5452,12 +5413,14 @@ window.loadJourneyAssignmentTable = async function(){
     console.error("TONI V41: Zuordnungstabelle konnte nicht geladen werden:", error);
     tbody.innerHTML = `<tr><td colspan="3"><div class="assignment-empty">⚠️ Tabelle konnte nicht geladen werden:<br>${toniV41Escape(error.message)}</div></td></tr>`;
   }
-};
+}
+// Aktiver Render-Pfad: window-Zuweisung UND lokaler Name zeigen auf v41.
+window.loadJourneyAssignmentTable = toniV41RenderAssignmentTable;
 
 window.addEventListener("DOMContentLoaded", () => {
   setTimeout(() => {
     if(document.getElementById("learning-journey-assignment-panel")?.classList.contains("visible")){
-      loadJourneyAssignmentTable();
+      window.loadJourneyAssignmentTable();
     }
   }, 1200);
 });
@@ -5605,7 +5568,7 @@ async function toniV44SaveLearningJourneyRobust(){
 
     resetJourneyEditor?.();
     await loadAdminLearningJourneys?.();
-    await loadJourneyAssignmentTable?.();
+    await window.loadJourneyAssignmentTable?.();
 
     appendMsg?.("toni", "✅ Lernreise wurde gespeichert.", typeof time === "function" ? time() : "", "desktop");
   }catch(error){
