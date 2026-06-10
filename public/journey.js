@@ -2340,7 +2340,10 @@ async function loadAdminLearningJourneys(){
     return;
   }
 
-  list.innerHTML = `<div class="journey-empty">Lernreisen werden geladen …</div>`;
+  // "Lädt …"-Platzhalter nur bei leerem Container (sonst Zittern bei Mehrfachaufruf).
+  if(!list.querySelector(".journey-tile, .journey-empty")){
+    list.innerHTML = `<div class="journey-empty">Lernreisen werden geladen …</div>`;
+  }
 
   try{
     const ownerId = getJourneyOwnerIdV16();
@@ -2380,6 +2383,24 @@ async function loadAdminLearningJourneys(){
 function renderAdminJourneyListV16(rows){
   const list = document.getElementById("admin-journey-list");
   if(!list) return;
+
+  // Signatur-Guard gegen Zittern: nur neu rendern, wenn sich Titel/Stationen/Aufgaben/
+  // Quelle einer Lernreise tatsächlich ändern (loadAdminLearningJourneys wird mehrfach
+  // getriggert).
+  const signature = JSON.stringify((rows || []).map(row => {
+    const j = rowToJourneyV16(row);
+    return {
+      id: row.id,
+      t: j.title,
+      st: (j.steps || []).length,
+      tk: (j.steps || []).reduce((sum, s) => sum + ((s.tasks || []).length), 0),
+      src: row._source === "local" ? "local" : "remote"
+    };
+  }));
+  if(list.dataset.adminJourneySignature === signature){
+    return; // nichts geändert -> kein Rebuild, kein Zittern
+  }
+  list.dataset.adminJourneySignature = signature;
 
   // Plus-Kachel: öffnet den (standardmäßig eingeklappten) Editor im Anlege-Modus.
   const plusTile = `
@@ -4271,6 +4292,17 @@ window.addEventListener("DOMContentLoaded", () => {
   }
 
   function toniV25BuildJourneyBar(){
+    // V53 (toniV53BuildJourneyBar) hat diesen Builder fachlich ersetzt: Start-/
+    // Ziel-Symbole, kein "Du bist hier"-Badge, keine Sublabels – und vor allem ein
+    // Signatur-Guard gegen Mehrfach-Rendern. V25 und V53 schrieben beide dasselbe
+    // Element (.lernreise-wrap) per innerHTML, was sichtbares Zittern verursachte
+    // (zwei DOM-Writes pro Update, V25 zusätzlich ohne Guard).
+    // -> V25 rendert nicht mehr; nur noch V53 baut die Timeline.
+    return;
+  }
+  // Hinweis: Die alte V25-Render-Logik bleibt der Nachvollziehbarkeit halber unten
+  // erhalten, wird aber durch das obige return nie erreicht.
+  function toniV25BuildJourneyBar_DEPRECATED(){
     const wrap = document.querySelector('.lernreise-wrap');
     if(!wrap || typeof activeJourney !== 'function') return;
 
@@ -6352,15 +6384,39 @@ async function toniV50RenderAllJourneysInActivities(){
     const container = toniV50EnsureActivityContainer();
     if(!container) return;
 
-    container.innerHTML = `<div class="activity-empty-v50">Lernreisen werden geladen …</div>`;
+    // "Lädt …"-Platzhalter NUR zeigen, wenn der Container noch leer ist. Sonst würde
+    // bei jedem der (vielen, gestaffelten) Aufrufe der bestehende Inhalt kurz durch den
+    // Ladetext ersetzt -> sichtbares Zittern.
+    const hasContent = !!container.querySelector(".activity-journey-item-v50, .activity-learning-heading-v50");
+    if(!hasContent){
+      container.innerHTML = `<div class="activity-empty-v50">Lernreisen werden geladen …</div>`;
+    }
 
     const journeys = await toniV50GetAllActivityJourneys();
     window.TONI_V50_ACTIVITY_CACHE = journeys;
 
     if(!journeys.length){
-      container.innerHTML = `<div class="activity-empty-v50">Noch keine Lernreisen vorhanden oder zugeordnet.</div>`;
+      // Nur schreiben, wenn nicht ohnehin schon der Leer-Zustand steht.
+      const sigEmpty = "EMPTY";
+      if(container.dataset.v50Signature !== sigEmpty){
+        container.innerHTML = `<div class="activity-empty-v50">Noch keine Lernreisen vorhanden oder zugeordnet.</div>`;
+        container.dataset.v50Signature = sigEmpty;
+      }
       return;
     }
+
+    // Signatur-Guard: nur neu schreiben, wenn sich darstellungsrelevante Daten ändern.
+    const signature = JSON.stringify(journeys.map(j => ({
+      id: j && (j.id || j.title) || "",
+      t: (j && j.title) || "",
+      p: (typeof toniV50Progress === "function" ? toniV50Progress(j) : 0),
+      n: (typeof toniV50NextTaskTitle === "function" ? toniV50NextTaskTitle(j) : ""),
+      a: String((typeof STATE !== "undefined" && STATE && STATE.activeJourneyId) || "") === String((j && j.id) || "")
+    })));
+    if(container.dataset.v50Signature === signature){
+      return; // nichts geändert -> kein Rebuild, kein Zittern
+    }
+    container.dataset.v50Signature = signature;
 
     container.innerHTML = `
       <div class="activity-learning-heading-v50">
@@ -6557,15 +6613,38 @@ window.toniV50RenderAllJourneysInActivities = async function(){
     const container = toniV50EnsureActivityContainer?.();
     if(!container) return;
 
-    container.innerHTML = `<div class="activity-empty-v50">Zugeordnete offene Lernreisen werden geladen …</div>`;
+    // "Lädt …"-Platzhalter nur bei leerem Container (sonst Zittern bei jedem der
+    // vielen gestaffelten Aufrufe, weil bestehende Kacheln kurz ersetzt würden).
+    const hasContent = !!container.querySelector(".activity-journey-item-v50, .activity-learning-heading-v50");
+    if(!hasContent){
+      container.innerHTML = `<div class="activity-empty-v50">Zugeordnete offene Lernreisen werden geladen …</div>`;
+    }
 
     const journeys = await window.toniV50GetAllActivityJourneys();
     window.TONI_V50_ACTIVITY_CACHE = journeys;
 
     if(!journeys.length){
-      container.innerHTML = `<div class="activity-empty-v50">Keine offenen zugeordneten Lernreisen vorhanden. Abgeschlossene Lernreisen mit 100% werden hier ausgeblendet.</div>`;
+      if(container.dataset.v50Signature !== "EMPTY"){
+        container.innerHTML = `<div class="activity-empty-v50">Keine offenen zugeordneten Lernreisen vorhanden. Abgeschlossene Lernreisen mit 100% werden hier ausgeblendet.</div>`;
+        container.dataset.v50Signature = "EMPTY";
+      }
       return;
     }
+
+    // Signatur-Guard gegen das Zittern: nur neu schreiben, wenn sich darstellungs-
+    // relevante Daten (Reihenfolge, Titel, Fortschritt, nächster Schritt, aktiv)
+    // tatsächlich geändert haben.
+    const signature = JSON.stringify(journeys.map(j => ({
+      id: (j && (j.id || j.title)) || "",
+      t: (j && j.title) || "",
+      p: (typeof toniV50Progress === "function" ? toniV50Progress(j) : 0),
+      n: (typeof toniV50NextTaskTitle === "function" ? toniV50NextTaskTitle(j) : ""),
+      a: String((typeof STATE !== "undefined" && STATE && STATE.activeJourneyId) || "") === String((j && j.id) || "")
+    })));
+    if(container.dataset.v50Signature === signature){
+      return; // nichts geändert -> kein Rebuild, kein Zittern
+    }
+    container.dataset.v50Signature = signature;
 
     container.innerHTML = `
       <div class="activity-learning-heading-v50">
@@ -6741,6 +6820,27 @@ window.addEventListener("resize", () => {
     const isComplete = toniV53IsJourneyComplete(j);
     const fillPct = isComplete ? 100 : Math.max(0, Math.min(100, ((currentIdx + 1) / (steps.length + 1)) * 100));
 
+    // Idempotenz-Guard gegen das "Zittern": Die Bar wird von mehreren Stellen
+    // mehrfach (zeitversetzt) neu aufgebaut, damit sie erscheint, sobald die
+    // asynchron geladenen Lernreise-Daten da sind. Wenn sich an den darstellungs-
+    // relevanten Daten aber NICHTS geändert hat, darf das DOM NICHT neu geschrieben
+    // werden – sonst flackert/zittert die Timeline. Die Breitenklasse fließt mit ein,
+    // weil V54 die Labels je nach Breite unterschiedlich kürzt.
+    const widthClass = window.innerWidth <= 700 ? 'm' : window.innerWidth <= 1000 ? 't' : 'd';
+    const signature = JSON.stringify({
+      id: (j && (j.id || j.title)) || '',
+      n: steps.length,
+      cur: currentIdx,
+      done: isComplete,
+      fill: Math.round(fillPct),
+      w: widthClass,
+      steps: steps.map((s) => `${(s && s.title) || ''}|${(s && s.status) || ''}`)
+    });
+    if (wrap.dataset.v53Signature === signature) {
+      return; // nichts geändert -> kein Rebuild, kein Zittern
+    }
+    wrap.dataset.v53Signature = signature;
+
     const startHtml = `
       <div class="step v53-icon-step v53-start-step">
         <div class="step-circle">▶</div>
@@ -6863,7 +6963,18 @@ window.addEventListener("resize", () => {
     if(!shells.length) return;
     const mobile = window.innerWidth <= 700;
     const tablet = window.innerWidth <= 1000;
+    const widthClass = mobile ? 'm' : tablet ? 't' : 'd';
     shells.forEach(shell => {
+      // Guard gegen Observer-Selbsttrigger: V54 ändert Labels/Icons im DOM, was den
+      // body-MutationObserver erneut feuern lässt. Wir verschönern eine Shell nur,
+      // wenn sie für den aktuellen Zustand (Bar-Signatur + Breitenklasse) noch nicht
+      // verschönert wurde. Ein echter V53-Rebuild schreibt die Shell neu -> Marker weg
+      // -> V54 läuft erneut, aber nicht bei den eigenen Mutationen.
+      const wrap = shell.closest('.lernreise-wrap');
+      const stamp = ((wrap && wrap.dataset.v53Signature) || '') + '#' + widthClass;
+      if(shell.dataset.v54Stamp === stamp) return;
+      shell.dataset.v54Stamp = stamp;
+
       shell.classList.add('v54-journey-shell');
       const steps = shell.querySelectorAll('.step');
       if(!steps.length) return;
@@ -7117,6 +7228,13 @@ window.addEventListener("resize", () => {
   }
 
   async function renderCompletedJourneys(){
+    // Stillgelegt: Diese ältere V83-Variante schrieb dasselbe Panel
+    // (activity-completed-panel-v83) wie die neuere renderCompletedOpenable (V86),
+    // beide aus mehreren Triggern -> zwei konkurrierende innerHTML-Writes = Zittern.
+    // renderCompletedOpenable (mit Signatur-Guard) ist die einzige aktive Variante.
+    return;
+  }
+  async function renderCompletedJourneys_DEPRECATED(){
     if(role() !== "student") return;
 
     const openContainer = document.getElementById("activity-learning-journeys-v50");
@@ -7639,6 +7757,17 @@ window.addEventListener("resize", () => {
     panel.style.display = "";
     const isOpen = localStorage.getItem("toni_v83_completed_open") === "1";
     panel.classList.toggle("open", isOpen);
+
+    // Signatur-Guard gegen Zittern: nur neu rendern, wenn sich die abgeschlossenen
+    // Lernreisen (oder der Auf-/Zu-Zustand) ändern.
+    const signature = JSON.stringify({
+      open: isOpen,
+      items: completed.map(c => ({ id: (c && (c.id || c.template_id)) || "", t: (c && c.title) || "" }))
+    });
+    if(panel.dataset.completedSignature === signature){
+      return; // nichts geändert -> kein Rebuild, kein Zittern
+    }
+    panel.dataset.completedSignature = signature;
 
     panel.innerHTML = `
       <div class="activity-completed-header-v83" onclick="toniV83ToggleCompletedJourneys?.()">

@@ -183,12 +183,32 @@ function renderProjectsDashboard() {
   const projects = window.TONI_PROJECTS;
 
   if (!projects.length) {
-    wrap.innerHTML = `<div style="color:var(--color-text-tertiary);font-size:13px;padding:14px 0;text-align:center">
-      Noch keine Projekte vorhanden.<br>
-      <span style="color:#185FA5;cursor:pointer;font-size:13px" onclick="openCreateProjectModal()">+ Erstes Projekt anlegen</span>
-    </div>`;
+    if (wrap.dataset.projSignature !== 'EMPTY') {
+      wrap.innerHTML = `<div style="color:var(--color-text-tertiary);font-size:13px;padding:14px 0;text-align:center">
+        Noch keine Projekte vorhanden.<br>
+        <span style="color:#185FA5;cursor:pointer;font-size:13px" onclick="openCreateProjectModal()">+ Erstes Projekt anlegen</span>
+      </div>`;
+      wrap.dataset.projSignature = 'EMPTY';
+    }
     return;
   }
+
+  // Signatur-Guard gegen Zittern: nur neu schreiben, wenn sich darstellungsrelevante
+  // Projektdaten ändern (Reihenfolge, Titel, Fortschritt, Mitglieder, Blocker, Deadline).
+  const signature = JSON.stringify(projects.map(p => ({
+    id: p.id,
+    t: p.title,
+    d: p.description || '',
+    done: p.task_done, total: p.task_total,
+    mc: p.member_count || 0,
+    mem: (p.members || []).slice(0, 5).map(m => (m && (m.id || m.user_id || m.display_name)) || ''),
+    blk: !!p.has_blocker, off: !!p.is_official, ty: p.type || '',
+    dl: p.deadline || ''
+  })));
+  if (wrap.dataset.projSignature === signature) {
+    return; // nichts geändert -> kein Rebuild, kein Zittern
+  }
+  wrap.dataset.projSignature = signature;
 
   wrap.innerHTML = projects.map(p => {
     const pct = p.task_total > 0 ? Math.round((p.task_done / p.task_total) * 100) : 0;
@@ -639,9 +659,17 @@ function renderToniHintFromTasks(tasks) {
     chips = `<span onclick="agentAction('project_agent','Projektstatus zusammenfassen','desktop')" style="display:inline-flex;align-items:center;font-size:12px;padding:5px 11px;border-radius:20px;border:0.5px solid var(--color-border-secondary);cursor:pointer;color:var(--color-text-secondary)">Projektstatus zusammenfassen</span>`;
   }
 
-  wrap.innerHTML = `
+  const newHtml = `
     <div style="background:#E6F1FB;border-radius:0 10px 10px 10px;padding:10px 13px;font-size:13px;color:#0C447C;line-height:1.6;margin-bottom:${chips?'10px':'0'}">${hint}</div>
     ${chips ? `<div style="display:flex;gap:6px;flex-wrap:wrap">${chips}</div>` : ''}`;
+
+  // Signatur-Guard gegen Zittern: nur neu schreiben, wenn sich der Hinweistext/Chip
+  // tatsächlich ändert (renderToniHintFromTasks wird mehrfach getriggert).
+  if (wrap.dataset.hintSignature === newHtml) {
+    return;
+  }
+  wrap.dataset.hintSignature = newHtml;
+  wrap.innerHTML = newHtml;
 }
 
 // ──────────────────────────────────────

@@ -6165,7 +6165,11 @@ window.loadJourneyAssignmentTable = async function(){
     return;
   }
 
-  tbody.innerHTML = `<tr><td colspan="3"><div class="assignment-empty">Lernreisen und Zuordnungen werden geladen …</div></td></tr>`;
+  // "Lädt …"-Platzhalter nur zeigen, wenn die Tabelle noch leer ist (sonst Zittern,
+  // da loadJourneyAssignmentTable mehrfach getriggert wird).
+  if(!tbody.querySelector("tr")){
+    tbody.innerHTML = `<tr><td colspan="3"><div class="assignment-empty">Lernreisen und Zuordnungen werden geladen …</div></td></tr>`;
+  }
 
   try{
     const journeys = typeof loadJourneyTemplatesForAssignmentsV18 === "function"
@@ -6181,6 +6185,24 @@ window.loadJourneyAssignmentTable = async function(){
       tbody.innerHTML = `<tr><td colspan="3"><div class="assignment-empty">Noch keine Lernreisen vorhanden. Lege zuerst im Bereich „Lernreisen verwalten“ eine Lernreise an.</div></td></tr>`;
       return;
     }
+
+    // Signatur-Guard gegen Zittern: nur neu rendern, wenn sich Lernreisen oder
+    // Zuordnungen (inkl. Gruppe/Klasse/Fortschritt) tatsächlich geändert haben.
+    const signature = JSON.stringify({
+      j: journeys.map(jr => ({ id: jr.id, t: jr.title || "" })),
+      a: assignments.map(a => ({
+        id: a.id,
+        jt: a.learning_journey_template_id,
+        s: a.student_profile_id || a.student_email || "",
+        g: a.student_group_name || "",
+        c: a.student_class_name || "",
+        p: (a.progress_percent != null ? a.progress_percent : "")
+      }))
+    });
+    if(tbody.dataset.assignSignature === signature){
+      return; // nichts geändert -> kein Rebuild, kein Zittern
+    }
+    tbody.dataset.assignSignature = signature;
 
     tbody.innerHTML = journeys.map(journey => {
       const meta = typeof toniV36JourneyMetaFromRow === "function"

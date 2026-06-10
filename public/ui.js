@@ -569,7 +569,7 @@ window.addEventListener("DOMContentLoaded", () => {
 /* TONI V69 – Ladeanimation entfernen, sobald Dashboard geladen ist */
 (function(){
   const startedAt = Date.now();
-  const minVisibleMs = 5000;
+  const minVisibleMs = 2000;
   const maxVisibleMs = 10000;
 
   function dashboardLooksReady(){
@@ -742,7 +742,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
 /* TONI V72 – Loader mindestens 4 Sekunden sichtbar halten */
 (function(){
-  window.TONI_V72_LOADER_MIN_MS = 5000;
+  window.TONI_V72_LOADER_MIN_MS = 2000;
 
   function ensureLoaderMinimumTime(){
     const loader = document.getElementById("toni-loading-screen-v69");
