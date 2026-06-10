@@ -456,29 +456,47 @@ function renderWeeklyPlan() {
   };
 
   const colDef = [
-    { key:'todo', title:'Offen' },
-    { key:'wip',  title:'In Arbeit' },
-    { key:'done', title:'Erledigt' }
+    { key:'todo', title:'Offen',     dot:'#378ADD', headBg:'#E6F1FB', headText:'#185FA5', empty:{icon:'ti-inbox', text:'Nichts offen'} },
+    { key:'wip',  title:'In Arbeit', dot:'#EF9F27', headBg:'#FAEEDA', headText:'#854F0B', empty:{icon:'ti-coffee', text:'Nichts in Arbeit'} },
+    { key:'done', title:'Erledigt',  dot:'#1D9E75', headBg:'#E1F5EE', headText:'#0F6E56', empty:{icon:'ti-checks', text:'Noch nichts erledigt'} }
   ];
 
-  wrap.innerHTML = `<div class="kanban-grid" style="grid-template-columns:repeat(3,minmax(180px,1fr));min-width:560px">
+  // Fortschrittsleiste: erledigt / gesamt (offen + in Arbeit + erledigt)
+  const nDone = (byCol.done || []).length;
+  const nTotal = (byCol.todo || []).length + (byCol.wip || []).length + nDone;
+  const pct = nTotal ? Math.round((nDone / nTotal) * 100) : 0;
+  const progressBar = `
+    <div style="display:flex;align-items:center;gap:10px;margin-bottom:14px">
+      <div style="flex:1;height:8px;background:#fff;border-radius:999px;overflow:hidden;border:1px solid var(--border)">
+        <div style="width:${pct}%;height:100%;background:#1D9E75;border-radius:999px;transition:width .3s"></div>
+      </div>
+      <span style="font-size:12px;color:var(--color-text-secondary);white-space:nowrap">${nDone} von ${nTotal} erledigt</span>
+    </div>`;
+
+  wrap.innerHTML = progressBar + `<div class="kanban-grid" style="grid-template-columns:repeat(3,minmax(180px,1fr));min-width:560px">
     ${colDef.map(cd => {
       let list = byCol[cd.key] || [];
       let extraNote = '';
-      // Punkt 2: in "Erledigt" nur die letzten 5 zeigen
+      // in "Erledigt" nur die letzten 5 zeigen
       if (cd.key === 'done' && list.length > 5) {
         const hidden = list.length - 5;
         list = list.slice(0, 5);
         extraNote = `<div style="font-size:11px;color:var(--color-text-tertiary);padding:4px 2px;text-align:center">+ ${hidden} weitere erledigt</div>`;
       }
       const cards = list.length ? list.map(cardHtml).join('') :
-        `<div style="font-size:12px;color:var(--color-text-tertiary);padding:6px 2px">—</div>`;
+        `<div style="padding:22px 10px;display:flex;flex-direction:column;align-items:center;gap:6px;color:var(--color-text-tertiary)">
+          <i class="ti ${cd.empty.icon}" style="font-size:20px"></i>
+          <span style="font-size:11px;text-align:center">${cd.empty.text}</span>
+        </div>`;
       const addBtn = cd.key === 'todo'
-        ? `<div onclick="addPersonalTask()" style="margin-top:6px;font-size:12px;color:#534AB7;cursor:pointer"><i class="ti ti-plus" style="font-size:13px"></i> Eigene Aufgabe</div>`
+        ? `<div onclick="addPersonalTask()" style="margin-top:8px;font-size:12px;color:#534AB7;cursor:pointer;text-align:center;padding:6px;border:1px dashed #c7d2fe;border-radius:8px"><i class="ti ti-plus" style="font-size:13px"></i> Eigene Aufgabe</div>`
         : '';
       const count = (byCol[cd.key] || []).length;
       return `<div class="kanban-col col-${cd.key==='wip'?'wip':cd.key==='done'?'done':'todo'}">
-        <div class="k-header"><span class="k-title">${cd.title}</span><span class="k-badge">${count}</span></div>
+        <div class="k-header" style="display:flex;align-items:center;justify-content:space-between">
+          <span class="k-title" style="display:flex;align-items:center;gap:6px;color:${cd.headText}"><span style="width:8px;height:8px;border-radius:50%;background:${cd.dot};display:inline-block"></span>${cd.title}</span>
+          <span class="k-badge" style="background:${cd.headBg};color:${cd.headText}">${count}</span>
+        </div>
         <div>${cards}</div>
         ${extraNote}
         ${addBtn}

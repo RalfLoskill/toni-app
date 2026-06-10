@@ -2723,6 +2723,10 @@ window.signInWithPassword = async function() {
 
 // Logout ebenfalls mit direkter Session bereinigen.
 window.signOutUser = async function() {
+  // Gecachten Institutionsnamen verwerfen, damit der nächste Login nicht die
+  // Institution des Vorgängers zeigt.
+  window.TONI_INSTITUTION_NAME = null;
+  window.TONI_INSTITUTION_NAME_LOADING = null;
   try {
     const token = toniV10GetDirectSession()?.access_token;
     if (token) {

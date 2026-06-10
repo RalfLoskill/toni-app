@@ -6,7 +6,7 @@
 // Build-Stempel: im Browser per `window.TONI_JOURNEY_BUILD` abfragbar.
 // Wenn dieser Wert NICHT "v86-assignments-progress-group" ist, lädt der
 // Browser eine veraltete Datei (Cache/Deploy), nicht diese Version.
-window.TONI_JOURNEY_BUILD = "v96-tile-color-cover";
+window.TONI_JOURNEY_BUILD = "v99-institution-name";
 
 /* Lernreisen V1: ergänzt das bestehende Dashboard, ohne das Design zu ersetzen. */
 const DEFAULT_LEARNING_JOURNEYS = [{
@@ -905,6 +905,8 @@ async function signOutUser() {
 
   TONI_AUTH_SESSION = null;
   TONI_AUTH_PROFILE = null;
+  window.TONI_INSTITUTION_NAME = null;
+  window.TONI_INSTITUTION_NAME_LOADING = null;
   localStorage.setItem("toni_role", "student");
   window.TONI_ACTIVE_PROFILE_ID = null;
 
@@ -990,8 +992,14 @@ function toniUpdateHeaderFields(profile, user){
     else greeting = `Hallo ${first}`;
     if (hdrName) hdrName.textContent = `${greeting}! 👋`;
     if (hdrRole) hdrRole.textContent = roleLabel;
-    if (hdrInst) hdrInst.textContent = profile.institution_name || "Institution";
+    if (hdrInst) hdrInst.textContent = profile.institution_name || window.TONI_INSTITUTION_NAME || "Institution";
     if (hdrClass) hdrClass.textContent = profile.class_name || "—";
+    // Institutionsname nicht im Profil enthalten -> per RPC nachladen und Header setzen.
+    if (hdrInst && !profile.institution_name) {
+      toniLoadInstitutionName().then(name => {
+        if (name && hdrInst) hdrInst.textContent = name;
+      });
+    }
   } else {
     if (hdrName) hdrName.textContent = "Nicht angemeldet";
     if (hdrRole) hdrRole.textContent = "—";
@@ -999,6 +1007,33 @@ function toniUpdateHeaderFields(profile, user){
     if (hdrClass) hdrClass.textContent = "—";
   }
 }
+
+// Lädt den Institutionsnamen des aktuellen Users via RPC get_my_institution_name().
+// Ergebnis wird gecacht (window.TONI_INSTITUTION_NAME), damit nicht mehrfach geladen wird.
+async function toniLoadInstitutionName(){
+  if (window.TONI_INSTITUTION_NAME) return window.TONI_INSTITUTION_NAME;
+  if (window.TONI_INSTITUTION_NAME_LOADING) return window.TONI_INSTITUTION_NAME_LOADING;
+  window.TONI_INSTITUTION_NAME_LOADING = (async () => {
+    try{
+      const res = await supabaseRequest("rpc/get_my_institution_name", {});
+      // PostgREST gibt bei scalar-RPC den Wert direkt oder als [{...}] zurück
+      let name = "";
+      if (typeof res === "string") name = res;
+      else if (Array.isArray(res)) name = res[0]?.get_my_institution_name || res[0] || "";
+      else if (res && typeof res === "object") name = res.get_my_institution_name || "";
+      name = (name || "").toString().trim();
+      if (name) window.TONI_INSTITUTION_NAME = name;
+      return name || "";
+    }catch(e){
+      console.warn("Institutionsname konnte nicht geladen werden:", e);
+      return "";
+    }finally{
+      window.TONI_INSTITUTION_NAME_LOADING = null;
+    }
+  })();
+  return window.TONI_INSTITUTION_NAME_LOADING;
+}
+window.toniLoadInstitutionName = toniLoadInstitutionName;
 
 function updateAuthUI(user, profile) {
   const nameEl = document.getElementById("auth-user-name");
@@ -3157,16 +3192,9 @@ window.applyRoleUI = function(){
     TONI_V16_ORIGINAL_APPLY_ROLE_UI();
   }
   showJourneyAdminPanelIfAllowedV16();
-  // TONI-Chat-Panel (rechts) für Tutor/Admin ausblenden, für Studenten zeigen.
-  const isStaff = typeof canManageGroups === "function" ? canManageGroups() : false;
-  const rightPanel = document.getElementById("right-panel");
-  if(rightPanel){
-    rightPanel.classList.toggle("toni-hide-for-staff", isStaff);
-  }
-  // Mobiler Chat-FAB konsistent mitschalten.
-  document.querySelectorAll(".chat-fab, .chat-fab-v75").forEach(fab => {
-    fab.classList.toggle("toni-hide-for-staff", isStaff);
-  });
+  // Hinweis (V97): Das seitliche Chat-Panel ist global ausgeblendet, der
+  // Floating-Button immer sichtbar (CSS). Keine rollenabhängige Umschaltung
+  // mehr nötig – der Button öffnet für alle das Vollbild-Chat.
 };
 
 // Auth-/Dashboard-Funktionen nachziehen, weil ältere Layer Panels hart setzen
