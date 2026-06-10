@@ -124,6 +124,8 @@ body { font-family:'Inter',sans-serif; background:#f8fafc; font-size:13px; color
 .page-wrap { display:flex; flex:1; overflow:hidden; }
 .left-panel { flex:1; overflow-y:auto; padding:14px 16px; display:flex; flex-direction:column; gap:13px; min-width:0; }
 .right-panel { width:280px; min-width:280px; background:#fff; border:1px solid var(--border); border-radius:14px; display:flex; flex-direction:column; height:calc(100vh - var(--topbar-h) - 28px); position:sticky; top:calc(var(--topbar-h) + 14px); margin:14px 16px 14px 0; overflow:hidden; }
+.right-panel.toni-hide-for-staff{ display:none !important; }
+.chat-fab.toni-hide-for-staff, .chat-fab-v75.toni-hide-for-staff{ display:none !important; }
 
 /* ═══════════════════════════════
    CARDS
@@ -2878,10 +2880,10 @@ html{width:100%;max-width:100%;overflow-x:hidden!important}body{width:100%;max-w
 }
 
 #journey-admin-panel #journey-editor-title{
-  font-size:22px !important;
-  font-weight:950 !important;
-  letter-spacing:-.02em;
-  line-height:1.15;
+  font-size:13px !important;
+  font-weight:600 !important;
+  letter-spacing:normal;
+  line-height:1.3;
   color:#0f172a !important;
   margin:0 !important;
 }
@@ -2968,11 +2970,11 @@ html{width:100%;max-width:100%;overflow-x:hidden!important}body{width:100%;max-w
 
 /* Stationsbereich */
 .toni-v47-stations-title{
-  font-size:21px;
-  font-weight:950;
-  letter-spacing:-.02em;
+  font-size:13px;
+  font-weight:600;
+  letter-spacing:normal;
   color:#0f172a;
-  margin:0 0 18px;
+  margin:0 0 14px;
 }
 
 #journey-builder-field > .lr-form-label{
@@ -6057,21 +6059,24 @@ body.toni-v88-completed-view .lr-task-card .lr-task-title::before{
 }
 
 .cover-upload-trigger-v90{
-  min-width:142px;
-  height:42px;
+  min-width:0;
+  width:auto;
+  align-self:flex-start;
+  flex:0 0 auto;
+  height:34px;
+  padding:0 14px;
   border:1px solid #bfdbfe;
   background:#eff6ff;
   color:#2563eb;
-  border-radius:12px;
+  border-radius:9px;
   display:inline-flex;
   align-items:center;
   justify-content:center;
-  gap:8px;
-  font-size:13px;
-  font-weight:950;
+  gap:7px;
+  font-size:12px;
+  font-weight:800;
   cursor:pointer;
   user-select:none;
-  box-shadow:0 6px 16px rgba(37,99,235,.08);
 }
 
 .cover-upload-trigger-v90:hover{
@@ -8333,6 +8338,103 @@ input.youtube-force-invalid-v105{
   font-weight:950;
 }
 
+/* === V93: Lernreisen verwalten – Kacheln oben (mehrspaltig), Editor unten === */
+#journey-admin-panel .journey-admin-grid{
+  display:flex !important;
+  flex-direction:column !important;
+  gap:16px;
+}
+/* Liste (zugeordnete Lernreisen) nach oben, Editor nach unten */
+#journey-admin-panel .journey-admin-grid > section.journey-admin-card{ order:1; }
+#journey-admin-panel .journey-admin-grid > aside.journey-admin-card{ order:2; }
+
+/* Kacheln: mehrspaltig, automatischer Umbruch */
+#journey-admin-panel #admin-journey-list{
+  display:grid;
+  grid-template-columns:repeat(auto-fill,minmax(230px,1fr));
+  gap:12px;
+}
+.journey-tile{
+  background:#f8fafc;border:1px solid var(--border);border-radius:14px;
+  padding:12px 14px;display:flex;flex-direction:column;min-width:0;
+  box-shadow:0 2px 8px rgba(15,23,42,.05);
+}
+.journey-tile-head{display:flex;align-items:flex-start;justify-content:space-between;gap:8px}
+.journey-tile-title{font-size:13px;font-weight:900;color:#0f172a;line-height:1.35;min-width:0}
+.journey-tile-open{flex-shrink:0;width:30px;height:30px;display:flex;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:9px;background:#fff;color:#2563eb;font-size:16px;font-weight:900;cursor:pointer;line-height:1;padding:0}
+.journey-tile-open:hover{background:#eff6ff}
+.journey-tile-chips{display:flex;flex-wrap:wrap;gap:5px;margin:7px 0}
+.journey-tile-chip{font-size:10px;border-radius:999px;padding:1px 8px;font-weight:700}
+.journey-tile-chip.chip-stations{background:#e1f5ee;color:#0f6e56}
+.journey-tile-chip.chip-tasks{background:#e6f1fb;color:#185fa5}
+.journey-tile-chip.chip-status.remote{background:#eaf3de;color:#3b6d11}
+.journey-tile-chip.chip-status.local{background:#faeeda;color:#854f0b}
+.journey-tile-desc{font-size:11px;color:#64748b;line-height:1.45;flex:1;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.journey-tile-actions{display:flex;gap:4px;margin-top:10px;padding-top:10px;border-top:1px solid var(--slate-100,#f1f5f9)}
+.journey-tile-action{flex:1;display:flex;align-items:center;justify-content:center;gap:3px;font-size:11px;font-weight:800;color:#64748b;background:none;border:none;cursor:pointer;padding:3px 4px;border-radius:7px}
+.journey-tile-action:hover{background:#f1f5f9}
+.journey-tile-action.danger{flex:0 0 auto;color:#dc2626}
+.journey-tile-action.danger:hover{background:#fef2f2}
+.journey-tile-action span{font-size:12px}
+/* Plus-Kachel */
+.journey-tile-add{border:1.5px dashed #93c5fd;background:#f8fbff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:120px;cursor:pointer;color:#2563eb;border-radius:14px;padding:12px}
+.journey-tile-add:hover{background:#eff6ff}
+.journey-tile-add-icon{font-size:26px;font-weight:300;line-height:1}
+.journey-tile-add-label{font-size:12px;font-weight:800}
+/* Einklappbarer Editor */
+#journey-admin-panel .journey-admin-grid > aside#journey-editor-card{
+  background:rgba(255,255,255,.94) !important;
+  border:1px solid #dbe4ef !important;
+  border-radius:22px !important;
+  padding:18px !important;
+  gap:14px !important;
+  width:100% !important;
+  max-width:100% !important;
+  box-sizing:border-box;
+}
+/* basics-card immer volle Breite (auch im eingeklappten Zustand) */
+#journey-admin-panel .toni-v47-basics-card,
+#journey-admin-panel .toni-v47-stations-card{ width:100% !important; max-width:100% !important; box-sizing:border-box; }
+#journey-editor-card .journey-editor-bar{display:flex;align-items:center;justify-content:space-between;gap:10px;cursor:pointer}
+.journey-editor-toggle{flex-shrink:0;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border:1px solid var(--border);border-radius:8px;background:#fff;color:#0f172a;font-size:18px;font-weight:900;cursor:pointer;line-height:1;padding:0}
+.journey-editor-toggle:hover{background:#f1f5f9}
+/* V94: Plus-Button links oben im Editor-Kasten */
+#journey-admin-panel .toni-v47-editor-heading{ align-items:center; }
+#journey-admin-panel .toni-v47-editor-heading #toni-journey-editor-toggle{ order:-1; margin-right:4px; }
+/* V94: Editor-Buttons (Speichern/Neu/Beispiel) linksbündig */
+#journey-admin-panel .journey-editor-toolbar{ justify-content:flex-start !important; }
+/* V95: 'lokal gespeichert'-Status beim Cover-Upload entfernen */
+.cover-upload-status-v91{ display:none !important; }
+/* V95: Lernreise-Kacheln dezent farbig (Plus-Kachel bleibt unverändert) */
+#journey-admin-panel #admin-journey-list .journey-tile:not(.journey-tile-add){
+  background:#f0f6ff;
+  border-color:#dbe7f5;
+}
+#journey-editor-card.toni-editor-collapsed .journey-editor-body{display:none}
+/* V93: Editor-Collapse auch ohne ID-Treffer (über aside-Klasse) */
+#journey-admin-panel .journey-admin-grid > aside.journey-admin-card.toni-editor-collapsed .journey-editor-body{display:none}
+/* V93: zweispaltiges Builder-Grid (Stationen links, Aufgabe bearbeiten rechts) */
+.toni-v93-builder-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-top:16px;align-items:start}
+.toni-v93-col{min-width:0}
+.toni-v93-col-task .station-task-box{margin-top:0;box-shadow:0 2px 8px rgba(15,23,42,.05)}
+/* V93: V111-Editor (#toni-v111-editor) zweispaltig anordnen */
+#journey-admin-panel #toni-v111-editor{
+  display:grid;
+  grid-template-columns:1fr 1fr;
+  gap:16px;
+  align-items:start;
+}
+#journey-admin-panel #toni-v111-editor > .v111-single{ min-width:0; grid-column:1; }
+#journey-admin-panel #toni-v111-editor > .v111-panel{ min-width:0; grid-column:2; position:sticky; top:16px; }
+@media(max-width:900px){
+  .toni-v93-builder-grid{grid-template-columns:1fr}
+  #journey-admin-panel #toni-v111-editor{grid-template-columns:1fr}
+  #journey-admin-panel #toni-v111-editor > .v111-panel{grid-column:1;position:static}
+}
+@media(max-width:560px){
+  #journey-admin-panel #admin-journey-list{grid-template-columns:1fr}
+}
+
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -9287,7 +9389,7 @@ input.youtube-force-invalid-v105{
 
 <script src="/chat.js?v=12"></script>
 
-<script src="/journey.js?v=89"></script>
+<script src="/journey.js?v=96"></script>
 <script src="/journey_editor_v111.js?v=55"></script>
 <script src="/admin.js"></script>
 <script src="/ui.js?v=7"></script>

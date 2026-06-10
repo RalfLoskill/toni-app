@@ -6,7 +6,7 @@
 // Build-Stempel: im Browser per `window.TONI_JOURNEY_BUILD` abfragbar.
 // Wenn dieser Wert NICHT "v86-assignments-progress-group" ist, lädt der
 // Browser eine veraltete Datei (Cache/Deploy), nicht diese Version.
-window.TONI_JOURNEY_BUILD = "v89-group-manage";
+window.TONI_JOURNEY_BUILD = "v96-tile-color-cover";
 
 /* Lernreisen V1: ergänzt das bestehende Dashboard, ohne das Design zu ersetzen. */
 const DEFAULT_LEARNING_JOURNEYS = [{
@@ -2346,29 +2346,82 @@ function renderAdminJourneyListV16(rows){
   const list = document.getElementById("admin-journey-list");
   if(!list) return;
 
-  list.innerHTML = rows.map(row => {
+  // Plus-Kachel: öffnet den (standardmäßig eingeklappten) Editor im Anlege-Modus.
+  const plusTile = `
+      <div class="journey-tile journey-tile-add" onclick="toniOpenJourneyEditorNew()" role="button" tabindex="0" title="Neue Lernreise anlegen">
+        <div class="journey-tile-add-icon">+</div>
+        <div class="journey-tile-add-label">Neue Lernreise</div>
+      </div>`;
+
+  const tiles = rows.map(row => {
     const j = rowToJourneyV16(row);
     const stations = (j.steps || []).length;
     const tasks = (j.steps || []).reduce((sum, s) => sum + ((s.tasks || []).length), 0);
     const src = row._source === "local" ? "local" : "remote";
+    const statusLabel = src === "local" ? "lokal" : "gespeichert";
     return `
-      <div class="journey-list-item">
-        <div>
-          <div class="journey-list-title">${escapeToniV16(j.title)}</div>
-          <div class="journey-list-meta">
-            ${escapeToniV16(j.subject || "Ohne Fach")} · ${stations} Station(en) · ${tasks} Aufgabe(n)<br>
-            Ziel: ${escapeToniV16(j.goal || "–")}<br>
-            <span class="journey-status-pill ${src}">${src === "local" ? "lokal" : "gespeichert"}</span>
-          </div>
+      <div class="journey-tile">
+        <div class="journey-tile-head">
+          <div class="journey-tile-title">${escapeToniV16(j.title)}</div>
+          <button class="journey-tile-open" title="Öffnen" aria-label="Öffnen" onclick="openAdminJourney('${row.id}')">→</button>
         </div>
-        <div class="journey-list-actions">
-          <button class="lr-secondary-btn" onclick="openAdminJourney('${row.id}')">Öffnen</button>
-          <button class="lr-secondary-btn" onclick="editAdminJourney('${row.id}')">Bearbeiten</button>
-          <button class="lr-secondary-btn" onclick="toniExportJourney('${row.id}')">Exportieren</button>
-          <button class="lr-secondary-btn" onclick="deleteAdminJourney('${row.id}')">Löschen</button>
+        <div class="journey-tile-chips">
+          <span class="journey-tile-chip chip-stations">${stations} Station(en)</span>
+          <span class="journey-tile-chip chip-tasks">${tasks} Aufgabe(n)</span>
+          <span class="journey-tile-chip chip-status ${src}">${statusLabel}</span>
+        </div>
+        <div class="journey-tile-desc">${escapeToniV16(j.goal || j.subject || "–")}</div>
+        <div class="journey-tile-actions">
+          <button class="journey-tile-action" onclick="editAdminJourney('${row.id}')" title="Bearbeiten"><span>✏️</span>Bearbeiten</button>
+          <button class="journey-tile-action" onclick="toniExportJourney('${row.id}')" title="Exportieren"><span>⬇️</span>Export</button>
+          <button class="journey-tile-action danger" onclick="deleteAdminJourney('${row.id}')" title="Löschen" aria-label="Löschen"><span>🗑️</span></button>
         </div>
       </div>`;
   }).join("");
+
+  list.innerHTML = plusTile + tiles;
+}
+
+// === Einklappbarer Lernreise-Editor (V93) ===
+// Der Editor (aside.journey-admin-card) ist standardmäßig eingeklappt und wird
+// über die Plus-Kachel (neu) oder "Bearbeiten" (gefüllt) ausgeklappt.
+function toniGetJourneyEditorCard(){
+  const panel=document.getElementById("journey-admin-panel");
+  return panel ? panel.querySelector(".journey-admin-grid > aside.journey-admin-card") : null;
+}
+function toniSetJourneyEditorOpen(open){
+  const card=toniGetJourneyEditorCard(); if(!card)return;
+  card.classList.toggle("toni-editor-collapsed", !open);
+  const toggle=document.getElementById("toni-journey-editor-toggle");
+  if(toggle) toggle.textContent = open ? "−" : "+";
+  if(open){
+    try{ card.scrollIntoView({behavior:"smooth", block:"start"}); }catch(e){}
+  }
+}
+function toniToggleJourneyEditor(){
+  const card=toniGetJourneyEditorCard(); if(!card)return;
+  toniSetJourneyEditorOpen(card.classList.contains("toni-editor-collapsed"));
+}
+// Plus-Kachel: leeren Editor öffnen (Anlege-Modus).
+function toniOpenJourneyEditorNew(){
+  try{ resetJourneyEditor?.(); }catch(e){}
+  const title=document.getElementById("journey-editor-title");
+  if(title) title.textContent="Neue Lernreise anlegen";
+  toniSetJourneyEditorOpen(true);
+}
+window.toniToggleJourneyEditor=toniToggleJourneyEditor;
+window.toniOpenJourneyEditorNew=toniOpenJourneyEditorNew;
+window.toniSetJourneyEditorOpen=toniSetJourneyEditorOpen;
+
+// Beim Bearbeiten den Editor automatisch ausklappen (an editAdminJourney anhängen).
+if(typeof window.editAdminJourney==="function" && !window.editAdminJourney.__toniV93Wrapped){
+  const _origEdit=window.editAdminJourney;
+  window.editAdminJourney=function(...args){
+    const r=_origEdit.apply(this,args);
+    setTimeout(()=>toniSetJourneyEditorOpen(true), 30);
+    return r;
+  };
+  window.editAdminJourney.__toniV93Wrapped=true;
 }
 
 function findAdminJourneyRowV16(id){
@@ -3104,6 +3157,16 @@ window.applyRoleUI = function(){
     TONI_V16_ORIGINAL_APPLY_ROLE_UI();
   }
   showJourneyAdminPanelIfAllowedV16();
+  // TONI-Chat-Panel (rechts) für Tutor/Admin ausblenden, für Studenten zeigen.
+  const isStaff = typeof canManageGroups === "function" ? canManageGroups() : false;
+  const rightPanel = document.getElementById("right-panel");
+  if(rightPanel){
+    rightPanel.classList.toggle("toni-hide-for-staff", isStaff);
+  }
+  // Mobiler Chat-FAB konsistent mitschalten.
+  document.querySelectorAll(".chat-fab, .chat-fab-v75").forEach(fab => {
+    fab.classList.toggle("toni-hide-for-staff", isStaff);
+  });
 };
 
 // Auth-/Dashboard-Funktionen nachziehen, weil ältere Layer Panels hart setzen
@@ -5824,7 +5887,68 @@ function toniV47BuildModernJourneyEditor(){
   if(clearStationBtn) clearStationBtn.textContent = "Station leeren";
 
   toniV47IconizeFormGroups();
+  // Nach dem V47-Aufbau die finale V93-Struktur herstellen.
+  setTimeout(toniV93RestructureEditor, 0);
 }
+
+/* === V93: Editor neu anordnen + einklappbar ===
+   - Allgemeine Angaben (basics) oben über volle Breite
+   - Darunter zweispaltig: links Stationen, rechts "Aufgabe bearbeiten"
+   - Gesamter Editor-Inhalt einklappbar über +/− am Titel (Start: eingeklappt) */
+function toniV93RestructureEditor(){
+  const panel = document.getElementById("journey-admin-panel");
+  const aside = panel?.querySelector(".journey-admin-grid > aside.journey-admin-card");
+  if(!aside) return;
+  if(aside.dataset.v93Restructured === "1") return;
+  if(!aside.id) aside.id = "journey-editor-card";
+
+  const basicsCard = aside.querySelector(".toni-v47-basics-card");
+  const stationsCard = aside.querySelector(".toni-v47-stations-card");
+  if(!basicsCard || !stationsCard) return; // V47 noch nicht fertig -> später erneut
+
+  // 1) Einklapp-Hülle: Titelzeile (aus basics-heading) bekommt einen Toggle,
+  //    der gesamte restliche Inhalt wandert in einen einklappbaren Body.
+  const heading = basicsCard.querySelector(".toni-v47-editor-heading");
+  if(heading && !document.getElementById("toni-journey-editor-toggle")){
+    const toggle = document.createElement("button");
+    toggle.type = "button";
+    toggle.id = "toni-journey-editor-toggle";
+    toggle.className = "journey-editor-toggle";
+    toggle.title = "Ein-/Ausklappen";
+    toggle.setAttribute("aria-label","Editor ein- oder ausklappen");
+    toggle.textContent = "+";
+    toggle.onclick = toniToggleJourneyEditor;
+    heading.style.cursor = "pointer";
+    heading.addEventListener("click", (e)=>{ if(e.target!==toggle) toniToggleJourneyEditor(); });
+    heading.appendChild(toggle);
+  }
+
+  // 2) Body-Wrapper: alles AUSSER der Titelzeile in basics + die ganze stationsCard.
+  let body = aside.querySelector("#journey-editor-body-v93");
+  if(!body){
+    body = document.createElement("div");
+    body.id = "journey-editor-body-v93";
+    body.className = "journey-editor-body";
+    // basics-Inhalt (ohne heading) in den Body
+    const basicsInner = document.createElement("div");
+    basicsInner.className = "toni-v93-basics-fields";
+    [...basicsCard.children].forEach(ch => { if(!ch.classList.contains("toni-v47-editor-heading")) basicsInner.appendChild(ch); });
+    basicsCard.appendChild(body);
+    body.appendChild(basicsInner);
+    // stations-card ebenfalls in den Body, damit sie mit ein-/ausklappt
+    body.appendChild(stationsCard);
+  }
+
+  // 3) Zweispaltiges Layout für den V111-Editor (#toni-v111-editor):
+  //    Stationsliste (.v111-single) links, "Aufgabe bearbeiten" (.v111-panel) rechts.
+  //    Das übernimmt CSS (siehe index.html .toni-v93-* / #toni-v111-editor),
+  //    daher hier keine DOM-Verschiebung der alten station-task-box mehr.
+
+  aside.dataset.v93Restructured = "1";
+  // Start eingeklappt.
+  toniSetJourneyEditorOpen(false);
+}
+window.toniV93RestructureEditor = toniV93RestructureEditor;
 
 window.addEventListener("DOMContentLoaded", () => {
   setTimeout(toniV47BuildModernJourneyEditor, 200);
