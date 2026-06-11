@@ -7138,6 +7138,7 @@ window.addEventListener("DOMContentLoaded", () => {
         <td class="sa-inst-num sa-inst-img">${Number(r.image_count)||0}</td>
         <td class="sa-inst-num sa-inst-doc">${Number(r.doc_count)||0}</td>
         <td class="sa-inst-bytes">${fmtBytes(r.total_bytes)}</td>
+        <td class="sa-inst-del-cell"><button class="sa-inst-del-btn" title="Institution vollständig löschen" onclick="toniV118AskDeleteInstitution('${esc(r.institution_id)}','${esc(String(r.inst_name||'').replace(/'/g,"\\'"))}')">−</button></td>
       </tr>`).join("");
 
     const totalRow = `
@@ -7149,6 +7150,7 @@ window.addEventListener("DOMContentLoaded", () => {
         <td class="sa-inst-num sa-inst-img">${sumImg}</td>
         <td class="sa-inst-num sa-inst-doc">${sumDoc}</td>
         <td class="sa-inst-bytes sa-inst-accent">${fmtBytes(sumBytes)}</td>
+        <td class="sa-inst-del-cell"></td>
       </tr>`;
 
     root.innerHTML = cards + `
@@ -7163,6 +7165,7 @@ window.addEventListener("DOMContentLoaded", () => {
               <th title="Anzahl Bilder">🖼️</th>
               <th title="Anzahl Dokumente">📄</th>
               <th>Speicher</th>
+              <th></th>
             </tr>
           </thead>
           <tbody>${body}${totalRow}</tbody>
@@ -7195,6 +7198,55 @@ window.addEventListener("DOMContentLoaded", () => {
     if(isOpen) loadInstitutionStats();
   }
 
+  // Löschen einer ganzen Institution – mit Passwortbestätigung.
+  function askDeleteInstitution(institutionId, institutionName){
+    if(!institutionId) return;
+    const name = institutionName || "diese Institution";
+    // Sicherheitsdialog: erst bestätigen, dann Passwort.
+    const ok = window.confirm(
+      `Institution „${name}" wirklich VOLLSTÄNDIG löschen?\n\n` +
+      `Entfernt werden ALLE Konten (Admins, Tutoren, Schüler), alle Projekte, ` +
+      `Lerngruppen, Zuordnungen und Datei-Einträge dieser Institution.\n\n` +
+      `Diese Aktion kann NICHT rückgängig gemacht werden.`
+    );
+    if(!ok) return;
+
+    const pw = window.prompt(`Zur Bestätigung bitte das SuperAdmin-Passwort eingeben, um „${name}" zu löschen:`);
+    if(pw === null) return; // abgebrochen
+    if(String(pw) !== SUPERADMIN_PASSWORD){
+      alert("Falsches Passwort. Löschen abgebrochen.");
+      return;
+    }
+    deleteInstitution(institutionId, name);
+  }
+
+  async function deleteInstitution(institutionId, name){
+    const root = document.getElementById("superadmin-institutions-content");
+    if(root) root.innerHTML = `<div class="assignment-empty">„${esc(name)}" wird gelöscht …</div>`;
+    try{
+      const result = await callRpc("rpc/superadmin_delete_institution_v118", {
+        ...authValue(),
+        p_institution_id: institutionId
+      });
+      const info = Array.isArray(result) ? result[0] : result;
+      const dp = info?.deleted_profiles ?? 0;
+      const dpr = info?.deleted_projects ?? 0;
+      if(typeof appendMsg === "function"){
+        appendMsg("toni", `🗑️ Institution „${esc(name)}" gelöscht (${dp} Konten, ${dpr} Projekte entfernt). Hinweis: physische Dateien im Speicher-Bucket und Login-Hüllen bleiben bestehen.`, (typeof time==="function"?time():""), "desktop");
+      }
+      // Übersicht neu laden
+      await loadInstitutionStats();
+    }catch(e){
+      console.warn("Institution löschen:", e);
+      const msg = /not_allowed/.test(String(e)) ? "Passwortprüfung fehlgeschlagen."
+                : /institution_not_found/.test(String(e)) ? "Institution nicht gefunden."
+                : "Löschen fehlgeschlagen.";
+      if(root) root.innerHTML = `<div class="assignment-empty">${msg}</div>`;
+      setTimeout(()=>loadInstitutionStats(), 1500);
+    }
+  }
+
+  window.toniV118AskDeleteInstitution = askDeleteInstitution;
   window.toniV118LoadInstitutionStats = loadInstitutionStats;
   window.toniV118ToggleInstitutionsPanel = toggleInstitutionsPanel;
 })();
