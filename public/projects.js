@@ -205,8 +205,13 @@ function renderProjectsDashboard() {
     blk: !!p.has_blocker, off: !!p.is_official, ty: p.type || '',
     dl: p.deadline || ''
   })));
-  if (wrap.dataset.projSignature === signature) {
-    return; // nichts geändert -> kein Rebuild, kein Zittern
+  // DOM-Realitätscheck: Der Guard darf nur greifen, wenn der Container auch
+  // wirklich schon gerenderte Projektkacheln enthält. Beim Erstaufruf steht dort
+  // noch der HTML-Platzhalter "Projekte werden geladen…" – Signatur und DOM können
+  // dann auseinanderlaufen (z.B. nach Token-Retry), sodass die Kacheln nie erscheinen.
+  const hasRenderedCards = !!wrap.querySelector('.toni-project-card-v90, [data-project-id]');
+  if (wrap.dataset.projSignature === signature && hasRenderedCards) {
+    return; // nichts geändert UND bereits gerendert -> kein Rebuild, kein Zittern
   }
   wrap.dataset.projSignature = signature;
 
@@ -228,7 +233,7 @@ function renderProjectsDashboard() {
       ? `<span style="font-size:11px;color:${overdue?'#A32D2D':pal.text};opacity:${overdue?1:.8}">📅 ${formatDate(p.deadline)}${overdue?' · überfällig':''}</span>`
       : '';
 
-    return `<div onclick="openProjectModal('${p.id}')" style="cursor:pointer;background:${pal.bg};border:0.5px solid ${pal.border};border-radius:10px;padding:10px 12px;margin-bottom:8px;transition:opacity .15s"
+    return `<div data-project-id="${p.id}" onclick="openProjectModal('${p.id}')" style="cursor:pointer;background:${pal.bg};border:0.5px solid ${pal.border};border-radius:10px;padding:10px 12px;margin-bottom:8px;transition:opacity .15s"
       onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
       <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:3px">
         <div style="font-size:14px;font-weight:500;color:${pal.text};line-height:1.3">${escapeHtml(p.title)}</div>
@@ -744,11 +749,63 @@ async function loadProjectTasks(projectId) {
     if (!res.ok) throw new Error(await res.text());
     const tasks = await res.json();
     window.TONI_PROJECT_TASKS = tasks;
+
+    // Datei-Anhänge für alle Aufgaben in EINER Abfrage holen (nicht pro Kachel),
+    // um sie als kleine Icons auf den Board-Kacheln anzuzeigen.
+    await loadTaskFileBadges(tasks.map(t => t.id));
+
     renderProjectKanban(tasks);
   } catch (e) {
     console.warn('TONI Aufgaben laden:', e);
     if (kanban) kanban.innerHTML = `<div style="color:#A32D2D;font-size:13px;padding:20px">Fehler beim Laden: ${escapeHtml(e.message)}</div>`;
   }
+}
+
+// ══════════════════════════════════════
+// DATEI-ANHÄNGE: Badges auf Board-Kacheln
+// ══════════════════════════════════════
+// Map task_id -> Array von Datei-Metadaten ({mime_type, file_name}).
+window.TONI_TASK_FILE_BADGES = window.TONI_TASK_FILE_BADGES || {};
+
+async function loadTaskFileBadges(taskIds){
+  window.TONI_TASK_FILE_BADGES = {};
+  const ids = (taskIds || []).filter(Boolean);
+  if(!ids.length) return;
+  try{
+    const token = await getToken();
+    if(!token) return;
+    // PostgREST IN-Filter: id=in.(a,b,c)
+    const inList = `(${ids.join(',')})`;
+    const res = await fetch(
+      `${window.SUPABASE_URL}/rest/v1/project_task_files?task_id=in.${inList}&select=task_id,mime_type,file_name&order=created_at.asc`,
+      { headers: { 'apikey': window.SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + token } }
+    );
+    if(!res.ok) return; // Tabelle evtl. noch nicht angelegt -> keine Badges, kein Fehler
+    const rows = await res.json();
+    const map = {};
+    rows.forEach(r => { (map[r.task_id] = map[r.task_id] || []).push(r); });
+    window.TONI_TASK_FILE_BADGES = map;
+  }catch(e){
+    console.warn('Datei-Badges laden fehlgeschlagen:', e);
+    window.TONI_TASK_FILE_BADGES = {};
+  }
+}
+
+// Kleiner Icon-Streifen für eine Kachel (max. 4 Icons + Zähler).
+function taskFileBadgesHtml(taskId){
+  const files = (window.TONI_TASK_FILE_BADGES || {})[taskId] || [];
+  if(!files.length) return '';
+  const shown = files.slice(0, 4);
+  const more = files.length > 4 ? `<span style="font-size:10px;color:var(--color-text-secondary);align-self:center">+${files.length-4}</span>` : '';
+  const chips = shown.map(f => {
+    const ic = toniTaskFileIcon(f.mime_type, f.file_name);
+    const lbl = ic.icon.length > 2 ? ic.icon : '';
+    // Kompakter farbiger Chip: Text-Label (PDF/DOC/XLS) oder Symbol (Bild/Datei)
+    return `<span title="${escapeHtml(f.file_name||'')}" style="display:inline-flex;align-items:center;justify-content:center;min-width:18px;height:16px;padding:0 3px;border-radius:4px;background:${ic.bg};color:${ic.fg};font-size:${lbl?'8px':'10px'};font-weight:700;letter-spacing:.2px;line-height:1">${lbl || ic.icon}</span>`;
+  }).join('');
+  return `<div style="display:flex;align-items:center;gap:3px;margin-top:6px" title="${files.length} Datei(en) angehängt">
+    <span style="font-size:10px;color:var(--color-text-secondary)">📎</span>${chips}${more}
+  </div>`;
 }
 
 // ══════════════════════════════════════
@@ -883,7 +940,7 @@ function renderTaskCard(task, col) {
     onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
     ${blockerBadge}
     <div style="font-size:13px;font-weight:500;color:${pal.text};line-height:1.3;${doneStyle};${isBlocked?'padding-right:18px':''}">${escapeHtml(task.title)}</div>
-    ${assigneeHtml}${dueHtml}${blockerHtml}
+    ${assigneeHtml}${dueHtml}${blockerHtml}${taskFileBadgesHtml(task.id)}
     <div style="display:flex;align-items:center;gap:6px;margin-top:7px">
       ${fwdBtn}${resetBtn}
     </div>
@@ -1066,6 +1123,9 @@ async function openTaskDetail(taskId) {
     else { delBtn.style.display = 'none'; }
     adminWrap.style.display = adminVisible ? '' : 'none';
 
+    // Dateianhänge initialisieren (Inhaber sieht Upload, alle sehen Download)
+    initTaskFiles(task, isOwner);
+
     document.getElementById('task-detail-modal').classList.add('open');
   } catch (e) { console.warn('TONI Aufgabe öffnen:', e); }
 }
@@ -1073,6 +1133,261 @@ async function openTaskDetail(taskId) {
 function closeTaskDetailModal() {
   document.getElementById('task-detail-modal').classList.remove('open');
   window.TONI_CURRENT_TASK = null;
+  // Board neu laden, damit Datei-Badges nach Up-/Download aktuell sind.
+  if (window.TONI_ACTIVE_PROJECT_ID) loadProjectTasks(window.TONI_ACTIVE_PROJECT_ID);
+}
+
+/* =========================================================
+   TONI – Dateianhänge für Projektaufgaben
+   - Inhaber lädt hoch (max. 5 Dateien, je max. 10 MB)
+   - Alle Projektteilnehmer dürfen herunterladen
+   - Nur der Hochladende darf seine eigene Datei entfernen
+   Speicher: Supabase Storage Bucket "task-files",
+   Metadaten: Tabelle "project_task_files".
+   HINWEIS: Bucket + Tabelle + RLS-Policies müssen in Supabase
+   eingerichtet sein (siehe SQL 10a). Ohne sie schlagen Up-/Download
+   sauber fehl (mit Hinweis), die UI bleibt funktionsfähig.
+   ========================================================= */
+const TONI_TASKFILE_BUCKET = "task-files";
+const TONI_TASKFILE_MAX_MB = 10;
+const TONI_TASKFILE_MAX_COUNT = 5;
+const TONI_TASKFILE_ALLOWED = [
+  "image/", "application/pdf",
+  "application/msword",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "application/vnd.ms-excel",
+  "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+];
+
+let TONI_TASKFILES_STATE = { taskId: null, isOwner: false, files: [] };
+
+function toniTaskFileIcon(type, name){
+  const t = (type || "") + " " + (name || "").toLowerCase();
+  // Kräftige, gut unterscheidbare Farbflächen (Fläche in Akzentfarbe, Symbol weiß).
+  if(/image\//.test(t) || /\.(png|jpe?g|gif|webp|heic)$/.test(t)) return { icon:"🖼", bg:"#185FA5", fg:"#fff", label:"BILD" };
+  if(/pdf/.test(t)) return { icon:"PDF", bg:"#C0392B", fg:"#fff", label:"PDF" };
+  if(/word|\.docx?$/.test(t)) return { icon:"DOC", bg:"#2B579A", fg:"#fff", label:"DOC" };
+  if(/excel|spreadsheet|\.xlsx?$/.test(t)) return { icon:"XLS", bg:"#1E7145", fg:"#fff", label:"XLS" };
+  return { icon:"📎", bg:"#5F5E5A", fg:"#fff", label:"DATEI" };
+}
+
+function toniFormatBytes(bytes){
+  const b = Number(bytes) || 0;
+  if(b < 1024) return b + " B";
+  if(b < 1024*1024) return Math.round(b/1024) + " KB";
+  return (b/(1024*1024)).toFixed(1).replace(".", ",") + " MB";
+}
+
+async function initTaskFiles(task, isOwner){
+  TONI_TASKFILES_STATE = { taskId: task.id, isOwner: !!isOwner, files: [] };
+  const dropzone = document.getElementById("ptask-files-dropzone");
+  const input = document.getElementById("ptask-file-input");
+  const listEl = document.getElementById("ptask-files-list");
+  const hintEl = document.getElementById("ptask-files-hint");
+  if(listEl) listEl.innerHTML = `<div style="font-size:12px;color:var(--color-text-tertiary)">Dateien werden geladen …</div>`;
+  if(hintEl) hintEl.textContent = "";
+
+  // Ablagezone nur für den Inhaber
+  if(dropzone) dropzone.style.display = isOwner ? "" : "none";
+
+  // Inhaber-Interaktionen einmalig verdrahten
+  if(isOwner && dropzone && input && !dropzone.dataset.wired){
+    dropzone.dataset.wired = "1";
+    dropzone.addEventListener("click", ()=> input.click());
+    input.addEventListener("change", ()=>{ handleTaskFileSelection(input.files); input.value = ""; });
+    dropzone.addEventListener("dragover", e=>{ e.preventDefault(); dropzone.style.background = "var(--color-background-secondary)"; });
+    dropzone.addEventListener("dragleave", ()=>{ dropzone.style.background = "var(--color-background-primary)"; });
+    dropzone.addEventListener("drop", e=>{
+      e.preventDefault();
+      dropzone.style.background = "var(--color-background-primary)";
+      handleTaskFileSelection(e.dataTransfer.files);
+    });
+  }
+
+  await loadTaskFiles();
+}
+
+async function loadTaskFiles(){
+  const taskId = TONI_TASKFILES_STATE.taskId;
+  const listEl = document.getElementById("ptask-files-list");
+  if(!taskId || !listEl) return;
+  try{
+    const res = await fetch(
+      `${window.SUPABASE_URL}/rest/v1/project_task_files?task_id=eq.${taskId}&order=created_at.asc&select=*`,
+      { headers: await toniSupabaseHeaders() }
+    );
+    if(!res.ok) throw new Error("HTTP " + res.status);
+    TONI_TASKFILES_STATE.files = await res.json();
+  }catch(e){
+    console.warn("Dateien laden fehlgeschlagen:", e);
+    TONI_TASKFILES_STATE.files = [];
+  }
+  renderTaskFiles();
+}
+
+function renderTaskFiles(){
+  const listEl = document.getElementById("ptask-files-list");
+  const countEl = document.getElementById("ptask-files-count");
+  const hintEl = document.getElementById("ptask-files-hint");
+  const dropzone = document.getElementById("ptask-files-dropzone");
+  if(!listEl) return;
+
+  const files = TONI_TASKFILES_STATE.files || [];
+  const isOwner = TONI_TASKFILES_STATE.isOwner;
+  const myId = window.TONI_ACTIVE_PROFILE_ID || localStorage.getItem("toni_profile_id") || null;
+
+  if(countEl) countEl.textContent = files.length ? `(${files.length})` : "";
+
+  // Upload-Limit erreicht? Ablagezone für Inhaber ausgrauen.
+  if(dropzone && isOwner){
+    const full = files.length >= TONI_TASKFILE_MAX_COUNT;
+    dropzone.style.opacity = full ? ".5" : "1";
+    dropzone.style.pointerEvents = full ? "none" : "auto";
+  }
+
+  if(!files.length){
+    listEl.innerHTML = `<div style="font-size:12px;color:var(--color-text-tertiary)">Noch keine Dateien angehängt.</div>`;
+  } else {
+    listEl.innerHTML = files.map(f=>{
+      const ic = toniTaskFileIcon(f.mime_type, f.file_name);
+      const canDelete = isOwner && String(f.uploaded_by) === String(myId);
+      const uploaderName = escapeHtml(f.uploader_name || "Teilnehmer");
+      const delBtn = canDelete
+        ? `<button aria-label="Entfernen" onclick="deleteTaskFile('${f.id}')" style="width:30px;height:30px;flex-shrink:0;border:0.5px solid var(--color-border-secondary);border-radius:6px;background:var(--color-background-primary);color:#A32D2D;cursor:pointer;font-size:15px;line-height:1">🗑️</button>`
+        : `<span style="width:30px;flex-shrink:0"></span>`;
+      return `<div style="display:flex;align-items:center;gap:10px;background:var(--color-background-primary);border:1px solid #D8D2C4;border-radius:var(--border-radius-md);padding:9px 11px">
+        <span style="width:34px;height:34px;flex-shrink:0;border-radius:7px;background:${ic.bg};display:flex;align-items:center;justify-content:center;font-size:${ic.icon.length>2?'14px':'17px'};font-weight:700;color:${ic.fg};letter-spacing:.3px">${ic.icon}</span>
+        <div style="flex:1;min-width:0">
+          <div style="font-size:13px;color:var(--color-text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${escapeHtml(f.file_name)}</div>
+          <div style="font-size:11px;color:var(--color-text-tertiary)">${uploaderName} · ${toniFormatBytes(f.file_size)}</div>
+        </div>
+        <button aria-label="Herunterladen" onclick="downloadTaskFile('${f.id}')" style="width:30px;height:30px;flex-shrink:0;border:0.5px solid var(--color-border-secondary);border-radius:6px;background:var(--color-background-primary);color:#185FA5;cursor:pointer;font-size:15px;line-height:1">⬇️</button>
+        ${delBtn}
+      </div>`;
+    }).join("");
+  }
+
+  if(hintEl){
+    hintEl.textContent = isOwner
+      ? "Nur eigene Dateien können entfernt werden. Alle Teilnehmer können herunterladen."
+      : "Du kannst alle Dateien herunterladen. Hochladen kann nur der Aufgaben-Inhaber.";
+  }
+}
+
+function handleTaskFileSelection(fileList){
+  const files = Array.from(fileList || []);
+  if(!files.length) return;
+  const hintEl = document.getElementById("ptask-files-hint");
+  const current = (TONI_TASKFILES_STATE.files || []).length;
+
+  if(current + files.length > TONI_TASKFILE_MAX_COUNT){
+    if(hintEl) hintEl.innerHTML = `<span style="color:#A32D2D">Maximal ${TONI_TASKFILE_MAX_COUNT} Dateien pro Aufgabe. Aktuell: ${current}.</span>`;
+    return;
+  }
+
+  for(const file of files){
+    if(file.size > TONI_TASKFILE_MAX_MB * 1024 * 1024){
+      if(hintEl) hintEl.innerHTML = `<span style="color:#A32D2D">„${escapeHtml(file.name)}" ist größer als ${TONI_TASKFILE_MAX_MB} MB.</span>`;
+      return;
+    }
+    const okType = TONI_TASKFILE_ALLOWED.some(t => (file.type||"").startsWith(t) || (t.startsWith(".") && file.name.toLowerCase().endsWith(t)));
+    if(!okType){
+      if(hintEl) hintEl.innerHTML = `<span style="color:#A32D2D">Dateityp von „${escapeHtml(file.name)}" ist nicht erlaubt (Bild, PDF, Word, Excel).</span>`;
+      return;
+    }
+  }
+  // Sequenziell hochladen (einfacher für Fehlerbehandlung + Limit-Check)
+  uploadTaskFilesSequentially(files);
+}
+
+async function uploadTaskFilesSequentially(files){
+  const hintEl = document.getElementById("ptask-files-hint");
+  const taskId = TONI_TASKFILES_STATE.taskId;
+  const myId = window.TONI_ACTIVE_PROFILE_ID || localStorage.getItem("toni_profile_id") || null;
+  for(const file of files){
+    if(hintEl) hintEl.textContent = `„${file.name}" wird hochgeladen …`;
+    try{
+      const token = await getToken();
+      if(!token) throw new Error("Keine Supabase-Sitzung.");
+      const safeName = String(file.name).replace(/[^\w.\-]+/g, "_");
+      const path = `${taskId}/${Date.now()}-${safeName}`;
+      // 1) Datei in den Storage-Bucket laden
+      const up = await fetch(`${window.SUPABASE_URL}/storage/v1/object/${TONI_TASKFILE_BUCKET}/${path}`, {
+        method:"POST",
+        headers:{ "apikey":window.SUPABASE_ANON_KEY, "Authorization":"Bearer "+token, "Content-Type":file.type||"application/octet-stream", "x-upsert":"true" },
+        body:file
+      });
+      if(!up.ok) throw new Error("Storage " + up.status + ": " + (await up.text()));
+      // 2) Metadaten-Zeile anlegen
+      const meta = await fetch(`${window.SUPABASE_URL}/rest/v1/project_task_files`, {
+        method:"POST",
+        headers:{ ...(await toniSupabaseHeaders()), "Prefer":"return=representation" },
+        body:JSON.stringify([{ task_id:taskId, storage_path:path, file_name:file.name, file_size:file.size, mime_type:file.type||"", uploaded_by:myId }])
+      });
+      if(!meta.ok) throw new Error("Meta " + meta.status + ": " + (await meta.text()));
+    }catch(e){
+      console.warn("Upload fehlgeschlagen:", e);
+      if(hintEl) hintEl.innerHTML = `<span style="color:#A32D2D">Upload von „${escapeHtml(file.name)}" fehlgeschlagen.</span>`;
+      await loadTaskFiles();
+      return;
+    }
+  }
+  if(hintEl) hintEl.textContent = "";
+  await loadTaskFiles();
+}
+
+async function downloadTaskFile(fileId){
+  const f = (TONI_TASKFILES_STATE.files || []).find(x => String(x.id) === String(fileId));
+  if(!f) return;
+  try{
+    const token = await getToken();
+    const res = await fetch(`${window.SUPABASE_URL}/storage/v1/object/${TONI_TASKFILE_BUCKET}/${f.storage_path}`, {
+      headers:{ "apikey":window.SUPABASE_ANON_KEY, "Authorization":"Bearer "+token }
+    });
+    if(!res.ok) throw new Error("HTTP " + res.status);
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url; a.download = f.file_name || "datei";
+    document.body.appendChild(a); a.click(); a.remove();
+    setTimeout(()=> URL.revokeObjectURL(url), 4000);
+  }catch(e){
+    console.warn("Download fehlgeschlagen:", e);
+    const hintEl = document.getElementById("ptask-files-hint");
+    if(hintEl) hintEl.innerHTML = `<span style="color:#A32D2D">Download fehlgeschlagen.</span>`;
+  }
+}
+
+async function deleteTaskFile(fileId){
+  const f = (TONI_TASKFILES_STATE.files || []).find(x => String(x.id) === String(fileId));
+  if(!f) return;
+  if(!window.confirm(`Datei „${f.file_name}" wirklich entfernen?`)) return;
+  try{
+    const token = await getToken();
+    // 1) Storage-Objekt löschen
+    await fetch(`${window.SUPABASE_URL}/storage/v1/object/${TONI_TASKFILE_BUCKET}/${f.storage_path}`, {
+      method:"DELETE",
+      headers:{ "apikey":window.SUPABASE_ANON_KEY, "Authorization":"Bearer "+token }
+    });
+    // 2) Metadaten-Zeile löschen
+    await fetch(`${window.SUPABASE_URL}/rest/v1/project_task_files?id=eq.${f.id}`, {
+      method:"DELETE",
+      headers: await toniSupabaseHeaders()
+    });
+  }catch(e){
+    console.warn("Löschen fehlgeschlagen:", e);
+  }
+  await loadTaskFiles();
+}
+
+// Standard-Header für PostgREST-Aufrufe (apikey + Bearer-Token).
+async function toniSupabaseHeaders(){
+  const token = await getToken();
+  return {
+    "apikey": window.SUPABASE_ANON_KEY,
+    "Authorization": "Bearer " + (token || window.SUPABASE_ANON_KEY),
+    "Content-Type": "application/json"
+  };
 }
 
 // Status-Buttons im Detailfenster als große gleich breite Reihe (Lernreisen-Stil)
@@ -1089,9 +1404,9 @@ function renderTaskDetailStatus(task, isOwner) {
   // Bei done (kein nextCol) zeigt er "Fertig" und ist inaktiv.
   const fwdText = nextCol ? fwdLabel : 'Fertig';
   const fwdBtn = `<button ${fwdEnabled ? `onclick="moveProjectTaskFromDetail('${task.id}','${nextCol}')"` : 'disabled'}
-    style="padding:12px 4px;border:none;border-radius:var(--border-radius-md);
-    background:${fwdEnabled?'#639922':'var(--color-background-secondary)'};
-    cursor:${fwdEnabled?'pointer':'default'};opacity:${fwdEnabled?'1':'.5'};
+    style="padding:12px 4px;border:0.5px solid ${fwdEnabled?'#4d7a1a':'var(--color-border-secondary)'};border-radius:var(--border-radius-md);
+    background:${fwdEnabled?'#639922':'var(--color-background-primary)'};
+    cursor:${fwdEnabled?'pointer':'default'};opacity:${fwdEnabled?'1':'.6'};
     display:flex;flex-direction:column;align-items:center;gap:4px">
     <span style="font-size:16px;color:${fwdEnabled?'#fff':'var(--color-text-tertiary)'}">▶</span>
     <span style="font-size:12px;font-weight:500;color:${fwdEnabled?'#fff':'var(--color-text-tertiary)'}">${fwdText}</span></button>`;

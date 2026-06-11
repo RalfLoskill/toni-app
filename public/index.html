@@ -9423,7 +9423,7 @@ input.youtube-force-invalid-v105{
 
 <script src="/chat.js?v=12"></script>
 
-<script src="/journey.js?v=107"></script>
+<script src="/journey.js?v=113"></script>
 <script src="/journey_editor_v111.js?v=55"></script>
 <script src="/admin.js"></script>
 <script src="/ui.js?v=8"></script>
@@ -9898,7 +9898,7 @@ input.youtube-force-invalid-v105{
       <div style="margin-bottom:16px">
         <label style="font-size:13px;font-weight:500;color:var(--color-text-primary);display:block;margin-bottom:6px">Beschreibung <span style="font-weight:400;color:var(--color-text-tertiary)">(optional)</span></label>
         <textarea id="new-project-desc" rows="3" placeholder="Was ist das Ziel dieses Projekts?"
-          style="width:100%;padding:9px 12px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;resize:vertical;background:var(--color-background-primary);color:var(--color-text-primary)"></textarea>
+          style="width:100%;padding:9px 12px;border:1px solid #D8D2C4;border-radius:var(--border-radius-md);font-size:14px;resize:vertical;background:var(--color-background-primary);color:var(--color-text-primary)"></textarea>
       </div>
 
       <!-- Abgabe -->
@@ -9968,7 +9968,7 @@ input.youtube-force-invalid-v105{
       </div>
       <div style="margin-bottom:10px">
         <label style="font-size:12px;color:var(--color-text-secondary);display:block;margin-bottom:4px">Beschreibung</label>
-        <textarea id="add-task-desc" rows="3" placeholder="Beschreibung (optional)…" style="width:100%;padding:8px 10px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;resize:vertical;background:var(--color-background-primary);color:var(--color-text-primary)"></textarea>
+        <textarea id="add-task-desc" rows="3" placeholder="Beschreibung (optional)…" style="width:100%;padding:8px 10px;border:1px solid #D8D2C4;border-radius:var(--border-radius-md);font-size:14px;resize:vertical;background:var(--color-background-primary);color:var(--color-text-primary)"></textarea>
       </div>
       <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px">
         <div>
@@ -10001,7 +10001,7 @@ input.youtube-force-invalid-v105{
         <button class="lr-secondary-btn" onclick="closeTaskDetailModal()">Schließen</button>
       </div>
     </div>
-    <div style="padding:18px 22px;flex:1;overflow-y:auto;overflow-x:hidden;box-sizing:border-box">
+    <div style="padding:18px 22px;flex:1;overflow-y:auto;overflow-x:hidden;box-sizing:border-box;background:#F5F1E8">
       <input id="task-detail-id" type="hidden">
 
       <!-- Inhaber-Hinweis -->
@@ -10010,14 +10010,14 @@ input.youtube-force-invalid-v105{
       <!-- Titel bearbeiten (nur Inhaber) -->
       <div id="ptask-title-edit-wrap" style="margin-bottom:10px;display:none">
         <label style="font-size:12px;color:var(--color-text-secondary);display:block;margin-bottom:4px">Titel</label>
-        <input id="ptask-title-edit" type="text" style="width:100%;padding:8px 10px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;background:var(--color-background-primary);color:var(--color-text-primary)">
+        <input id="ptask-title-edit" type="text" style="width:100%;padding:8px 10px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;background:#ffffff;color:var(--color-text-primary)">
       </div>
 
       <!-- Beschreibung -->
       <div style="margin-bottom:14px">
         <label style="font-size:12px;color:var(--color-text-secondary);display:block;margin-bottom:4px">Beschreibung</label>
-        <div id="ptask-desc" style="font-size:14px;line-height:1.4;color:var(--color-text-primary);white-space:pre-wrap;background:var(--color-background-secondary);border-radius:var(--border-radius-md);padding:10px 12px;min-height:20px"></div>
-        <textarea id="ptask-desc-edit" rows="3" placeholder="Beschreibung der Aufgabe…" style="display:none;width:100%;padding:8px 10px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;resize:vertical;background:var(--color-background-primary);color:var(--color-text-primary)"></textarea>
+        <div id="ptask-desc" style="font-size:14px;line-height:1.4;color:var(--color-text-primary);white-space:pre-wrap;background:#ffffff;border:1px solid #D8D2C4;border-radius:var(--border-radius-md);padding:10px 12px;min-height:20px"></div>
+        <textarea id="ptask-desc-edit" rows="3" placeholder="Beschreibung der Aufgabe…" style="display:none;width:100%;padding:8px 10px;border:1px solid #D8D2C4;border-radius:var(--border-radius-md);font-size:14px;resize:vertical;background:#ffffff;color:var(--color-text-primary)"></textarea>
       </div>
 
       <!-- Blocker (alle Mitglieder dürfen setzen/entfernen) -->
@@ -10043,19 +10043,41 @@ input.youtube-force-invalid-v105{
       <!-- Fällig bis (nur Inhaber kann ändern; sonst Nur-Lese-Anzeige) -->
       <div style="margin-bottom:16px">
         <label style="font-size:12px;color:var(--color-text-secondary);display:block;margin-bottom:6px">Fällig bis</label>
-        <input id="ptask-due-edit" type="date" style="width:100%;padding:8px 10px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:13px;background:var(--color-background-primary);color:var(--color-text-primary);display:none">
+        <input id="ptask-due-edit" type="date" style="width:100%;padding:8px 10px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:13px;background:#ffffff;color:var(--color-text-primary);display:none">
         <div id="ptask-due-view" style="font-size:13px;color:var(--color-text-primary);display:none"></div>
       </div>
 
       <!-- Meine Lösung / Notiz -->
       <div style="margin-bottom:16px">
         <label style="font-size:13px;font-weight:600;color:var(--color-text-primary);display:block;margin-bottom:4px">Meine Lösung / Notiz</label>
-        <textarea id="ptask-note" rows="5" placeholder="Schreibe deinen Rechenweg oder deine Antwort…" style="width:100%;padding:10px 12px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;resize:vertical;background:var(--color-background-primary);color:var(--color-text-primary)"></textarea>
+        <textarea id="ptask-note" rows="5" placeholder="Schreibe deinen Rechenweg oder deine Antwort…" style="width:100%;padding:10px 12px;border:1px solid #D8D2C4;border-radius:var(--border-radius-md);font-size:14px;resize:vertical;background:#ffffff;color:var(--color-text-primary)"></textarea>
         <div id="ptask-note-hint" style="font-size:11px;color:var(--color-text-tertiary);margin-top:4px"></div>
       </div>
 
       <!-- TONi-Rückmeldebox für Projektaufgaben (analog zur Lernreise) -->
       <div id="ptask-toni-hint" style="display:none;margin-bottom:16px;padding:12px 14px;background:#E6F1FB;border:0.5px solid #B9D6F2;border-radius:var(--border-radius-md);font-size:14px;line-height:1.5;color:var(--color-text-primary)"></div>
+
+      <!-- Dateianhänge (Inhaber lädt hoch, alle Teilnehmer laden herunter) -->
+      <div id="ptask-files-wrap" style="margin-bottom:16px">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+          <span style="font-size:13px;font-weight:600;color:var(--color-text-primary)">📎 Dateien <span id="ptask-files-count" style="font-weight:400;color:var(--color-text-secondary)"></span></span>
+          <span style="font-size:11px;color:var(--color-text-secondary)">für alle Projektteilnehmer sichtbar</span>
+        </div>
+
+        <!-- Ablagezone: nur fuer den Inhaber sichtbar (per JS) -->
+        <div id="ptask-files-dropzone" style="display:none;border:1px dashed var(--color-border-secondary);border-radius:var(--border-radius-md);padding:16px;text-align:center;margin-bottom:10px;background:var(--color-background-primary);cursor:pointer">
+          <input type="file" id="ptask-file-input" multiple accept="image/*,.pdf,.doc,.docx,.xls,.xlsx" style="display:none">
+          <div style="font-size:22px;color:var(--color-text-secondary);line-height:1">⬆️</div>
+          <div style="font-size:13px;color:var(--color-text-primary);margin-top:6px">Datei hierher ziehen oder <span style="color:#185FA5;font-weight:500">auswählen</span></div>
+          <div style="font-size:11px;color:var(--color-text-tertiary);margin-top:4px">Bild, PDF, Word, Excel · max. 10 MB · bis zu 5 Dateien</div>
+        </div>
+
+        <!-- Liste der angehaengten Dateien (per JS gefuellt) -->
+        <div id="ptask-files-list" style="display:flex;flex-direction:column;gap:8px"></div>
+
+        <!-- Hinweis-/Statuszeile -->
+        <div id="ptask-files-hint" style="font-size:11px;color:var(--color-text-tertiary);margin-top:8px;line-height:1.5"></div>
+      </div>
 
       <!-- Gemeinsamer Speichern-Button (nur Inhaber): Titel + Beschreibung + Notiz -->
       <button id="ptask-save-all" onclick="saveTaskAll()" style="width:100%;padding:11px;background:#185FA5;color:#fff;border:none;border-radius:var(--border-radius-md);font-size:14px;font-weight:500;cursor:pointer;margin-bottom:14px;display:none">Speichern & schließen</button>
@@ -10075,6 +10097,6 @@ input.youtube-force-invalid-v105{
   </div>
 </div>
 
-<script src="/projects.js?v=50"></script>
+<script src="/projects.js?v=54"></script>
 </body>
 </html>
