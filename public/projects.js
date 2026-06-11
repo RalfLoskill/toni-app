@@ -289,22 +289,53 @@ async function loadPersonalTasks() {
   }
 }
 
-async function addPersonalTask() {
-  const title = (typeof prompt === 'function') ? prompt('Neue eigene Aufgabe:') : '';
-  if (!title || !title.trim()) return;
+// Öffnet den Dialog für eine neue eigene Aufgabe (gleiches Design wie Projektaufgabe).
+function openPersonalTaskModal() {
+  const t = document.getElementById('add-personal-task-title');
+  const d = document.getElementById('add-personal-task-desc');
+  const due = document.getElementById('add-personal-task-due-date');
+  if (t) t.value = '';
+  if (d) d.value = '';
+  if (due) due.value = '';
+  document.getElementById('add-personal-task-modal')?.classList.add('open');
+  setTimeout(() => t?.focus(), 50);
+}
+
+function closePersonalTaskModal() {
+  document.getElementById('add-personal-task-modal')?.classList.remove('open');
+}
+
+// Legt die eigene Aufgabe an (Titel Pflicht, Beschreibung + Fällig bis optional).
+async function savePersonalTask() {
+  const titleEl = document.getElementById('add-personal-task-title');
+  const descEl = document.getElementById('add-personal-task-desc');
+  const dueEl = document.getElementById('add-personal-task-due-date');
+  const title = (titleEl?.value || '').trim();
+  if (!title) { titleEl?.focus(); return; }
   try {
     const token = await getToken();
     if (!token) return;
     const ownerId = (window.TONI_AUTH_PROFILE && window.TONI_AUTH_PROFILE.id) || window.TONI_ACTIVE_PROFILE_ID;
     if (!ownerId) { console.warn('Keine Profil-ID für eigene Aufgabe'); return; }
+    const row = { owner_id: ownerId, title, status: 'todo' };
+    const desc = (descEl?.value || '').trim();
+    if (desc) row.description = desc;
+    if (dueEl?.value) row.due_date = dueEl.value; // 'YYYY-MM-DD'
     await fetch(`${window.SUPABASE_URL}/rest/v1/personal_tasks`, {
       method: 'POST',
       headers: { 'apikey': window.SUPABASE_ANON_KEY, 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json', 'Prefer': 'return=minimal' },
-      body: JSON.stringify({ owner_id: ownerId, title: title.trim(), status: 'todo' })
+      body: JSON.stringify(row)
     });
+    closePersonalTaskModal();
     await loadPersonalTasks();
     renderWeeklyPlan();
   } catch (e) { console.warn('TONI eigene Aufgabe anlegen:', e); }
+}
+
+// Alt: Direkter Prompt – jetzt durch das Modal ersetzt. Bleibt als Weiterleitung,
+// falls noch irgendwo aufgerufen.
+async function addPersonalTask() {
+  openPersonalTaskModal();
 }
 
 // Status der Reihe nach durchschalten: todo -> in_progress -> done (Ende).
@@ -414,10 +445,14 @@ function collectWeeklyPlanItems() {
     const personal = Array.isArray(window.TONI_PERSONAL_TASKS) ? window.TONI_PERSONAL_TASKS : [];
     personal.forEach(t => {
       const col = t.status === 'done' ? 'done' : (t.status === 'in_progress' ? 'wip' : 'todo');
+      const overdue = t.due_date && wpIsOverdue(t.due_date) && t.status !== 'done';
       items.push({
         source: 'personal', title: t.title || '', col,
         meta: 'Eigene Aufgabe',
-        urgent: false, personalId: t.id,
+        description: t.description || '',
+        dueDate: t.due_date || '',
+        note: overdue ? 'überfällig' : '',
+        urgent: !!overdue, overdue: !!overdue, personalId: t.id,
         updatedAt: t.updated_at || t.created_at || ''
       });
     });
@@ -472,11 +507,19 @@ function renderWeeklyPlan() {
     const del = it.source === 'personal' && it.personalId
       ? `<span onclick="event.stopPropagation();deletePersonalTask('${it.personalId}')" title="Löschen" style="margin-left:auto;color:var(--color-text-tertiary);cursor:pointer;font-size:12px"><i class="ti ti-x"></i></span>`
       : '';
+    // Eigene Aufgaben: Beschreibung + Fälligkeit unter der Meta-Zeile zeigen
+    const descHtml = (it.source === 'personal' && it.description)
+      ? `<div style="font-size:11px;color:var(--color-text-secondary);margin-top:3px;line-height:1.35">${escapeHtml(it.description)}</div>`
+      : '';
+    const dueHtml = (it.source === 'personal' && it.dueDate)
+      ? `<div style="font-size:11px;color:${it.overdue?'#993C1D':'var(--color-text-tertiary)'};margin-top:2px"><i class="ti ti-calendar" style="font-size:11px;vertical-align:-1px"></i> ${typeof formatDate==='function'?formatDate(it.dueDate):it.dueDate}${it.overdue?' · überfällig':''}</div>`
+      : '';
     return `<div class="k-card${done?' done-c':''}" ${click} style="${bg}border-left:3px solid ${c.border};${done?'opacity:.55':''}">
       <div class="k-card-title" style="${done?'text-decoration:line-through;':''}">${escapeHtml(it.title)}${done?'':badge}</div>
       <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:${c.text}">
         <i class="ti ${c.icon}" style="font-size:13px"></i><span style="opacity:.85">${escapeHtml(it.meta)}</span>${del}
       </div>
+      ${descHtml}${dueHtml}
     </div>`;
   };
 
@@ -514,7 +557,7 @@ function renderWeeklyPlan() {
           <span style="font-size:11px;text-align:center">${cd.empty.text}</span>
         </div>`;
       const addBtn = cd.key === 'todo'
-        ? `<div onclick="addPersonalTask()" style="margin-top:8px;font-size:12px;color:#534AB7;cursor:pointer;text-align:center;padding:6px;border:1px dashed #c7d2fe;border-radius:8px"><i class="ti ti-plus" style="font-size:13px"></i> Eigene Aufgabe</div>`
+        ? `<div onclick="openPersonalTaskModal()" style="margin-top:8px;font-size:12px;color:#534AB7;cursor:pointer;text-align:center;padding:6px;border:1px dashed #c7d2fe;border-radius:8px"><i class="ti ti-plus" style="font-size:13px"></i> Eigene Aufgabe</div>`
         : '';
       const count = (byCol[cd.key] || []).length;
       return `<div class="kanban-col col-${cd.key==='wip'?'wip':cd.key==='done'?'done':'todo'}">

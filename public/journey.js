@@ -6,7 +6,7 @@
 // Build-Stempel: im Browser per `window.TONI_JOURNEY_BUILD` abfragbar.
 // Wenn dieser Wert NICHT "v86-assignments-progress-group" ist, lädt der
 // Browser eine veraltete Datei (Cache/Deploy), nicht diese Version.
-window.TONI_JOURNEY_BUILD = "v113-task-fields-white";
+window.TONI_JOURNEY_BUILD = "v115-weekly-personal-display";
 
 /* Lernreisen V1: ergänzt das bestehende Dashboard, ohne das Design zu ersetzen. */
 const DEFAULT_LEARNING_JOURNEYS = [{

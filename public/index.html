@@ -194,10 +194,10 @@ body { font-family:'Inter',sans-serif; background:#f8fafc; font-size:13px; color
 .kanban-outer { overflow-x:auto; -webkit-overflow-scrolling:touch; }
 .kanban-grid  { display:grid; grid-template-columns:repeat(4,minmax(170px,1fr)); gap:8px; min-width:700px; }
 .kanban-col   { border-radius:10px; padding:10px; min-height:100px; }
-.col-todo   { background:#f8fafc; }
-.col-wip    { background:#eff6ff; }
+.col-todo   { background:#E6F1FB; }
+.col-wip    { background:#FAEEDA; }
 .col-review { background:#fefce8; }
-.col-done   { background:#f0fdf4; }
+.col-done   { background:#EAF3DE; }
 .k-header   { display:flex; align-items:center; justify-content:space-between; margin-bottom:8px; }
 .k-title    { font-size:12px; font-weight:600; }
 .k-title.t  { color:#475569; } .k-title.w { color:var(--blue); } .k-title.r { color:#ca8a04; } .k-title.d { color:#16a34a; }
@@ -9423,7 +9423,7 @@ input.youtube-force-invalid-v105{
 
 <script src="/chat.js?v=12"></script>
 
-<script src="/journey.js?v=113"></script>
+<script src="/journey.js?v=115"></script>
 <script src="/journey_editor_v111.js?v=55"></script>
 <script src="/admin.js"></script>
 <script src="/ui.js?v=8"></script>
@@ -9989,6 +9989,38 @@ input.youtube-force-invalid-v105{
   </div>
 </div>
 
+<!-- Eigene Aufgabe hinzufügen (Wochenplan) – gleiches Design wie Projektaufgabe, ohne Zuweisung -->
+<div class="lr-modal-backdrop" id="add-personal-task-modal">
+  <div class="lr-modal toni-add-task-modal" role="dialog" aria-modal="true" style="padding:0;overflow:hidden;display:flex;flex-direction:column">
+    <div class="lr-modal-header lr-typed-head" style="padding:18px 22px;margin:0;display:flex;align-items:flex-start;justify-content:space-between">
+      <div>
+        <div class="lr-modal-title" style="color:#0C447C">Eigene Aufgabe</div>
+        <div style="font-size:13px;color:#185FA5;margin-top:2px">✏️ Neue Aufgabe im Wochenplan</div>
+      </div>
+      <div class="lr-modal-actions">
+        <button onclick="closePersonalTaskModal()" style="background:rgba(255,255,255,.6);border:0.5px solid #85B7EB;color:#185FA5;padding:6px 14px;border-radius:var(--border-radius-md);font-size:13px;cursor:pointer">Schließen</button>
+      </div>
+    </div>
+    <div style="padding:20px 22px;flex:1;overflow-y:auto;overflow-x:hidden;box-sizing:border-box">
+      <div style="margin-bottom:10px">
+        <label style="font-size:12px;color:var(--color-text-secondary);display:block;margin-bottom:4px">Aufgabe *</label>
+        <input id="add-personal-task-title" type="text" placeholder="Was muss erledigt werden?" style="width:100%;padding:8px 10px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;background:var(--color-background-primary);color:var(--color-text-primary)">
+      </div>
+      <div style="margin-bottom:10px">
+        <label style="font-size:12px;color:var(--color-text-secondary);display:block;margin-bottom:4px">Beschreibung</label>
+        <textarea id="add-personal-task-desc" rows="3" placeholder="Beschreibung (optional)…" style="width:100%;padding:8px 10px;border:1px solid #D8D2C4;border-radius:var(--border-radius-md);font-size:14px;resize:vertical;background:var(--color-background-primary);color:var(--color-text-primary)"></textarea>
+      </div>
+      <div style="margin-bottom:14px">
+        <label style="font-size:12px;color:var(--color-text-secondary);display:block;margin-bottom:4px">Fällig bis</label>
+        <input id="add-personal-task-due-date" type="date" style="width:100%;padding:8px 10px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:13px;background:var(--color-background-primary);color:var(--color-text-primary)">
+      </div>
+      <button onclick="savePersonalTask()" style="width:100%;padding:11px;background:#185FA5;color:#fff;border:none;border-radius:var(--border-radius-md);font-size:14px;font-weight:500;cursor:pointer">
+        Aufgabe anlegen
+      </button>
+    </div>
+  </div>
+</div>
+
 <!-- Aufgabe bearbeiten -->
 <div class="lr-modal-backdrop" id="task-detail-modal">
   <div class="lr-modal toni-task-detail-modal" role="dialog" aria-modal="true" style="padding:0;overflow:hidden;display:flex;flex-direction:column">
@@ -10097,6 +10129,6 @@ input.youtube-force-invalid-v105{
   </div>
 </div>
 
-<script src="/projects.js?v=54"></script>
+<script src="/projects.js?v=56"></script>
 </body>
 </html>
