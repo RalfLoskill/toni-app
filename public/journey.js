@@ -6,7 +6,7 @@
 // Build-Stempel: im Browser per `window.TONI_JOURNEY_BUILD` abfragbar.
 // Wenn dieser Wert NICHT "v86-assignments-progress-group" ist, lädt der
 // Browser eine veraltete Datei (Cache/Deploy), nicht diese Version.
-window.TONI_JOURNEY_BUILD = "v115-weekly-personal-display";
+window.TONI_JOURNEY_BUILD = "v116-admin-storage-overview";
 
 /* Lernreisen V1: ergänzt das bestehende Dashboard, ohne das Design zu ersetzen. */
 const DEFAULT_LEARNING_JOURNEYS = [{
@@ -1427,8 +1427,28 @@ async function loadInstitutionStudents(){
       email: s.email || "",
       klasse: s.class_name || "",
       gruppen: membersByProfile[s.id] || [],
-      registriert: s.profile_complete === true
+      registriert: s.profile_complete === true,
+      fileStats: { images: 0, docs: 0, bytes: 0 }
     }));
+
+    // Datei-Statistik pro Student in EINEM Aufruf nachziehen (Admin/Tutor).
+    // Aggregierte RPC liefert Anzahl Bilder/Dokumente + Summe Bytes je Profil.
+    try{
+      const ids = students.map(s=>s.id);
+      if(ids.length){
+        const stats = await supabaseRequest("rpc/get_student_file_stats", {
+          method: "POST",
+          body: JSON.stringify({ p_profile_ids: ids })
+        }) || [];
+        const byId = {};
+        stats.forEach(r=>{ byId[r.profile_id] = r; });
+        TONI_INSTITUTION_STUDENTS.forEach(st=>{
+          const r = byId[st.id];
+          if(r) st.fileStats = { images: Number(r.image_count)||0, docs: Number(r.doc_count)||0, bytes: Number(r.total_bytes)||0 };
+        });
+      }
+    }catch(e){ console.warn("Datei-Statistik der Studenten:", e); }
+
     return TONI_INSTITUTION_STUDENTS;
   }catch(e){
     console.warn("loadInstitutionStudents:", e);
@@ -1492,12 +1512,32 @@ window.toniStudentPage = function(delta){
   renderStudentList();
 };
 
+// Formatiert Bytes kompakt (B / KB / MB) für die Speicheranzeige.
+function toniFormatStorageBytes(bytes){
+  const b = Number(bytes) || 0;
+  if(b <= 0) return "–";
+  if(b < 1024) return b + " B";
+  if(b < 1024*1024) return Math.round(b/1024) + " KB";
+  return (b/(1024*1024)).toFixed(1).replace(".", ",") + " MB";
+}
+
+// Kleiner Zähl-Chip (Bilder blau, Dokumente grün; 0 dezent grau).
+function toniFileCountChip(n, kind){
+  const v = Number(n)||0;
+  if(v === 0) return `<span class="student-file-chip empty">0</span>`;
+  const cls = kind === 'img' ? 'img' : 'doc';
+  return `<span class="student-file-chip ${cls}">${v}</span>`;
+}
+
 function renderStudentList(){
   const root=document.getElementById("student-list"); if(!root)return;
   const list=TONI_INSTITUTION_STUDENTS||[];
   // Löschen nur für Admin/SuperAdmin (Tutor darf fremde Profile nicht löschen).
   const darfLoeschen = (typeof getCurrentRole==="function" ? getCurrentRole() : localStorage.getItem("toni_role")) === "admin"
                     || (typeof isSuperAdmin==="function" && isSuperAdmin());
+  // Lerngruppen-Spalte für Tutoren ausblenden (nur Admin/SuperAdmin sehen sie).
+  const rolle = (typeof getCurrentRole==="function" ? getCurrentRole() : localStorage.getItem("toni_role"));
+  const zeigeGruppen = rolle === "admin" || (typeof isSuperAdmin==="function" && isSuperAdmin());
   if(!list.length){
     root.innerHTML=`<div class="lr-editor-empty">Noch keine Studenten in deiner Institution.<br>Lade über „+ Student einladen" den ersten Studenten ein.</div>`;
     return;
@@ -1531,10 +1571,21 @@ function renderStudentList(){
     const del = darfLoeschen
       ? `<button class="student-del-btn" title="Studenten vollständig löschen" onclick="confirmDeleteStudent('${s.id}', '${escapeHtml(s.name).replace(/'/g,"\\'")}')">−</button>`
       : "";
+    // Datei-Statistik (Bilder / Dokumente / Speicher mit Balken)
+    const fs = s.fileStats || { images:0, docs:0, bytes:0 };
+    const maxBytes = (window.TONI_STUDENT_MAX_BYTES || 0);
+    const pct = maxBytes > 0 ? Math.min(100, Math.round((fs.bytes / maxBytes) * 100)) : 0;
+    const barColor = pct >= 85 ? '#C0392B' : (pct >= 60 ? '#EF9F27' : '#639922');
+    const storageCell = fs.bytes > 0
+      ? `<div class="student-storage"><div class="student-storage-bar"><div style="width:${pct}%;background:${barColor}"></div></div><span class="${pct>=85?'student-storage-high':''}">${toniFormatStorageBytes(fs.bytes)}</span></div>`
+      : `<span class="student-muted">–</span>`;
     return `<tr>
       <td>${escapeHtml(toniStudentDisplayName(s))}</td>
       <td>${s.klasse?escapeHtml(s.klasse):'<span class="student-muted">–</span>'}</td>
-      <td>${gruppen}</td>
+      ${zeigeGruppen?`<td>${gruppen}</td>`:""}
+      <td style="text-align:center">${toniFileCountChip(fs.images,'img')}</td>
+      <td style="text-align:center">${toniFileCountChip(fs.docs,'doc')}</td>
+      <td>${storageCell}</td>
       <td><span class="student-muted">${escapeHtml(s.email)}</span></td>
       <td>${status}</td>
       ${darfLoeschen?`<td style="text-align:right">${del}</td>`:""}
@@ -1545,6 +1596,20 @@ function renderStudentList(){
   const nameHead = `Name ${toniStudentSortIcon("name")}<button type="button" class="student-nameswap-btn" title="Anzeige Vorname/Nachname wechseln" onclick="toniStudentToggleNameFormat()">⇄</button>`;
   const klasseHead = `Klasse ${toniStudentSortIcon("klasse")}`;
   const statusHead = `Status ${toniStudentSortIcon("status")}`;
+
+  // Balken-Skalierung: höchster Speicherwert in der gesamten Liste.
+  window.TONI_STUDENT_MAX_BYTES = Math.max(1, ...list.map(s => (s.fileStats?.bytes)||0));
+
+  // Institutionsweite Summen für die Übersichtszeile.
+  const sumImages = list.reduce((a,s)=>a+((s.fileStats?.images)||0),0);
+  const sumDocs   = list.reduce((a,s)=>a+((s.fileStats?.docs)||0),0);
+  const sumBytes  = list.reduce((a,s)=>a+((s.fileStats?.bytes)||0),0);
+  const summary = `<div class="student-storage-summary">
+    <span>Gesamt:</span>
+    <span class="sfs-img"><span class="student-file-chip img">${sumImages}</span> Bilder</span>
+    <span class="sfs-doc"><span class="student-file-chip doc">${sumDocs}</span> Dokumente</span>
+    <span class="sfs-bytes">${toniFormatStorageBytes(sumBytes)}</span>
+  </div>`;
 
   // Pagination-Fußzeile (nur wenn mehr als eine Seite)
   let pager = "";
@@ -1562,8 +1627,8 @@ function renderStudentList(){
     </div>`;
   }
 
-  root.innerHTML=`<table class="student-table">
-    <thead><tr><th>${nameHead}</th><th>${klasseHead}</th><th>Lerngruppe(n)</th><th>E-Mail</th><th>${statusHead}</th>${darfLoeschen?"<th></th>":""}</tr></thead>
+  root.innerHTML=`${summary}<table class="student-table">
+    <thead><tr><th>${nameHead}</th><th>${klasseHead}</th>${zeigeGruppen?"<th>Lerngruppe(n)</th>":""}<th style="text-align:center" title="Anzahl Bilder">🖼️</th><th style="text-align:center" title="Anzahl Dokumente">📄</th><th>Speicher</th><th>E-Mail</th><th>${statusHead}</th>${darfLoeschen?"<th></th>":""}</tr></thead>
     <tbody>${rows}</tbody>
   </table>${pager}`;
 }

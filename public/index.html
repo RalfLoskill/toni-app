@@ -624,6 +624,18 @@ body { font-family:'Inter',sans-serif; background:#f8fafc; font-size:13px; color
 .student-status{display:inline-block;border-radius:999px;padding:2px 10px;font-size:12px;font-weight:600}
 .student-status.ok{background:#dcfce7;color:#15803d}
 .student-status.pending{background:#fef3c7;color:#b45309}
+.student-file-chip{display:inline-flex;align-items:center;justify-content:center;min-width:22px;height:20px;padding:0 6px;border-radius:6px;font-size:12px;font-weight:600}
+.student-file-chip.img{background:#E6F1FB;color:#185FA5}
+.student-file-chip.doc{background:#EAF3DE;color:#3B6D11}
+.student-file-chip.empty{background:#f1f5f9;color:#94a3b8}
+.student-storage{display:flex;align-items:center;gap:8px}
+.student-storage-bar{flex:1;max-width:90px;height:6px;background:#f1f5f9;border-radius:3px;overflow:hidden}
+.student-storage-bar>div{height:100%;border-radius:3px;transition:width .3s}
+.student-storage span{font-size:12px;color:var(--slate-500);white-space:nowrap}
+.student-storage span.student-storage-high{color:#A32D2D;font-weight:600}
+.student-storage-summary{display:flex;align-items:center;gap:14px;flex-wrap:wrap;font-size:13px;color:var(--slate-600);margin-bottom:12px;padding:8px 12px;background:#f8fafc;border:0.5px solid var(--border);border-radius:10px}
+.student-storage-summary .sfs-bytes{font-weight:600;color:var(--slate-700)}
+.student-storage-summary .student-file-chip{margin-right:2px}
 .student-del-btn{width:28px;height:28px;border-radius:8px;border:1px solid var(--border);background:#fff;color:#dc2626;font-size:18px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:background .15s,border-color .15s}
 .student-del-btn:hover{background:#fee2e2;border-color:#fca5a5}
 /* Studentenverwaltung: Sortier-Symbole, Namensumschalter, Pagination */
@@ -9423,7 +9435,7 @@ input.youtube-force-invalid-v105{
 
 <script src="/chat.js?v=12"></script>
 
-<script src="/journey.js?v=115"></script>
+<script src="/journey.js?v=116"></script>
 <script src="/journey_editor_v111.js?v=55"></script>
 <script src="/admin.js"></script>
 <script src="/ui.js?v=8"></script>
