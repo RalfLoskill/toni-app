@@ -6934,7 +6934,7 @@ window.addEventListener("DOMContentLoaded", () => {
     if(!ok) return;
 
     try{
-      const result = await callRpc("rpc/superadmin_delete_admin_v79", {
+      const result = await callRpc("rpc/superadmin_delete_admin_v120", {
         ...authValue(),
         p_admin_id:adminId
       });
@@ -7342,11 +7342,13 @@ window.addEventListener("DOMContentLoaded", () => {
       const email = r.email
         ? `<a class="sa-adm-mail" href="mailto:${esc(r.email)}">${esc(r.email)}</a>`
         : `<span class="sa-adm-muted">—</span>`;
+      const delBtn = `<button class="sa-adm-del-btn" title="Admin löschen" onclick="toniV119DeleteAdminFromList(event,'${esc(r.id)}','${esc(String(name).replace(/'/g,"\\'"))}')">−</button>`;
       return `<tr>
         <td class="sa-adm-inst">${esc(inst)}</td>
         <td>${idCell}</td>
         <td class="sa-adm-name">${esc(name)}</td>
         <td>${email}</td>
+        <td class="sa-adm-del-cell">${delBtn}</td>
       </tr>`;
     }).join("");
 
@@ -7356,7 +7358,7 @@ window.addEventListener("DOMContentLoaded", () => {
       <div class="sa-adm-table-wrap">
         <table class="sa-adm-table">
           <thead>
-            <tr><th>Institution</th><th>Institutions-ID</th><th>Adminname</th><th>E-Mail</th></tr>
+            <tr><th>Institution</th><th>Institutions-ID</th><th>Adminname</th><th>E-Mail</th><th></th></tr>
           </thead>
           <tbody>${body}</tbody>
         </table>
@@ -7388,6 +7390,112 @@ window.addEventListener("DOMContentLoaded", () => {
     if(isOpen) loadAdminList();
   }
 
+  // Admin aus der Übersicht löschen: nutzt die globale Lösch-Funktion des
+  // Admin-Verwaltungs-Moduls und lädt danach DIESE Liste neu.
+  window.toniV119DeleteAdminFromList = async function(ev, adminId, adminName){
+    ev?.stopPropagation?.();
+    if(!adminId) return;
+    const fn = window.toniV79DeleteAdmin || window.toniV78DeleteAdmin;
+    if(typeof fn !== "function"){
+      alert("Löschfunktion nicht verfügbar. Bitte Seite neu laden.");
+      return;
+    }
+    await fn(adminId, adminName);
+    // Übersicht aktualisieren (die Lösch-Funktion lädt die andere Liste neu,
+    // diese hier müssen wir selbst nachziehen).
+    loadAdminList();
+  };
+
   window.toniV119LoadAdminList = loadAdminList;
   window.toniV119ToggleAdminListPanel = toggleAdminListPanel;
+})();
+
+/* ============================================================
+   TONI – SuperAdmin: neue Institution anlegen (v120, Paket 1)
+   Legt NUR die Institution an (Adressdaten). Der Admin-/Magic-Link-
+   Teil folgt separat in Paket 2.
+   ============================================================ */
+(function(){
+  const SUPERADMIN_USERNAME = "SuperAdmin";
+  const SUPERADMIN_PASSWORD = window.SUPERADMIN_PASSWORD || "SuperAdmin#";
+
+  function esc(value){
+    if(typeof escapeHtml === "function") return escapeHtml(value);
+    return String(value ?? "").replace(/[&<>"']/g, c => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+    }[c]));
+  }
+
+  async function callRpc(path, body){
+    const headers = {
+      "apikey": window.SUPABASE_ANON_KEY,
+      "Authorization": "Bearer " + window.SUPABASE_ANON_KEY,
+      "Content-Type": "application/json"
+    };
+    const response = await fetch(`${window.SUPABASE_URL}/rest/v1/${path}`, {
+      method:"POST", headers, body:JSON.stringify(body || {})
+    });
+    if(!response.ok){
+      const text = await response.text();
+      throw new Error(`Supabase ${response.status}: ${text}`);
+    }
+    const text = await response.text();
+    return text ? JSON.parse(text) : null;
+  }
+
+  function setMsg(text, type){
+    const box = document.getElementById("superadmin-create-inst-message");
+    if(!box) return;
+    box.innerHTML = text;
+    box.className = "auth-message" + (type === "err" ? " error" : type === "ok" ? " success" : "");
+  }
+
+  window.toniV120OpenCreateInstitution = function(event){
+    event?.stopPropagation?.();
+    ["name","street","plz","city","email","phone","password"].forEach(k=>{
+      const el = document.getElementById("superadmin-new-inst-"+k);
+      if(el) el.value = "";
+    });
+    setMsg("", "");
+    document.getElementById("superadmin-create-institution-modal")?.classList.add("open");
+    setTimeout(()=>document.getElementById("superadmin-new-inst-name")?.focus(), 80);
+  };
+
+  window.toniV120CloseCreateInstitution = function(){
+    document.getElementById("superadmin-create-institution-modal")?.classList.remove("open");
+  };
+
+  window.toniV120CreateInstitution = async function(){
+    const val = k => (document.getElementById("superadmin-new-inst-"+k)?.value || "").trim();
+    const name = val("name");
+    const password = document.getElementById("superadmin-new-inst-password")?.value || "";
+
+    if(!name){ setMsg("Bitte den Namen der Institution angeben.", "err"); return; }
+    if(password !== SUPERADMIN_PASSWORD){ setMsg("Falsches Passwort.", "err"); return; }
+
+    setMsg("Institution wird angelegt …", "");
+    try{
+      const result = await callRpc("rpc/superadmin_create_institution_v120", {
+        p_username: SUPERADMIN_USERNAME,
+        p_password: SUPERADMIN_PASSWORD,
+        p_name: name,
+        p_street: val("street"),
+        p_postal_code: val("plz"),
+        p_city: val("city"),
+        p_email: val("email"),
+        p_phone: val("phone")
+      });
+      if(!result?.ok){
+        throw new Error(result?.error || "Institution konnte nicht angelegt werden.");
+      }
+      setMsg(`✅ Institution „${esc(result.institution_name)}" angelegt.<br>Kennung: <strong>${esc(result.internal_code)}</strong>`, "ok");
+      // Übersicht aktualisieren
+      if(typeof window.toniV118LoadInstitutionStats === "function") window.toniV118LoadInstitutionStats();
+      setTimeout(()=>{ window.toniV120CloseCreateInstitution(); }, 1400);
+    }catch(e){
+      console.warn("Institution anlegen:", e);
+      const msg = /not_allowed/.test(String(e)) ? "Passwortprüfung fehlgeschlagen." : (e.message || "Fehler beim Anlegen.");
+      setMsg("⚠️ " + esc(msg), "err");
+    }
+  };
 })();
