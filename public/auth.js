@@ -724,7 +724,49 @@ window.applyRoleUI = function() {
    TONI – AUTH V7 / SELBSTREGISTRIERUNG + GRUPPEN-QR
    ========================================================= */
 function setRegistrationMessage(text,type="ok"){const b=document.getElementById("registration-message");if(!b)return;b.className="auth-message visible "+(type==="err"?"err":"ok");b.innerHTML=text;}
-function openRegistrationRequiredModal(){document.getElementById("registration-required-modal")?.classList.add("open");setTimeout(()=>document.getElementById("reg-first-name")?.focus(),80);}
+function toniIsAdminRegistration(){
+  try{
+    if(window.TONI_PENDING_ADMIN_REGISTRATION) return true;
+    if(sessionStorage.getItem("toni_admin_registration") === "1") return true;
+  }catch(e){}
+  // Fallback: Profil hat bereits role=admin (von Etappe 4 gesetzt)
+  try{ if((window.TONI_AUTH_PROFILE?.role) === "admin") return true; }catch(e){}
+  return false;
+}
+
+function toniIsTutorRegistration(){
+  try{
+    if(window.TONI_PENDING_TUTOR_REGISTRATION) return true;
+    if(sessionStorage.getItem("toni_tutor_registration") === "1") return true;
+  }catch(e){}
+  try{ if((window.TONI_AUTH_PROFILE?.role) === "tutor") return true; }catch(e){}
+  return false;
+}
+
+function toniApplyRegistrationVariant(){
+  const isAdmin = toniIsAdminRegistration();
+  const isTutor = !isAdmin && toniIsTutorRegistration();
+  const title = document.getElementById("reg-modal-title");
+  const sub   = document.getElementById("reg-modal-sub");
+  const help  = document.getElementById("reg-modal-help");
+  const classRow = document.getElementById("reg-class-row");
+  const msg   = document.getElementById("registration-message");
+  if(isAdmin || isTutor){
+    const rolle = isAdmin ? "Admin" : "Tutor";
+    if(title) title.textContent = `Registrierung als ${rolle} abschließen.`;
+    if(sub)   sub.textContent   = "Ihre E-Mail-Adresse wurde bestätigt. Bitte ergänzen Sie die Daten und legen Sie Ihr persönliches Passwort fest.";
+    if(help)  help.textContent  = "Nach dem Speichern sind Sie vollständig registriert und können sich bei TONi anmelden.";
+    if(classRow) classRow.style.display = "none"; // Klasse/Kurs entfällt für Admin/Tutor
+    if(msg){ msg.innerHTML = "✅ Ihre E-Mail-Adresse wurde bestätigt. Bitte vervollständigen Sie jetzt Ihr Profil und legen Sie Ihr persönliches Passwort fest."; msg.className = "auth-message success"; }
+  }else{
+    if(title) title.textContent = "Registrierung abschließen";
+    if(sub)   sub.textContent   = "Deine E-Mail-Adresse wurde bestätigt. Bitte ergänze deine Daten und lege ein Passwort fest.";
+    if(help)  help.textContent  = "Nach dem Speichern bist du vollständig registriert. Wenn du über einen QR-Code gekommen bist, ordnet TONI dich anschließend automatisch der Lerngruppe zu.";
+    if(classRow) classRow.style.display = "";
+  }
+}
+
+function openRegistrationRequiredModal(){toniApplyRegistrationVariant();document.getElementById("registration-required-modal")?.classList.add("open");setTimeout(()=>document.getElementById("reg-first-name")?.focus(),80);setTimeout(toniApplyRegistrationVariant,400);}
 function closeRegistrationRequiredModal(){document.getElementById("registration-required-modal")?.classList.remove("open");}
 function checkRegistrationPasswordStrength(){const pw=document.getElementById("reg-password")?.value||"";const o=document.getElementById("registration-password-strength");if(!o)return;if(pw.length>=8){o.className="password-strength ok";o.textContent="Passwortlänge ist ausreichend.";}else{o.className="password-strength err";o.textContent="Bitte mindestens 8 Zeichen verwenden.";}}
 function resetAuthForm(){const e=document.getElementById("auth-email"),p=document.getElementById("auth-password"),a=document.getElementById("auth-password-area"),btn=document.getElementById("auth-continue-btn"),n=document.getElementById("auth-login-note");if(p)p.value="";if(a)a.classList.remove("visible");if(btn)btn.style.display="";if(e){e.disabled=false;e.focus();}if(n)n.textContent="Existiert deine E-Mail bereits, meldest du dich mit Passwort an. Ist sie neu, erhältst du eine Verifizierungs-Mail. Danach gibst du deine personenbezogenen Daten ein und legst ein Passwort fest.";const box=document.getElementById("auth-message");if(box)box.className="auth-message";}
@@ -745,6 +787,7 @@ function withTimeout(promise, ms, label) {
 
 async function completeSelfRegistration(){
   const client=getSupabaseClient();
+  const isAdminReg = (typeof toniIsAdminRegistration==="function") ? toniIsAdminRegistration() : false;
   const first=document.getElementById("reg-first-name")?.value.trim();
   const last=document.getElementById("reg-last-name")?.value.trim();
   const cls=document.getElementById("reg-class-name")?.value.trim();
@@ -752,7 +795,10 @@ async function completeSelfRegistration(){
   const pw2=document.getElementById("reg-password-repeat")?.value||"";
   const btn=[...document.querySelectorAll("button")].find(b=>b.textContent.trim()==="Registrierung abschließen" || b.textContent.trim()==="Speichere Registrierung…");
 
-  if(!first||!last){setRegistrationMessage("Bitte gib Vorname und Nachname ein.","err");return;}
+  // Pflichtfelder: Vorname, Nachname, Passwort (immer). Klasse/Kurs nur für
+  // Studenten (für Admins ausgeblendet und nicht erforderlich).
+  if(!first||!last){setRegistrationMessage("Bitte füllen Sie alle Pflichtfelder aus (Vorname und Nachname).","err");return;}
+  if(!isAdminReg && !cls){setRegistrationMessage("Bitte gib deine Klasse / deinen Kurs an.","err");return;}
   if(pw1.length<8){setRegistrationMessage("Das Passwort muss mindestens 8 Zeichen haben.","err");return;}
   if(pw1!==pw2){setRegistrationMessage("Die Passwörter stimmen nicht überein.","err");return;}
 
@@ -819,7 +865,7 @@ async function completeSelfRegistration(){
     };
 
     localStorage.setItem("toni_profile_id",userId);
-    localStorage.setItem("toni_role",TONI_AUTH_PROFILE.role||"student");
+    localStorage.setItem("toni_role",(window.TONI_AUTH_PROFILE&&TONI_AUTH_PROFILE.role)||localStorage.getItem("toni_role")||"student");
     window.TONI_ACTIVE_PROFILE_ID=userId;
     if(typeof applyRoleUI==="function")applyRoleUI();
 
@@ -1878,6 +1924,7 @@ window.completeSelfRegistration = async function() {
 async function sendVerificationMail(email) {
   const client = getSupabaseClient();
   const url = new URL(window.location.href);
+  url.hash = ""; // Fragment entfernen, sonst '##access_token' nach Magic-Link -> keine Session.
   url.searchParams.set("registration", "1");
 
   try {
@@ -2279,6 +2326,7 @@ async function signInWithPassword() {
 async function sendVerificationMail(email) {
   const client = getSupabaseClient();
   const url = new URL(window.location.href);
+  url.hash = ""; // Fragment entfernen, sonst '##access_token' nach Magic-Link -> keine Session.
   url.searchParams.set("registration", "1");
 
   try {
@@ -3278,7 +3326,10 @@ function toniV12SaveSession(session){
 
 async function toniV12SetSessionFromHash(){
   const client = getSupabaseClient();
-  const hash = new URLSearchParams((window.location.hash || "").replace(/^#/,""));
+  // Robust gegen mehrfache führende '#' (z.B. '##access_token=…', falls eine
+  // Redirect-URL versehentlich schon ein Fragment trug). Alle führenden '#'
+  // entfernen, sonst wird der erste Parameter-Key als '#access_token' verkannt.
+  const hash = new URLSearchParams((window.location.hash || "").replace(/^#+/,""));
   const accessToken = hash.get("access_token");
   const refreshToken = hash.get("refresh_token");
   if(!accessToken) return null;
@@ -3532,6 +3583,7 @@ async function toniV12HandleCallback(){
 window.sendVerificationMail = async function(email){
   const client = getSupabaseClient();
   const url = new URL(window.location.href);
+  url.hash = ""; // Fragment entfernen, sonst '##access_token' nach Magic-Link -> keine Session.
   url.searchParams.set("registration", "1");
 
   try{
@@ -4006,6 +4058,9 @@ function toniV14ApplyCompletedProfile(profile) {
 
 // Finale Überschreibung des Buttons "Registrierung abschließen"
 window.completeSelfRegistration = async function() {
+  const isAdminReg = (typeof toniIsAdminRegistration==="function") ? toniIsAdminRegistration() : false;
+  const isTutorReg = (typeof toniIsTutorRegistration==="function") ? toniIsTutorRegistration() : false;
+  const isStaffReg = isAdminReg || isTutorReg; // Admin oder Tutor: keine Klasse, frische Neuanmeldung
   const first = document.getElementById("reg-first-name")?.value.trim();
   const last = document.getElementById("reg-last-name")?.value.trim();
   const cls = document.getElementById("reg-class-name")?.value.trim();
@@ -4019,8 +4074,15 @@ window.completeSelfRegistration = async function() {
       b.textContent.includes("Registrierung")
     );
 
+  // Pflichtfelder: Vorname, Nachname, Passwort (immer). Klasse/Kurs nur für
+  // Studenten (für Admin/Tutor ausgeblendet und nicht erforderlich).
   if (!first || !last) {
-    setRegistrationMessage("Bitte gib Vorname und Nachname ein.", "err");
+    setRegistrationMessage(isStaffReg ? "Bitte füllen Sie alle Pflichtfelder aus (Vorname und Nachname)." : "Bitte gib Vorname und Nachname ein.", "err");
+    return;
+  }
+
+  if (!isStaffReg && !cls) {
+    setRegistrationMessage("Bitte gib deine Klasse / deinen Kurs an.", "err");
     return;
   }
 
@@ -4080,10 +4142,23 @@ window.completeSelfRegistration = async function() {
 
     setRegistrationMessage("✅ Registrierung abgeschlossen.", "ok");
 
-    setTimeout(() => {
+    setTimeout(async () => {
       closeRegistrationRequiredModal?.();
-      handleJoinLinkAfterLogin?.();
-      appendMsg?.("toni", "✅ Deine Registrierung ist abgeschlossen.", typeof time === "function" ? time() : "", "desktop");
+      if(isStaffReg){
+        // Admin/Tutor: frische Neuanmeldung erzwingen (wie beim Studenten-Flow).
+        try{ sessionStorage.removeItem("toni_admin_registration"); sessionStorage.removeItem("toni_tutor_registration"); }catch(e){}
+        try{ window.TONI_PENDING_ADMIN_REGISTRATION = false; window.TONI_PENDING_TUTOR_REGISTRATION = false; }catch(e){}
+        try{
+          const client = getSupabaseClient();
+          await Promise.race([client.auth.signOut(), new Promise(r=>setTimeout(r,4000))]);
+        }catch(e){ console.warn("Abmeldung nach Registrierung:", e); }
+        try{ history.replaceState(null, "", window.location.origin + window.location.pathname); }catch(e){}
+        if(typeof openAuthModal === "function") openAuthModal();
+        else window.location.reload();
+      }else{
+        handleJoinLinkAfterLogin?.();
+        appendMsg?.("toni", "✅ Deine Registrierung ist abgeschlossen.", typeof time === "function" ? time() : "", "desktop");
+      }
     }, 700);
 
   } catch (error) {
@@ -6934,7 +7009,7 @@ window.addEventListener("DOMContentLoaded", () => {
     if(!ok) return;
 
     try{
-      const result = await callRpc("rpc/superadmin_delete_admin_v79", {
+      const result = await callRpc("rpc/superadmin_delete_admin_v120", {
         ...authValue(),
         p_admin_id:adminId
       });
@@ -7138,7 +7213,7 @@ window.addEventListener("DOMContentLoaded", () => {
         <td class="sa-inst-num sa-inst-img">${Number(r.image_count)||0}</td>
         <td class="sa-inst-num sa-inst-doc">${Number(r.doc_count)||0}</td>
         <td class="sa-inst-bytes">${fmtBytes(r.total_bytes)}</td>
-        <td class="sa-inst-del-cell"><button class="sa-inst-del-btn" title="Institution vollständig löschen" onclick="toniV118AskDeleteInstitution('${esc(r.institution_id)}','${esc(String(r.inst_name||'').replace(/'/g,"\\'"))}')">−</button></td>
+        <td class="sa-inst-del-cell"><button class="sa-inst-invite-btn" title="Admin einladen" onclick="toniV121InviteAdmin(event,'${esc(r.institution_id)}','${esc(String(r.inst_name||'').replace(/'/g,"\\'"))}')">✉</button><button class="sa-inst-del-btn" title="Institution vollständig löschen" onclick="toniV118AskDeleteInstitution('${esc(r.institution_id)}','${esc(String(r.inst_name||'').replace(/'/g,"\\'"))}')">−</button></td>
       </tr>`).join("");
 
     const totalRow = `
@@ -7246,7 +7321,917 @@ window.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  // Erzeugt eine Admin-Einladung für eine Institution und zeigt den Link an.
+  window.toniV121InviteAdmin = async function(ev, institutionId, institutionName){
+    ev?.stopPropagation?.();
+    if(!institutionId) return;
+    const name = institutionName || "diese Institution";
+    try{
+      const inv = await callRpc("rpc/superadmin_create_admin_invite_v121", {
+        ...authValue(),
+        p_institution_id: institutionId
+      });
+      if(!inv?.ok || !inv.invite_id){
+        throw new Error(inv?.error || "Einladung konnte nicht erstellt werden.");
+      }
+      const link = (typeof window.toniBuildAdminInviteLink === "function")
+        ? window.toniBuildAdminInviteLink(inv.invite_id)
+        : (window.location.origin + window.location.pathname + "?admininvite=" + encodeURIComponent(inv.invite_id));
+      // Link in einem schlichten Prompt anzeigen (kopierbar)
+      if(typeof window.toniV121ShowInviteLink === "function"){
+        window.toniV121ShowInviteLink(name, link);
+      }else{
+        window.prompt(`Einladungslink für „${name}" (gültig 30 Tage) – kopieren:`, link);
+      }
+    }catch(e){
+      console.warn("Admin einladen:", e);
+      alert("Einladung konnte nicht erstellt werden:\n" + (e.message || e));
+    }
+  };
+
   window.toniV118AskDeleteInstitution = askDeleteInstitution;
   window.toniV118LoadInstitutionStats = loadInstitutionStats;
   window.toniV118ToggleInstitutionsPanel = toggleInstitutionsPanel;
+})();
+
+/* ============================================================
+   TONI – SuperAdmin Admin-Übersicht (v119)
+   Tabelle: Institution, Institutions-ID (gekürzt, kopierbar),
+   Adminname, E-Mail. Nutzt bestehende RPC superadmin_list_admins_v76,
+   kein neues SQL nötig.
+   ============================================================ */
+(function(){
+  const SUPERADMIN_USERNAME = "SuperAdmin";
+  const SUPERADMIN_PASSWORD = window.SUPERADMIN_PASSWORD || "SuperAdmin#";
+
+  function esc(value){
+    if(typeof escapeHtml === "function") return escapeHtml(value);
+    return String(value ?? "").replace(/[&<>"']/g, c => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+    }[c]));
+  }
+
+  function authValue(){
+    return { p_username:SUPERADMIN_USERNAME, p_password:SUPERADMIN_PASSWORD };
+  }
+
+  async function callRpc(path, body){
+    const headers = {
+      "apikey": window.SUPABASE_ANON_KEY,
+      "Authorization": "Bearer " + window.SUPABASE_ANON_KEY,
+      "Content-Type": "application/json"
+    };
+    const response = await fetch(`${window.SUPABASE_URL}/rest/v1/${path}`, {
+      method:"POST", headers, body:JSON.stringify(body || {})
+    });
+    if(!response.ok){
+      const text = await response.text();
+      throw new Error(`Supabase ${response.status}: ${text}`);
+    }
+    const text = await response.text();
+    return text ? JSON.parse(text) : null;
+  }
+
+  // UUID auf "Anfang…Ende" kürzen.
+  function shortId(id){
+    const s = String(id || "");
+    if(s.length <= 12) return s;
+    return s.slice(0,4) + "…" + s.slice(-4);
+  }
+
+  // ID in die Zwischenablage kopieren (mit Fallback).
+  window.toniV119CopyInstId = function(ev, fullId){
+    ev?.stopPropagation?.();
+    const id = String(fullId || "");
+    const done = (el)=>{ if(el){ const o=el.textContent; el.textContent="kopiert ✓"; setTimeout(()=>{ el.textContent=o; }, 1200); } };
+    const el = ev?.currentTarget;
+    if(navigator.clipboard?.writeText){
+      navigator.clipboard.writeText(id).then(()=>done(el)).catch(()=>{});
+    }else{
+      try{
+        const ta=document.createElement("textarea"); ta.value=id; document.body.appendChild(ta);
+        ta.select(); document.execCommand("copy"); document.body.removeChild(ta); done(el);
+      }catch(e){}
+    }
+  };
+
+  function renderAdminList(admins){
+    const root = document.getElementById("superadmin-adminlist-content");
+    if(!root) return;
+    const rows = Array.isArray(admins) ? admins : [];
+    if(!rows.length){
+      root.innerHTML = `<div class="assignment-empty">Noch keine Admins angelegt.</div>`;
+      return;
+    }
+
+    // Nach Institutionsname, dann Adminname sortieren
+    rows.sort((a,b)=>{
+      const ai=(a.institution_name||"").toLowerCase(), bi=(b.institution_name||"").toLowerCase();
+      if(ai!==bi) return ai<bi?-1:1;
+      const an=`${a.first_name||""} ${a.last_name||""}`.trim().toLowerCase()||(a.display_name||"").toLowerCase();
+      const bn=`${b.first_name||""} ${b.last_name||""}`.trim().toLowerCase()||(b.display_name||"").toLowerCase();
+      return an<bn?-1:(an>bn?1:0);
+    });
+
+    const instCount = new Set(rows.map(r=>r.institution_id).filter(Boolean)).size;
+
+    const body = rows.map(r=>{
+      const name = `${r.first_name||""} ${r.last_name||""}`.trim() || r.display_name || r.email || "Admin";
+      const inst = r.institution_name || "Ohne Institution";
+      const fullId = r.institution_id || "";
+      const idCell = fullId
+        ? `<code class="sa-adm-id" title="Klicken zum Kopieren: ${esc(fullId)}" onclick="toniV119CopyInstId(event,'${esc(fullId)}')">${esc(shortId(fullId))}</code>`
+        : `<span class="sa-adm-muted">—</span>`;
+      const email = r.email
+        ? `<a class="sa-adm-mail" href="mailto:${esc(r.email)}">${esc(r.email)}</a>`
+        : `<span class="sa-adm-muted">—</span>`;
+      const delBtn = `<button class="sa-adm-del-btn" title="Admin löschen" onclick="toniV119DeleteAdminFromList(event,'${esc(r.id)}','${esc(String(name).replace(/'/g,"\\'"))}')">−</button>`;
+      return `<tr>
+        <td class="sa-adm-inst">${esc(inst)}</td>
+        <td>${idCell}</td>
+        <td class="sa-adm-name">${esc(name)}</td>
+        <td>${email}</td>
+        <td class="sa-adm-del-cell">${delBtn}</td>
+      </tr>`;
+    }).join("");
+
+    root.innerHTML = `
+      <div class="sa-adm-summary">${rows.length} ${rows.length===1?"Admin":"Admins"} in ${instCount} ${instCount===1?"Institution":"Institutionen"}
+        <span class="sa-adm-hint"><i class="ti ti-copy"></i> ID antippen zum Kopieren</span></div>
+      <div class="sa-adm-table-wrap">
+        <table class="sa-adm-table">
+          <thead>
+            <tr><th>Institution</th><th>Institutions-ID</th><th>Adminname</th><th>E-Mail</th><th></th></tr>
+          </thead>
+          <tbody>${body}</tbody>
+        </table>
+      </div>`;
+  }
+
+  async function loadAdminList(event){
+    if(event){ event.preventDefault?.(); event.stopPropagation?.(); }
+    const root = document.getElementById("superadmin-adminlist-content");
+    if(root) root.innerHTML = `<div class="assignment-empty">Übersicht wird geladen …</div>`;
+    try{
+      const result = await callRpc("rpc/superadmin_list_admins_v76", authValue());
+      const admins = Array.isArray(result) ? result : (result?.admins || []);
+      renderAdminList(admins);
+    }catch(e){
+      console.warn("Admin-Übersicht:", e);
+      if(root) root.innerHTML = `<div class="assignment-empty">Übersicht konnte nicht geladen werden.</div>`;
+    }
+  }
+
+  function toggleAdminListPanel(){
+    const body = document.getElementById("superadmin-adminlist-body");
+    const note = document.getElementById("superadmin-adminlist-collapsed-note");
+    const symbol = document.getElementById("superadmin-adminlist-toggle-symbol");
+    if(!body) return;
+    const isOpen = body.classList.toggle("open");
+    if(note) note.style.display = isOpen ? "none" : "";
+    if(symbol) symbol.textContent = isOpen ? "−" : "+";
+    if(isOpen) loadAdminList();
+  }
+
+  // Admin aus der Übersicht löschen: nutzt die globale Lösch-Funktion des
+  // Admin-Verwaltungs-Moduls und lädt danach DIESE Liste neu.
+  window.toniV119DeleteAdminFromList = async function(ev, adminId, adminName){
+    ev?.stopPropagation?.();
+    if(!adminId) return;
+    const fn = window.toniV79DeleteAdmin || window.toniV78DeleteAdmin;
+    if(typeof fn !== "function"){
+      alert("Löschfunktion nicht verfügbar. Bitte Seite neu laden.");
+      return;
+    }
+    await fn(adminId, adminName);
+    // Übersicht aktualisieren (die Lösch-Funktion lädt die andere Liste neu,
+    // diese hier müssen wir selbst nachziehen).
+    loadAdminList();
+  };
+
+  window.toniV119LoadAdminList = loadAdminList;
+  window.toniV119ToggleAdminListPanel = toggleAdminListPanel;
+})();
+
+/* ============================================================
+   TONI – SuperAdmin: neue Institution anlegen (v120, Paket 1)
+   Legt NUR die Institution an (Adressdaten). Der Admin-/Magic-Link-
+   Teil folgt separat in Paket 2.
+   ============================================================ */
+(function(){
+  const SUPERADMIN_USERNAME = "SuperAdmin";
+  const SUPERADMIN_PASSWORD = window.SUPERADMIN_PASSWORD || "SuperAdmin#";
+
+  function esc(value){
+    if(typeof escapeHtml === "function") return escapeHtml(value);
+    return String(value ?? "").replace(/[&<>"']/g, c => ({
+      "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#039;"
+    }[c]));
+  }
+
+  async function callRpc(path, body){
+    const headers = {
+      "apikey": window.SUPABASE_ANON_KEY,
+      "Authorization": "Bearer " + window.SUPABASE_ANON_KEY,
+      "Content-Type": "application/json"
+    };
+    const response = await fetch(`${window.SUPABASE_URL}/rest/v1/${path}`, {
+      method:"POST", headers, body:JSON.stringify(body || {})
+    });
+    if(!response.ok){
+      const text = await response.text();
+      throw new Error(`Supabase ${response.status}: ${text}`);
+    }
+    const text = await response.text();
+    return text ? JSON.parse(text) : null;
+  }
+
+  function setMsg(text, type){
+    const box = document.getElementById("superadmin-create-inst-message");
+    if(!box) return;
+    box.innerHTML = text;
+    box.className = "auth-message" + (type === "err" ? " error" : type === "ok" ? " success" : "");
+  }
+
+  window.toniV120OpenCreateInstitution = function(event){
+    event?.stopPropagation?.();
+    ["name","street","plz","city","email","phone","password"].forEach(k=>{
+      const el = document.getElementById("superadmin-new-inst-"+k);
+      if(el) el.value = "";
+    });
+    setMsg("", "");
+    document.getElementById("superadmin-create-institution-modal")?.classList.add("open");
+    setTimeout(()=>document.getElementById("superadmin-new-inst-name")?.focus(), 80);
+  };
+
+  window.toniV120CloseCreateInstitution = function(){
+    document.getElementById("superadmin-create-institution-modal")?.classList.remove("open");
+  };
+
+  window.toniV120CreateInstitution = async function(){
+    const val = k => (document.getElementById("superadmin-new-inst-"+k)?.value || "").trim();
+    const name = val("name");
+    const password = document.getElementById("superadmin-new-inst-password")?.value || "";
+
+    if(!name){ setMsg("Bitte den Namen der Institution angeben.", "err"); return; }
+    if(password !== SUPERADMIN_PASSWORD){ setMsg("Falsches Passwort.", "err"); return; }
+
+    setMsg("Institution wird angelegt …", "");
+    try{
+      const result = await callRpc("rpc/superadmin_create_institution_v120", {
+        p_username: SUPERADMIN_USERNAME,
+        p_password: SUPERADMIN_PASSWORD,
+        p_name: name,
+        p_street: val("street"),
+        p_postal_code: val("plz"),
+        p_city: val("city"),
+        p_email: val("email"),
+        p_phone: val("phone")
+      });
+      if(!result?.ok){
+        throw new Error(result?.error || "Institution konnte nicht angelegt werden.");
+      }
+      setMsg(`✅ Institution „${esc(result.institution_name)}" angelegt.<br>Kennung: <strong>${esc(result.internal_code)}</strong><br><span style="color:var(--color-text-secondary)">Einen Admin kannst du jederzeit über den ✉-Button in der Übersicht einladen.</span>`, "ok");
+      // Übersicht aktualisieren
+      if(typeof window.toniV118LoadInstitutionStats === "function") window.toniV118LoadInstitutionStats();
+      // Fenster nach kurzer Bestätigung automatisch schließen.
+      setTimeout(()=>{ window.toniV120CloseCreateInstitution(); }, 1500);
+    }catch(e){
+      console.warn("Institution anlegen:", e);
+      const msg = /not_allowed/.test(String(e)) ? "Passwortprüfung fehlgeschlagen." : (e.message || "Fehler beim Anlegen.");
+      setMsg("⚠️ " + esc(msg), "err");
+    }
+  };
+
+  // Baut aus einer invite_id einen vollständigen Einladungslink.
+  function toniBuildAdminInviteLink(inviteId){
+    const base = window.location.origin + window.location.pathname;
+    return base + "?admininvite=" + encodeURIComponent(inviteId);
+  }
+  window.toniBuildAdminInviteLink = toniBuildAdminInviteLink;
+
+  // Text in die Zwischenablage kopieren (mit Fallback + kurzer Bestätigung).
+  window.toniV121CopyText = function(ev, text){
+    ev?.stopPropagation?.();
+    const btn = ev?.currentTarget;
+    const done = ()=>{ if(btn){ const o=btn.textContent; btn.textContent="kopiert ✓"; setTimeout(()=>{ btn.textContent=o; }, 1200); } };
+    if(navigator.clipboard?.writeText){
+      navigator.clipboard.writeText(text).then(done).catch(()=>{});
+    }else{
+      try{
+        const ta=document.createElement("textarea"); ta.value=text; document.body.appendChild(ta);
+        ta.select(); document.execCommand("copy"); document.body.removeChild(ta); done();
+      }catch(e){}
+    }
+  };
+})();
+
+/* ============================================================
+   TONI – SuperAdmin: Einladungslink anzeigen (v121, Paket 2 / Etappe 2)
+   ============================================================ */
+(function(){
+  function esc(v){
+    if(typeof escapeHtml === "function") return escapeHtml(v);
+    return String(v ?? "");
+  }
+  window.toniV121ShowInviteLink = function(institutionName, link){
+    const modal = document.getElementById("superadmin-invite-link-modal");
+    const input = document.getElementById("superadmin-invite-link-input");
+    const sub = document.getElementById("superadmin-invite-link-sub");
+    const copyBtn = document.getElementById("superadmin-invite-link-copy");
+    if(!modal || !input) return;
+    if(sub) sub.textContent = "✉️ Einladungslink für " + (institutionName || "Institution");
+    input.value = link || "";
+    if(copyBtn){
+      copyBtn.onclick = function(ev){
+        if(typeof window.toniV121CopyText === "function"){ window.toniV121CopyText(ev, link); }
+        else { input.select(); try{ document.execCommand("copy"); }catch(e){} }
+      };
+    }
+    modal.classList.add("open");
+    setTimeout(()=>{ input.focus(); input.select(); }, 80);
+  };
+})();
+
+/* ============================================================
+   TONI – Admin-Einladung annehmen (v121, Paket 2 / Etappe 3)
+   Erkennt ?admininvite=<id>, prüft den Code serverseitig und sendet
+   (nur bei gültigem Code) einen Magic-Link an die eingegebene E-Mail.
+   Das eigentliche "zum Admin befördern" passiert in Etappe 4 nach dem
+   Klick auf den Magic-Link.
+   ============================================================ */
+(function(){
+  function esc(v){ return (typeof escapeHtml==="function") ? escapeHtml(v) : String(v ?? ""); }
+
+  function getInviteIdFromUrl(){
+    try{ return new URL(window.location.href).searchParams.get("admininvite"); }catch(e){ return null; }
+  }
+
+  async function callRpc(path, body){
+    const headers = {
+      "apikey": window.SUPABASE_ANON_KEY,
+      "Authorization": "Bearer " + window.SUPABASE_ANON_KEY,
+      "Content-Type": "application/json"
+    };
+    const r = await fetch(`${window.SUPABASE_URL}/rest/v1/${path}`, {
+      method:"POST", headers, body:JSON.stringify(body||{})
+    });
+    if(!r.ok){ const t=await r.text(); throw new Error(`Supabase ${r.status}: ${t}`); }
+    const t = await r.text();
+    return t ? JSON.parse(t) : null;
+  }
+
+  const ERR_TEXT = {
+    kein_code: "Dieser Einladungslink ist unvollständig.",
+    nicht_gefunden: "Dieser Einladungslink ist ungültig.",
+    bereits_verwendet: "Dieser Einladungslink wurde bereits verwendet.",
+    abgelaufen: "Dieser Einladungslink ist abgelaufen. Bitte fordere einen neuen an."
+  };
+
+  function setBody(html){ const b=document.getElementById("admin-invite-accept-body"); if(b) b.innerHTML=html; }
+  function setSub(text){ const s=document.getElementById("admin-invite-accept-sub"); if(s) s.textContent=text; }
+
+  async function openAcceptFlow(inviteId){
+    const modal = document.getElementById("admin-invite-accept-modal");
+    if(!modal) return;
+    // Normales Login-Modal schließen, damit es den Einlöse-Bildschirm nicht überdeckt.
+    document.getElementById("auth-modal")?.classList.remove("open");
+    modal.classList.add("open");
+    setSub("Einladung wird geprüft …");
+    setBody(`<div class="assignment-empty">Einen Moment …</div>`);
+
+    // Warten, bis Supabase-Konfiguration bereit ist (max ~5s).
+    let tries = 0;
+    while((!window.SUPABASE_URL || !window.SUPABASE_ANON_KEY) && tries < 25){
+      await new Promise(r=>setTimeout(r, 200)); tries++;
+    }
+
+    try{
+      const res = await callRpc("rpc/validate_admin_invite_v121", { p_invite_id: inviteId });
+      if(!res?.ok){
+        setSub("Einladung ungültig");
+        setBody(`<div style="font-size:14px;color:var(--color-text-primary);line-height:1.5">${esc(ERR_TEXT[res?.error] || "Dieser Einladungslink ist ungültig.")}</div>`);
+        return;
+      }
+      // Gültig: Institution anzeigen + E-Mail-Eingabe
+      setSub("Einladung für " + esc(res.institution_name));
+      setBody(`
+        <p style="font-size:14px;color:var(--color-text-primary);margin:0 0 14px;line-height:1.5">
+          Du wurdest als Admin für <strong>${esc(res.institution_name)}</strong> eingeladen.
+          Gib deine E-Mail-Adresse ein – wir senden dir einen Anmeldelink.
+        </p>
+        <label style="font-size:13px;font-weight:500;color:var(--color-text-primary);display:block;margin-bottom:6px">E-Mail-Adresse</label>
+        <input id="admin-invite-email" type="email" placeholder="du@beispiel.de"
+          style="width:100%;padding:9px 12px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;background:#fff;color:var(--color-text-primary);box-sizing:border-box;margin-bottom:14px">
+        <button id="admin-invite-send-btn"
+          style="width:100%;padding:12px;background:#185FA5;color:#fff;border:none;border-radius:var(--border-radius-md);font-size:15px;font-weight:500;cursor:pointer">
+          Anmeldelink senden
+        </button>
+        <div id="admin-invite-msg" style="font-size:13px;margin-top:12px;line-height:1.5"></div>
+      `);
+      const btn = document.getElementById("admin-invite-send-btn");
+      if(btn) btn.onclick = ()=>sendInviteMagicLink(inviteId, res.institution_id);
+      setTimeout(()=>document.getElementById("admin-invite-email")?.focus(), 80);
+    }catch(e){
+      console.warn("Einladung prüfen:", e);
+      setSub("Fehler");
+      setBody(`<div style="font-size:14px;color:var(--color-text-primary)">Die Einladung konnte nicht geprüft werden. Bitte versuche es später erneut.</div>`);
+    }
+  }
+
+  async function sendInviteMagicLink(inviteId, institutionId){
+    const emailEl = document.getElementById("admin-invite-email");
+    const msg = document.getElementById("admin-invite-msg");
+    const email = (emailEl?.value || "").trim();
+    const setMsg = (t,c)=>{ if(msg){ msg.innerHTML=t; msg.style.color = c==="err" ? "#A32D2D" : "var(--color-text-secondary)"; } };
+    if(!email || !/.+@.+\..+/.test(email)){ setMsg("Bitte gib eine gültige E-Mail-Adresse ein.","err"); emailEl?.focus(); return; }
+    setMsg("Anmeldelink wird gesendet …");
+    try{
+      const client = (typeof getSupabaseClient==="function") ? getSupabaseClient() : null;
+      if(!client) throw new Error("client_unavailable");
+      // Redirect zurück auf DIESELBE Einladungs-URL, damit Etappe 4 nach dem
+      // Klick den Kontext (invite + institution) wiederfindet.
+      const redirect = window.location.origin + window.location.pathname + "?admininvite=" + encodeURIComponent(inviteId);
+      const { error } = await client.auth.signInWithOtp({ email, options: { emailRedirectTo: redirect } });
+      if(error) throw error;
+      // E-Mail + Einladung lokal vormerken, damit Etappe 4 sie nach dem
+      // Magic-Link-Roundtrip wiederfindet (URL trägt dann keinen Parameter mehr).
+      // Mit Zeitstempel, analog zum bewährten Schüler-Verfahren (readPendingCode).
+      try{ sessionStorage.setItem("toni_admin_invite_pending", JSON.stringify({ inviteId, institutionId, email, ts: Date.now() })); }catch(e){}
+      setMsg("✅ Anmeldelink gesendet. Bitte öffne die E-Mail und klicke den Link. Danach schließt du deine Registrierung ab.<br><br>Sie können diese Seite schließen.");
+    }catch(e){
+      console.warn("Magic-Link (Admin-Einladung):", e);
+      setMsg("⚠️ Der Anmeldelink konnte nicht gesendet werden. Bitte versuche es erneut.","err");
+    }
+  }
+
+  // Beim Laden prüfen, ob ein Einladungs-Parameter vorliegt.
+  window.addEventListener("DOMContentLoaded", ()=>{
+    const inviteId = getInviteIdFromUrl();
+    if(inviteId){
+      // Etwas verzögert, damit Supabase-Client & Co. bereit sind.
+      setTimeout(()=>openAcceptFlow(inviteId), 400);
+      // Wächter: solange unser Einlöse-Modal offen ist, das normale Login-Modal
+      // geschlossen halten (andere Startup-Handler öffnen es sonst erneut).
+      const guard = setInterval(()=>{
+        const mine = document.getElementById("admin-invite-accept-modal");
+        if(mine && mine.classList.contains("open")){
+          document.getElementById("auth-modal")?.classList.remove("open");
+        }
+      }, 300);
+      // Wächter nach 30s beenden (Magic-Link-Versand ist dann längst erfolgt).
+      setTimeout(()=>clearInterval(guard), 30000);
+    }
+  });
+
+  window.toniV121OpenAdminInviteAccept = openAcceptFlow;
+
+  /* ---------- ETAPPE 4: nach Magic-Link-Login einlösen ---------- */
+  // Adaptiert das bewährte Schüler-Muster (readPendingCode): Nach dem Magic-Link-
+  // Roundtrip trägt die URL KEINEN ?admininvite-Parameter mehr (Supabase überschreibt
+  // sie auf die bloße Site-URL). Deshalb wird die invite_id ZUSÄTZLICH aus sessionStorage
+  // gelesen, wo Etappe 3 sie vor dem Mailversand gemerkt hat.
+  let acceptDone = false;
+  const PENDING_MAX_AGE_MS = 60 * 60 * 1000; // 1 Stunde
+
+  function readPendingAdminInvite(){
+    try{
+      const raw = sessionStorage.getItem("toni_admin_invite_pending");
+      if(!raw) return null;
+      const obj = JSON.parse(raw);
+      if(!obj || !obj.inviteId) return null;
+      if(obj.ts && (Date.now() - obj.ts > PENDING_MAX_AGE_MS)){
+        sessionStorage.removeItem("toni_admin_invite_pending"); return null;
+      }
+      return obj;
+    }catch(e){ return null; }
+  }
+
+  // invite_id aus URL ODER aus dem gemerkten sessionStorage-Eintrag.
+  // WICHTIG: Wenn ein FREMDER Einladungstyp (z.B. ?tutorinvite=) in der URL
+  // steht, darf der Admin-Flow NICHT über einen alten sessionStorage-Rest
+  // anspringen. Sonst öffnet sich fälschlich das Admin-Fenster.
+  function fremderInviteInUrl(){
+    try{
+      const p = new URL(window.location.href).searchParams;
+      return p.has("tutorinvite"); // weitere Typen hier ergänzbar
+    }catch(e){ return false; }
+  }
+  function resolveInviteId(){
+    const fromUrl = getInviteIdFromUrl();
+    if(fromUrl) return fromUrl;
+    if(fremderInviteInUrl()) return null; // fremder Link -> Admin-Flow bleibt still
+    // Über sessionStorage NUR anspringen, wenn die URL keine fremden Flow-Parameter
+    // trägt (sonst Session-Kaperung eines anderen Flows).
+    try{
+      const u=new URL(window.location.href);
+      const h=new URLSearchParams((window.location.hash||"").replace(/^#/,""));
+      const fremdeParams = ["code","token_hash","tutorinvite","register","registration","join","journey"];
+      const hatFremdeQuery = fremdeParams.some(p => u.searchParams.has(p));
+      const hatFremdenHash = h.has("access_token") || h.has("refresh_token") || h.has("error");
+      if(hatFremdeQuery || hatFremdenHash) return null;
+    }catch(e){}
+    const pending = readPendingAdminInvite();
+    return pending ? pending.inviteId : null;
+  }
+
+  async function tryAcceptAfterLogin(inviteId){
+    if(acceptDone) return;
+    if(!inviteId) return;
+    const client = (typeof getSupabaseClient === "function") ? getSupabaseClient() : null;
+    if(!client) return;
+    let session = null;
+    try{ const { data } = await client.auth.getSession(); session = data?.session; }catch(e){}
+    if(!session?.user) return; // noch nicht eingeloggt -> später erneut versuchen
+    acceptDone = true;
+    try{
+      // Access-Token des eingeloggten Nutzers nutzen, damit auth.uid() greift.
+      const token = session.access_token;
+      const r = await fetch(`${window.SUPABASE_URL}/rest/v1/rpc/accept_admin_invite_v121`, {
+        method: "POST",
+        headers: {
+          "apikey": window.SUPABASE_ANON_KEY,
+          "Authorization": "Bearer " + token,
+          "Content-Type": "application/json"
+        },
+        body: JSON.stringify({ p_invite_id: inviteId })
+      });
+      const txt = await r.text();
+      const res = txt ? JSON.parse(txt) : null;
+      if(res?.ok){
+        try{ sessionStorage.removeItem("toni_admin_invite_pending"); }catch(e){}
+        // Marker: die folgende Registrierung ist eine ADMIN-Registrierung.
+        try{ window.TONI_PENDING_ADMIN_REGISTRATION = true; sessionStorage.setItem("toni_admin_registration", "1"); }catch(e){}
+        // Einlöse-Modal schließen; der bestehende Registrierungs-Flow
+        // (Vor-/Nachname) übernimmt nun automatisch.
+        document.getElementById("admin-invite-accept-modal")?.classList.remove("open");
+        // URL-Parameter entfernen, damit ein Reload nicht erneut einzulösen versucht.
+        try{ history.replaceState(null, "", window.location.origin + window.location.pathname); }catch(e){}
+        // Den bestehenden Registrierungs-Check anstoßen (Vor-/Nachname),
+        // analog zum Schüler-Verfahren.
+        if(typeof handleJoinLinkAfterLogin === "function"){ try{ handleJoinLinkAfterLogin(); }catch(e){} }
+      }else{
+        console.warn("Admin-Einladung einlösen:", res?.error);
+        acceptDone = false; // bei Fehler erneute Versuche zulassen
+      }
+    }catch(e){
+      console.warn("accept_admin_invite:", e);
+      acceptDone = false;
+    }
+  }
+
+  window.addEventListener("DOMContentLoaded", ()=>{
+    // Wenn ein Admin-Link aktiv ist, einen evtl. alten Tutor-Einladungs-Rest entfernen.
+    try{
+      if(new URL(window.location.href).searchParams.has("admininvite")){
+        sessionStorage.removeItem("toni_tutor_invite_pending");
+      }
+    }catch(e){}
+    // invite_id aus URL ODER sessionStorage (übersteht den Magic-Link-Roundtrip).
+    const inviteId = resolveInviteId();
+    if(!inviteId) return;
+    // Mehrfach versuchen, da die Session nach dem Magic-Link-Redirect erst
+    // entstehen muss (Supabase verarbeitet den Token asynchron).
+    const tries = [600, 1400, 2600, 4000, 6000, 9000];
+    tries.forEach(ms => setTimeout(()=>tryAcceptAfterLogin(inviteId), ms));
+    // Zusätzlich auf Auth-Events reagieren.
+    try{
+      const client = (typeof getSupabaseClient === "function") ? getSupabaseClient() : null;
+      client?.auth?.onAuthStateChange((event)=>{
+        if(event === "SIGNED_IN" || event === "INITIAL_SESSION"){
+          setTimeout(()=>tryAcceptAfterLogin(inviteId), 200);
+        }
+      });
+    }catch(e){}
+  });
+})();
+
+/* ============================================================
+   TONI – Tutor-Onboarding (v121): Admin lädt Tutor ein
+   Bindet das bestehende QR-Modal (tutor-invite-modal-v60) an und erzeugt
+   eine Einladung über create_tutor_self_invite_v121 (läuft über Admin-Session).
+   Link-Format: ?tutorinvite=<id>
+   ============================================================ */
+(function(){
+  function esc(v){ return (typeof escapeHtml==="function") ? escapeHtml(v) : String(v ?? ""); }
+
+  // Panel auf/zu (fehlte bisher) – nutzt das bestehende .open-Klassenmuster
+  window.toniV59ToggleTutorsPanel = function(){
+    const body = document.getElementById("tutors-admin-panel-body");
+    const note = document.getElementById("tutors-admin-panel-collapsed-note");
+    const sym  = document.getElementById("tutors-admin-panel-toggle-symbol");
+    if(!body) return;
+    const open = body.classList.toggle("open");
+    if(note) note.style.display = open ? "none" : "";
+    if(sym)  sym.textContent = open ? "−" : "+";
+    if(open && typeof window.toniV59LoadTutors === "function") window.toniV59LoadTutors();
+  };
+
+  // Platzhalter, damit der "Aktualisieren"-Button nicht ins Leere läuft.
+  // (Die vollständige Tutorenliste ist ein separates Thema.)
+  if(typeof window.toniV59LoadTutors !== "function"){
+    window.toniV59LoadTutors = function(){
+      const list = document.getElementById("tutors-admin-list");
+      if(list) list.innerHTML = `<div class="assignment-empty">Tutoren-Übersicht folgt. Über „Tutor einladen“ kann ein neuer Tutor hinzugefügt werden.</div>`;
+    };
+  }
+
+  async function callRpcWithSession(path, body){
+    const client = (typeof getSupabaseClient==="function") ? getSupabaseClient() : null;
+    if(!client) throw new Error("client_unavailable");
+    let token = window.SUPABASE_ANON_KEY;
+    try{ const { data } = await client.auth.getSession(); if(data?.session?.access_token) token = data.session.access_token; }catch(e){}
+    const r = await fetch(`${window.SUPABASE_URL}/rest/v1/${path}`, {
+      method:"POST",
+      headers:{
+        "apikey": window.SUPABASE_ANON_KEY,
+        "Authorization": "Bearer " + token,
+        "Content-Type": "application/json"
+      },
+      body: JSON.stringify(body||{})
+    });
+    const t = await r.text();
+    if(!r.ok) throw new Error(`Supabase ${r.status}: ${t}`);
+    return t ? JSON.parse(t) : null;
+  }
+
+  function buildTutorInviteLink(inviteId){
+    return window.location.origin + window.location.pathname + "?tutorinvite=" + encodeURIComponent(inviteId);
+  }
+  window.toniV60BuildTutorInviteLink = buildTutorInviteLink;
+
+  let currentTutorLink = "";
+
+  // Öffnet das QR-Modal und erzeugt dabei eine neue Tutor-Einladung.
+  window.toniV60OpenTutorInviteModal = async function(){
+    const modal = document.getElementById("tutor-invite-modal-v60");
+    const linkBox = document.getElementById("tutor-invite-link-v60");
+    const qrImg = document.getElementById("tutor-invite-qr-v60");
+    const msg = document.getElementById("tutor-invite-message-v60");
+    if(!modal) return;
+    modal.classList.add("open");
+    if(msg){ msg.innerHTML = "Einladung wird erstellt …"; msg.className = "auth-message"; }
+    if(linkBox) linkBox.textContent = "";
+    if(qrImg) qrImg.removeAttribute("src");
+    try{
+      const res = await callRpcWithSession("rpc/create_tutor_self_invite_v121", {});
+      if(!res?.ok || !res.invite_id){
+        const map = { not_authenticated:"Bitte melde dich erneut an.", not_allowed:"Nur Admins können Tutoren einladen.", keine_institution:"Deinem Konto ist keine Institution zugeordnet." };
+        throw new Error(map[res?.error] || "Einladung konnte nicht erstellt werden.");
+      }
+      currentTutorLink = buildTutorInviteLink(res.invite_id);
+      if(linkBox) linkBox.textContent = currentTutorLink;
+      if(qrImg) qrImg.src = "https://api.qrserver.com/v1/create-qr-code/?size=220x220&margin=8&data=" + encodeURIComponent(currentTutorLink);
+      if(msg){ msg.innerHTML = "✅ Einladung bereit. Gib den Link oder QR-Code an den neuen Tutor weiter (30 Tage gültig)."; msg.className = "auth-message success"; }
+    }catch(e){
+      console.warn("Tutor-Einladung:", e);
+      if(msg){ msg.innerHTML = "⚠️ " + esc(e.message || "Fehler beim Erstellen der Einladung."); msg.className = "auth-message error"; }
+    }
+  };
+
+  window.toniV60CloseTutorInviteModal = function(){
+    document.getElementById("tutor-invite-modal-v60")?.classList.remove("open");
+  };
+
+  window.toniV60CopyTutorInviteLink = function(ev){
+    if(!currentTutorLink) return;
+    if(typeof window.toniV121CopyText === "function"){ window.toniV121CopyText(ev, currentTutorLink); return; }
+    if(navigator.clipboard?.writeText) navigator.clipboard.writeText(currentTutorLink).catch(()=>{});
+  };
+
+  window.toniV60DownloadTutorInviteQr = function(){
+    if(!currentTutorLink) return;
+    const big = "https://api.qrserver.com/v1/create-qr-code/?size=640x640&margin=12&data=" + encodeURIComponent(currentTutorLink);
+    const a = document.createElement("a");
+    a.href = big; a.target = "_blank"; a.rel = "noopener";
+    a.download = "tutor-einladung-qr.png";
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+  };
+})();
+
+/* ============================================================
+   TONI – Tutor-Einladung annehmen (v121, Etappe 3+4)
+   Eigenständiges Modul nach dem bewährten Admin-Muster, für ?tutorinvite=<id>.
+   Hält den funktionierenden Admin-Flow unangetastet.
+   ============================================================ */
+(function(){
+  function esc(v){ return (typeof escapeHtml==="function") ? escapeHtml(v) : String(v ?? ""); }
+  function getTutorInviteIdFromUrl(){
+    try{ return new URL(window.location.href).searchParams.get("tutorinvite"); }catch(e){ return null; }
+  }
+
+  async function callAnon(path, body){
+    const r = await fetch(`${window.SUPABASE_URL}/rest/v1/${path}`, {
+      method:"POST",
+      headers:{ "apikey": window.SUPABASE_ANON_KEY, "Authorization": "Bearer " + window.SUPABASE_ANON_KEY, "Content-Type":"application/json" },
+      body: JSON.stringify(body||{})
+    });
+    const t = await r.text();
+    if(!r.ok) throw new Error(`Supabase ${r.status}: ${t}`);
+    return t ? JSON.parse(t) : null;
+  }
+
+  const ERR_TEXT = {
+    kein_code:"Dieser Einladungslink ist unvollständig.",
+    nicht_gefunden:"Dieser Einladungslink ist ungültig.",
+    bereits_verwendet:"Dieser Einladungslink wurde bereits verwendet.",
+    abgelaufen:"Dieser Einladungslink ist abgelaufen. Bitte fordere einen neuen an."
+  };
+
+  function setBody(html){ const b=document.getElementById("tutor-invite-accept-body"); if(b) b.innerHTML=html; }
+  function setSub(t){ const s=document.getElementById("tutor-invite-accept-sub"); if(s) s.textContent=t; }
+  function setTitle(t){ const el=document.querySelector("#tutor-invite-accept-modal .lr-modal-title"); if(el) el.textContent=t; }
+
+  async function openTutorAcceptFlow(inviteId){
+    const modal = document.getElementById("tutor-invite-accept-modal");
+    if(!modal) return;
+    document.getElementById("auth-modal")?.classList.remove("open");
+    modal.classList.add("open");
+    setTitle("Tutor-Zugang einrichten");
+    setSub("Einladung wird geprüft …");
+    setBody(`<div class="assignment-empty">Einen Moment …</div>`);
+
+    let tries=0;
+    while((!window.SUPABASE_URL || !window.SUPABASE_ANON_KEY) && tries<25){ await new Promise(r=>setTimeout(r,200)); tries++; }
+
+    try{
+      const res = await callAnon("rpc/validate_tutor_self_invite_v121", { p_invite_id: inviteId });
+      if(!res?.ok){
+        setSub("Einladung ungültig");
+        setBody(`<div style="font-size:14px;color:var(--color-text-primary);line-height:1.5">${esc(ERR_TEXT[res?.error]||"Dieser Einladungslink ist ungültig.")}</div>`);
+        return;
+      }
+      setSub("Einladung für " + esc(res.institution_name));
+      setBody(`
+        <p style="font-size:14px;color:var(--color-text-primary);margin:0 0 14px;line-height:1.5">
+          Du wurdest als Tutor für <strong>${esc(res.institution_name)}</strong> eingeladen.
+          Gib deine E-Mail-Adresse ein – wir senden dir einen Anmeldelink.
+        </p>
+        <label style="font-size:13px;font-weight:500;color:var(--color-text-primary);display:block;margin-bottom:6px">E-Mail-Adresse</label>
+        <input id="tutor-invite-email" type="email" placeholder="du@beispiel.de"
+          style="width:100%;padding:9px 12px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;background:#fff;color:var(--color-text-primary);box-sizing:border-box;margin-bottom:14px">
+        <button id="tutor-invite-send-btn"
+          style="width:100%;padding:12px;background:#185FA5;color:#fff;border:none;border-radius:var(--border-radius-md);font-size:15px;font-weight:500;cursor:pointer">
+          Anmeldelink senden
+        </button>
+        <div id="tutor-invite-msg" style="font-size:13px;margin-top:12px;line-height:1.5"></div>
+      `);
+      const btn=document.getElementById("tutor-invite-send-btn");
+      if(btn) btn.onclick=()=>sendTutorMagicLink(inviteId, res.institution_id);
+      setTimeout(()=>document.getElementById("tutor-invite-email")?.focus(),80);
+    }catch(e){
+      console.warn("Tutor-Einladung prüfen:", e);
+      setSub("Fehler");
+      setBody(`<div style="font-size:14px;color:var(--color-text-primary)">Die Einladung konnte nicht geprüft werden. Bitte versuche es später erneut.</div>`);
+    }
+  }
+
+  async function sendTutorMagicLink(inviteId, institutionId){
+    const emailEl=document.getElementById("tutor-invite-email");
+    const msg=document.getElementById("tutor-invite-msg");
+    const email=(emailEl?.value||"").trim();
+    const setMsg=(t,c)=>{ if(msg){ msg.innerHTML=t; msg.style.color = c==="err" ? "#A32D2D":"var(--color-text-secondary)"; } };
+    if(!email || !/.+@.+\..+/.test(email)){ setMsg("Bitte gib eine gültige E-Mail-Adresse ein.","err"); emailEl?.focus(); return; }
+    setMsg("Anmeldelink wird gesendet …");
+    try{
+      const client=(typeof getSupabaseClient==="function")?getSupabaseClient():null;
+      if(!client) throw new Error("client_unavailable");
+      const redirect=window.location.origin+window.location.pathname+"?tutorinvite="+encodeURIComponent(inviteId);
+      const { error }=await client.auth.signInWithOtp({ email, options:{ emailRedirectTo: redirect } });
+      if(error) throw error;
+      try{ sessionStorage.setItem("toni_tutor_invite_pending", JSON.stringify({ inviteId, institutionId, email, ts: Date.now() })); }catch(e){}
+      setMsg("✅ Anmeldelink gesendet. Bitte öffne die E-Mail und klicke den Link. Danach schließt du deine Registrierung ab.<br><br>Sie können diese Seite schließen.");
+    }catch(e){
+      console.warn("Magic-Link (Tutor-Einladung):", e);
+      setMsg("⚠️ Der Anmeldelink konnte nicht gesendet werden. Bitte versuche es erneut.","err");
+    }
+  }
+
+  /* ---------- Etappe 4: nach Magic-Link-Login einlösen ---------- */
+  let acceptDone=false;
+  const PENDING_MAX_AGE_MS=60*60*1000;
+
+  function readPendingTutorInvite(){
+    try{
+      const raw=sessionStorage.getItem("toni_tutor_invite_pending");
+      if(!raw) return null;
+      const obj=JSON.parse(raw);
+      if(!obj||!obj.inviteId) return null;
+      if(obj.ts && (Date.now()-obj.ts>PENDING_MAX_AGE_MS)){ sessionStorage.removeItem("toni_tutor_invite_pending"); return null; }
+      return obj;
+    }catch(e){ return null; }
+  }
+  function resolveTutorInviteId(){
+    const fromUrl=getTutorInviteIdFromUrl();
+    if(fromUrl) return fromUrl;
+    // Über sessionStorage NUR anspringen, wenn die URL KEINE anderen Flow-Parameter
+    // trägt. Andernfalls gehört der Aufruf zu einem anderen Flow (Student-Magic-Link,
+    // ?register=1, ?admininvite=, OAuth-Callback …) und der Tutor-Flow muss sich
+    // KOMPLETT raushalten – sonst kapert ein alter sessionStorage-Rest die Session.
+    try{
+      const u=new URL(window.location.href);
+      const h=new URLSearchParams((window.location.hash||"").replace(/^#/,""));
+      const fremdeParams = ["code","token_hash","admininvite","register","registration","join","journey"];
+      const hatFremdeQuery = fremdeParams.some(p => u.searchParams.has(p));
+      const hatFremdenHash = h.has("access_token") || h.has("refresh_token") || h.has("error");
+      if(hatFremdeQuery || hatFremdenHash) return null;
+    }catch(e){}
+    const p=readPendingTutorInvite();
+    return p?p.inviteId:null;
+  }
+
+  async function tryAcceptTutorAfterLogin(inviteId){
+    if(acceptDone||!inviteId){ try{ console.log("[TUTOR-ONBOARDING] tryAccept übersprungen: acceptDone="+acceptDone+", inviteId="+inviteId); }catch(e){} return; }
+    const client=(typeof getSupabaseClient==="function")?getSupabaseClient():null;
+    if(!client){ try{ console.log("[TUTOR-ONBOARDING] kein Supabase-Client"); }catch(e){} return; }
+    let session=null;
+    try{ const { data }=await client.auth.getSession(); session=data?.session; }catch(e){ try{ console.log("[TUTOR-ONBOARDING] getSession Fehler:", e); }catch(_){} }
+    if(!session?.user){ try{ console.log("[TUTOR-ONBOARDING] noch keine Session -> später erneut"); }catch(e){} return; }
+    acceptDone=true;
+    try{ console.log("[TUTOR-ONBOARDING] rufe accept-RPC, inviteId=" + inviteId + ", user=" + session.user.email); }catch(e){}
+    try{
+      const token=session.access_token;
+      const r=await fetch(`${window.SUPABASE_URL}/rest/v1/rpc/accept_tutor_self_invite_v121`,{
+        method:"POST",
+        headers:{ "apikey":window.SUPABASE_ANON_KEY, "Authorization":"Bearer "+token, "Content-Type":"application/json" },
+        body:JSON.stringify({ p_invite_id: inviteId })
+      });
+      const txt=await r.text();
+      const res=txt?JSON.parse(txt):null;
+      try{ console.log("[TUTOR-ONBOARDING] accept-RPC Antwort:", r.status, res); }catch(e){}
+      if(res?.ok){
+        try{ sessionStorage.removeItem("toni_tutor_invite_pending"); }catch(e){}
+        // Marker für die Registrierungs-Variante (Tutor)
+        try{ window.TONI_PENDING_TUTOR_REGISTRATION=true; sessionStorage.setItem("toni_tutor_registration","1"); }catch(e){}
+        // Lokales Profil aktualisieren, damit die Registrierungs-Erkennung greift.
+        try{ if(window.TONI_AUTH_PROFILE){ window.TONI_AUTH_PROFILE.role="tutor"; window.TONI_AUTH_PROFILE.institution_id=res.institution_id; } }catch(e){}
+        document.getElementById("tutor-invite-accept-modal")?.classList.remove("open");
+        try{ history.replaceState(null,"",window.location.origin+window.location.pathname); }catch(e){}
+        // Registrierungsfenster (Vor-/Nachname) öffnen – direkt und über die
+        // bestehende Kette, damit es zuverlässig erscheint.
+        if(typeof handleJoinLinkAfterLogin==="function"){ try{ handleJoinLinkAfterLogin(); }catch(e){} }
+        if(typeof openRegistrationRequiredModal==="function"){ setTimeout(openRegistrationRequiredModal, 400); }
+        // Falls die Registrierung bereits offen ist (Schüler-Variante), sofort
+        // auf Tutor umschalten.
+        if(typeof toniApplyRegistrationVariant==="function"){ try{ toniApplyRegistrationVariant(); setTimeout(toniApplyRegistrationVariant, 300); }catch(e){} }
+      }else{
+        console.warn("Tutor-Einladung einlösen fehlgeschlagen:", res?.error, res);
+        acceptDone=false;
+      }
+    }catch(e){ console.warn("accept_tutor_self_invite Fehler:", e); acceptDone=false; }
+  }
+
+  // --- Handler 1: E-Mail-Seite zeigen, NUR wenn Parameter in der URL steht ---
+  // (Vor dem Magic-Link. Nach dem Magic-Link ist die URL leer -> läuft nicht,
+  //  exakt wie beim funktionierenden Admin-Flow.)
+  window.addEventListener("DOMContentLoaded", ()=>{
+    // Bei Tutor-Link evtl. alten Admin-Rest entfernen.
+    try{
+      if(new URL(window.location.href).searchParams.has("tutorinvite")){
+        sessionStorage.removeItem("toni_admin_invite_pending");
+      }
+    }catch(e){}
+    const inviteId = getTutorInviteIdFromUrl();
+    if(inviteId){
+      setTimeout(async ()=>{
+        // Wenn bereits eine Session besteht (Magic-Link schon verarbeitet, aber
+        // Parameter noch in URL), KEINE E-Mail-Seite zeigen – Handler 2 löst ein.
+        try{
+          const client=(typeof getSupabaseClient==="function")?getSupabaseClient():null;
+          const { data }=await (client?.auth?.getSession?.() || Promise.resolve({}));
+          if(data?.session?.user) return;
+        }catch(e){}
+        openTutorAcceptFlow(inviteId);
+      }, 400);
+      const guard = setInterval(()=>{
+        const mine = document.getElementById("tutor-invite-accept-modal");
+        if(mine && mine.classList.contains("open")){
+          document.getElementById("auth-modal")?.classList.remove("open");
+        }
+      }, 300);
+      setTimeout(()=>clearInterval(guard), 30000);
+    }
+  });
+
+  // --- Handler 2: Einlösen (URL ODER sessionStorage), exakt wie Admin ---
+  window.addEventListener("DOMContentLoaded", ()=>{
+    const inviteId = resolveTutorInviteId();
+    if(!inviteId) return;
+    // WICHTIG: Marker SOFORT setzen (nicht erst nach RPC-Erfolg). Die zentrale
+    // Kette öffnet die Registrierung ~500ms nach Login; ohne früh gesetzten
+    // Marker erscheint sonst die Schüler-Variante statt der Tutor-Variante.
+    try{ window.TONI_PENDING_TUTOR_REGISTRATION = true; sessionStorage.setItem("toni_tutor_registration","1"); }catch(e){}
+    const tries = [600, 1400, 2600, 4000, 6000, 9000];
+    tries.forEach(ms => setTimeout(()=>tryAcceptTutorAfterLogin(inviteId), ms));
+    try{
+      const client = (typeof getSupabaseClient === "function") ? getSupabaseClient() : null;
+      client?.auth?.onAuthStateChange((event)=>{
+        if(event === "SIGNED_IN" || event === "INITIAL_SESSION"){
+          setTimeout(()=>tryAcceptTutorAfterLogin(inviteId), 200);
+        }
+      });
+    }catch(e){}
+  });
+
+  window.toniV121OpenTutorInviteAccept=openTutorAcceptFlow;
 })();

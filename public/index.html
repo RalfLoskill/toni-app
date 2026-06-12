@@ -517,6 +517,8 @@ body { font-family:'Inter',sans-serif; background:#f8fafc; font-size:13px; color
 /* P3: Onboarding-Modal muss ÜBER dem Start-Screen (z-index 1000000) liegen,
    sonst ist es beim Linkaufruf eines neuen Studenten unsichtbar. */
 #onboarding-modal{z-index:1000001;}
+/* Admin-Einladungs-Einlöse-Modal (Paket 2) muss ebenfalls über dem Start-Screen liegen. */
+#admin-invite-accept-modal{z-index:1000002;}
 .auth-modal {
   width:min(460px,100%);
   background:#fff;
@@ -653,9 +655,28 @@ body { font-family:'Inter',sans-serif; background:#f8fafc; font-size:13px; color
 .sa-inst-table .sa-inst-bytes{text-align:right;color:var(--slate-800);white-space:nowrap}
 .sa-inst-table .sa-inst-bytes.sa-inst-accent{color:#185FA5;font-weight:600}
 .sa-inst-table .sa-inst-total td{border-top:1px solid var(--border);border-bottom:none;background:#f8fafc;font-weight:600;color:var(--slate-800)}
-.sa-inst-del-cell{text-align:right;width:40px}
+.sa-inst-del-cell{text-align:right;width:72px;white-space:nowrap}
+.sa-inst-invite-btn{width:26px;height:26px;border-radius:7px;border:1px solid #bfdbfe;background:#eff6ff;color:#185FA5;font-size:14px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;margin-right:5px;transition:background .15s,border-color .15s;vertical-align:middle}
+.sa-inst-invite-btn:hover{background:#dbeafe;border-color:#93c5fd}
 .sa-inst-del-btn{width:26px;height:26px;border-radius:7px;border:1px solid var(--border);background:#fff;color:#dc2626;font-size:17px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:background .15s,border-color .15s}
 .sa-inst-del-btn:hover{background:#fee2e2;border-color:#fca5a5}
+.sa-adm-summary{font-size:13px;color:var(--slate-600);margin-bottom:12px;display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px}
+.sa-adm-summary .sa-adm-hint{font-size:12px;color:var(--slate-400)}
+.sa-adm-table-wrap{overflow-x:auto}
+.sa-adm-table{width:100%;border-collapse:collapse;font-size:13px;min-width:560px;background:#fff;border-radius:10px;overflow:hidden}
+.sa-adm-table th{text-align:left;padding:10px 12px;font-weight:600;color:var(--slate-500);border-bottom:1px solid var(--border)}
+.sa-adm-table td{padding:11px 12px;border-bottom:1px solid #f1f5f9}
+.sa-adm-table tr:last-child td{border-bottom:none}
+.sa-adm-table .sa-adm-inst{font-weight:600;color:var(--slate-800)}
+.sa-adm-table .sa-adm-name{color:var(--slate-700)}
+.sa-adm-id{font-size:11px;background:#f1f5f9;padding:2px 7px;border-radius:5px;color:var(--slate-600);cursor:pointer;font-family:ui-monospace,Menlo,Consolas,monospace}
+.sa-adm-id:hover{background:#e2e8f0}
+.sa-adm-mail{color:#185FA5;text-decoration:none}
+.sa-adm-mail:hover{text-decoration:underline}
+.sa-adm-muted{color:var(--slate-400)}
+.sa-adm-del-cell{text-align:right;width:40px}
+.sa-adm-del-btn{width:26px;height:26px;border-radius:7px;border:1px solid var(--border);background:#fff;color:#dc2626;font-size:17px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:background .15s,border-color .15s}
+.sa-adm-del-btn:hover{background:#fee2e2;border-color:#fca5a5}
 @media(max-width:640px){.sa-inst-cards{grid-template-columns:repeat(2,1fr)}}
 .student-del-btn{width:28px;height:28px;border-radius:8px;border:1px solid var(--border);background:#fff;color:#dc2626;font-size:18px;line-height:1;cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:background .15s,border-color .15s}
 .student-del-btn:hover{background:#fee2e2;border-color:#fca5a5}
@@ -5067,6 +5088,10 @@ body.role-superadmin #tutors-admin-panel{
 .superadmin-add-btn-v76:hover{
   background:#dbeafe;
 }
+.superadmin-add-btn-v76.reload-btn,.superadmin-add-btn-v76[title="Aktualisieren"]{
+  font-size:18px;
+  font-weight:600;
+}
 
 .superadmin-body-v76{
   padding-top:4px;
@@ -9065,7 +9090,6 @@ input.youtube-force-invalid-v105{
         </span>
         <div class="superadmin-header-actions-v76">
           <button class="superadmin-add-btn-v76" title="Neuen Admin anlegen" onclick="toniV76OpenCreateAdminModal(event)">+</button>
-          <span class="role-badge admin">SuperAdmin</span>
         </div>
       </div>
 
@@ -9095,8 +9119,8 @@ input.youtube-force-invalid-v105{
           </span>
         </span>
         <div class="superadmin-header-actions-v76">
-          <button class="superadmin-add-btn-v76" title="Aktualisieren" onclick="toniV118LoadInstitutionStats(event)"><i class="ti ti-refresh"></i></button>
-          <span class="role-badge admin">SuperAdmin</span>
+          <button class="superadmin-add-btn-v76" title="Neue Institution anlegen" onclick="toniV120OpenCreateInstitution(event)">+</button>
+          <button class="superadmin-add-btn-v76" title="Aktualisieren" onclick="toniV118LoadInstitutionStats(event)">↻</button>
         </div>
       </div>
 
@@ -9110,6 +9134,36 @@ input.youtube-force-invalid-v105{
             Überblick über alle Institutionen: Anzahl Konten je Rolle sowie Datei- und Speichernutzung.
           </div>
           <div id="superadmin-institutions-content">
+            <div class="assignment-empty">Übersicht wird geladen …</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Admin-Übersicht (SuperAdmin): Institution, ID, Adminname, E-Mail -->
+    <div class="card superadmin-panel-v76 superadmin-only" id="superadmin-adminlist-panel">
+      <div class="card-header">
+        <span class="card-title">
+          <span class="journey-section-toggle" onclick="toniV119ToggleAdminListPanel()">
+            <span class="journey-toggle-symbol" id="superadmin-adminlist-toggle-symbol">+</span>
+            <span>Admin-Übersicht</span>
+          </span>
+        </span>
+        <div class="superadmin-header-actions-v76">
+          <button class="superadmin-add-btn-v76" title="Aktualisieren" onclick="toniV119LoadAdminList(event)">↻</button>
+        </div>
+      </div>
+
+      <div class="journey-section-collapsed-note" id="superadmin-adminlist-collapsed-note">
+        Klicke auf das Pluszeichen, um alle Institutionen mit ihren Admins und Kontaktdaten anzuzeigen.
+      </div>
+
+      <div class="journey-collapsible-body" id="superadmin-adminlist-body">
+        <div class="superadmin-body-v76">
+          <div class="superadmin-note-v76">
+            Übersicht aller Admins mit Institution, Institutions-ID und E-Mail.
+          </div>
+          <div id="superadmin-adminlist-content">
             <div class="assignment-empty">Übersicht wird geladen …</div>
           </div>
         </div>
@@ -9138,6 +9192,7 @@ input.youtube-force-invalid-v105{
             <div class="tutors-admin-note-v59">
               Hier werden die angelegten Nutzer mit der Rolle <strong>Tutor</strong> angezeigt.
             </div>
+            <button class="lr-primary-btn" onclick="toniV60OpenTutorInviteModal()">Tutor einladen</button>
             <button class="lr-secondary-btn" onclick="toniV59LoadTutors()">Aktualisieren</button>
           </div>
           <div class="tutors-admin-list-v59" id="tutors-admin-list">
@@ -9458,24 +9513,26 @@ input.youtube-force-invalid-v105{
 <div class="registration-required-backdrop" id="registration-required-modal">
   <div class="registration-required-modal" role="dialog" aria-modal="true">
     <div class="registration-required-header">
-      <div class="registration-required-title">Registrierung abschließen</div>
-      <div class="registration-required-sub">Deine E-Mail-Adresse wurde bestätigt. Bitte ergänze deine Daten und lege ein Passwort fest.</div>
+      <div class="registration-required-title" id="reg-modal-title">Registrierung abschließen</div>
+      <div class="registration-required-sub" id="reg-modal-sub">Deine E-Mail-Adresse wurde bestätigt. Bitte ergänze deine Daten und lege ein Passwort fest.</div>
     </div>
     <div class="registration-required-body">
       <div class="registration-grid">
-        <div><label class="auth-form-label" for="reg-first-name">Vorname</label><input class="auth-input" id="reg-first-name" placeholder="Vorname"/></div>
-        <div><label class="auth-form-label" for="reg-last-name">Nachname</label><input class="auth-input" id="reg-last-name" placeholder="Nachname"/></div>
+        <div><label class="auth-form-label" for="reg-first-name">Vorname *</label><input class="auth-input" id="reg-first-name" placeholder="Vorname"/></div>
+        <div><label class="auth-form-label" for="reg-last-name">Nachname *</label><input class="auth-input" id="reg-last-name" placeholder="Nachname"/></div>
       </div>
-      <label class="auth-form-label" for="reg-class-name" style="margin-top:12px">Klasse / Kurs</label>
-      <input class="auth-input" id="reg-class-name" placeholder="z. B. ET23A"/>
-      <label class="auth-form-label" for="reg-password" style="margin-top:12px">Passwort festlegen</label>
+      <div id="reg-class-row">
+        <label class="auth-form-label" for="reg-class-name" style="margin-top:12px">Klasse / Kurs *</label>
+        <input class="auth-input" id="reg-class-name" placeholder="z. B. ET23A"/>
+      </div>
+      <label class="auth-form-label" for="reg-password" style="margin-top:12px">Passwort festlegen *</label>
       <input class="auth-input" id="reg-password" type="password" placeholder="Mindestens 8 Zeichen" oninput="checkRegistrationPasswordStrength()"/>
-      <label class="auth-form-label" for="reg-password-repeat" style="margin-top:12px">Passwort wiederholen</label>
+      <label class="auth-form-label" for="reg-password-repeat" style="margin-top:12px">Passwort wiederholen *</label>
       <input class="auth-input" id="reg-password-repeat" type="password" placeholder="Passwort erneut eingeben" onkeydown="if(event.key==='Enter')completeSelfRegistration()"/>
       <div class="password-strength" id="registration-password-strength">Mindestens 8 Zeichen empfohlen.</div>
       <button class="lr-primary-btn" style="width:100%;margin-top:14px" onclick="completeSelfRegistration()">Registrierung abschließen</button>
       <div class="auth-message" id="registration-message"></div>
-      <div class="registration-help">Nach dem Speichern bist du vollständig registriert. Wenn du über einen QR-Code gekommen bist, ordnet TONI dich anschließend automatisch der Lerngruppe zu.</div>
+      <div class="registration-help" id="reg-modal-help">Nach dem Speichern bist du vollständig registriert. Wenn du über einen QR-Code gekommen bist, ordnet TONI dich anschließend automatisch der Lerngruppe zu.</div>
     </div>
   </div>
 </div>
@@ -9487,7 +9544,7 @@ input.youtube-force-invalid-v105{
 
 <script src="/chat.js?v=12"></script>
 
-<script src="/journey.js?v=119"></script>
+<script src="/journey.js?v=143"></script>
 <script src="/journey_editor_v111.js?v=55"></script>
 <script src="/admin.js"></script>
 <script src="/ui.js?v=8"></script>
@@ -9503,7 +9560,7 @@ input.youtube-force-invalid-v105{
 
 
 
-<script src="/auth.js?v=19"></script>
+<script src="/auth.js?v=39"></script>
 
 
 
@@ -9784,6 +9841,135 @@ input.youtube-force-invalid-v105{
 
 
 
+
+<!-- Admin-Einladung annehmen (Etappe 3) -->
+<div class="lr-modal-backdrop" id="admin-invite-accept-modal">
+  <div class="lr-modal toni-create-project-modal" role="dialog" aria-modal="true" style="padding:0;overflow:hidden;display:flex;flex-direction:column">
+    <div class="lr-modal-header lr-typed-head" style="padding:18px 22px;margin:0">
+      <div>
+        <div class="lr-modal-title" style="color:#0C447C">Admin-Zugang einrichten</div>
+        <div style="font-size:13px;color:#185FA5;margin-top:2px" id="admin-invite-accept-sub">Einladung wird geprüft …</div>
+      </div>
+    </div>
+    <div style="padding:20px 22px;flex:1;overflow-y:auto;box-sizing:border-box" id="admin-invite-accept-body">
+      <div class="assignment-empty">Einen Moment …</div>
+    </div>
+  </div>
+</div>
+
+<!-- Tutor-Einladung annehmen (eigenes Modal, getrennt vom Admin) -->
+<div class="lr-modal-backdrop" id="tutor-invite-accept-modal" style="z-index:1000002">
+  <div class="lr-modal toni-create-project-modal" role="dialog" aria-modal="true" style="padding:0;overflow:hidden;display:flex;flex-direction:column">
+    <div class="lr-modal-header lr-typed-head" style="padding:18px 22px;margin:0">
+      <div>
+        <div class="lr-modal-title" style="color:#0C447C">Tutor-Zugang einrichten</div>
+        <div style="font-size:13px;color:#185FA5;margin-top:2px" id="tutor-invite-accept-sub">Einladung wird geprüft …</div>
+      </div>
+    </div>
+    <div style="padding:20px 22px;flex:1;overflow-y:auto;box-sizing:border-box" id="tutor-invite-accept-body">
+      <div class="assignment-empty">Einen Moment …</div>
+    </div>
+  </div>
+</div>
+
+<!-- SuperAdmin: Admin-Einladungslink anzeigen -->
+<div class="lr-modal-backdrop" id="superadmin-invite-link-modal">
+  <div class="lr-modal toni-create-project-modal" role="dialog" aria-modal="true" style="padding:0;overflow:hidden;display:flex;flex-direction:column">
+    <div class="lr-modal-header lr-typed-head" style="padding:18px 22px;margin:0;display:flex;align-items:flex-start;justify-content:space-between">
+      <div>
+        <div class="lr-modal-title" style="color:#0C447C">Admin einladen</div>
+        <div style="font-size:13px;color:#185FA5;margin-top:2px" id="superadmin-invite-link-sub">✉️ Einladungslink</div>
+      </div>
+      <div class="lr-modal-actions">
+        <button onclick="document.getElementById('superadmin-invite-link-modal').classList.remove('open')" style="background:rgba(255,255,255,.6);border:0.5px solid #85B7EB;color:#185FA5;padding:6px 14px;border-radius:var(--border-radius-md);font-size:13px;cursor:pointer">Schließen</button>
+      </div>
+    </div>
+    <div style="padding:20px 22px;flex:1;overflow-y:auto;box-sizing:border-box">
+      <p style="font-size:13px;color:var(--color-text-secondary);margin:0 0 12px;line-height:1.5">
+        Gib diesen Link an die Person weiter, die Admin werden soll. Beim Öffnen kann sie ihre eigene E-Mail-Adresse hinterlegen und sich anmelden. Der Link ist 30 Tage gültig und nur einmal verwendbar.
+      </p>
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="text" id="superadmin-invite-link-input" readonly onclick="this.select()"
+          style="flex:1;padding:9px 11px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:12px;font-family:ui-monospace,Menlo,Consolas,monospace;background:#fff;color:var(--color-text-primary)">
+        <button id="superadmin-invite-link-copy"
+          style="padding:9px 16px;background:#185FA5;color:#fff;border:none;border-radius:var(--border-radius-md);font-size:13px;cursor:pointer;white-space:nowrap">Kopieren</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- SuperAdmin: neue Institution anlegen -->
+<div class="lr-modal-backdrop" id="superadmin-create-institution-modal">
+  <div class="lr-modal toni-create-project-modal" role="dialog" aria-modal="true" style="padding:0;overflow:hidden;display:flex;flex-direction:column">
+    <div class="lr-modal-header lr-typed-head" style="padding:18px 22px;margin:0;display:flex;align-items:flex-start;justify-content:space-between">
+      <div>
+        <div class="lr-modal-title" style="color:#0C447C">Neue Institution</div>
+        <div style="font-size:13px;color:#185FA5;margin-top:2px">🏫 Lege eine neue Institution an</div>
+      </div>
+      <div class="lr-modal-actions">
+        <button onclick="toniV120CloseCreateInstitution()" style="background:rgba(255,255,255,.6);border:0.5px solid #85B7EB;color:#185FA5;padding:6px 14px;border-radius:var(--border-radius-md);font-size:13px;cursor:pointer">Schließen</button>
+      </div>
+    </div>
+    <div style="padding:20px 22px;flex:1;overflow-y:auto;overflow-x:hidden;box-sizing:border-box">
+
+      <!-- Name -->
+      <div style="margin-bottom:16px">
+        <label style="font-size:13px;font-weight:500;color:var(--color-text-primary);display:block;margin-bottom:6px">Name der Institution *</label>
+        <input id="superadmin-new-inst-name" type="text" placeholder="z. B. TSS Bitburg"
+          style="width:100%;padding:9px 12px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;background:var(--color-background-primary);color:var(--color-text-primary)">
+      </div>
+
+      <!-- Straße -->
+      <div style="margin-bottom:16px">
+        <label style="font-size:13px;font-weight:500;color:var(--color-text-primary);display:block;margin-bottom:6px">Straße</label>
+        <input id="superadmin-new-inst-street" type="text" placeholder="Straße und Hausnummer"
+          style="width:100%;padding:9px 12px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;background:var(--color-background-primary);color:var(--color-text-primary)">
+      </div>
+
+      <!-- PLZ + Ort -->
+      <div style="display:flex;gap:12px;margin-bottom:16px">
+        <div style="width:38%">
+          <label style="font-size:13px;font-weight:500;color:var(--color-text-primary);display:block;margin-bottom:6px">PLZ</label>
+          <input id="superadmin-new-inst-plz" type="text" placeholder="PLZ"
+            style="width:100%;padding:9px 12px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;background:var(--color-background-primary);color:var(--color-text-primary);box-sizing:border-box">
+        </div>
+        <div style="flex:1">
+          <label style="font-size:13px;font-weight:500;color:var(--color-text-primary);display:block;margin-bottom:6px">Ort</label>
+          <input id="superadmin-new-inst-city" type="text" placeholder="Ort"
+            style="width:100%;padding:9px 12px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;background:var(--color-background-primary);color:var(--color-text-primary);box-sizing:border-box">
+        </div>
+      </div>
+
+      <!-- E-Mail -->
+      <div style="margin-bottom:16px">
+        <label style="font-size:13px;font-weight:500;color:var(--color-text-primary);display:block;margin-bottom:6px">E-Mail-Adresse</label>
+        <input id="superadmin-new-inst-email" type="email" placeholder="kontakt@institution.de"
+          style="width:100%;padding:9px 12px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;background:var(--color-background-primary);color:var(--color-text-primary)">
+      </div>
+
+      <!-- Telefon -->
+      <div style="margin-bottom:16px">
+        <label style="font-size:13px;font-weight:500;color:var(--color-text-primary);display:block;margin-bottom:6px">Telefonnummer</label>
+        <input id="superadmin-new-inst-phone" type="text" placeholder="z. B. 06561 1234567"
+          style="width:100%;padding:9px 12px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;background:var(--color-background-primary);color:var(--color-text-primary)">
+      </div>
+
+      <!-- Passwort -->
+      <div style="margin-bottom:20px">
+        <label style="font-size:13px;font-weight:500;color:var(--color-text-primary);display:block;margin-bottom:6px">Passwort <span style="font-weight:400;color:var(--color-text-tertiary)">(zur Bestätigung)</span></label>
+        <input id="superadmin-new-inst-password" type="password" placeholder="SuperAdmin-Passwort"
+          style="width:100%;padding:9px 12px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;background:var(--color-background-primary);color:var(--color-text-primary)">
+      </div>
+
+      <button onclick="toniV120CreateInstitution()"
+        style="width:100%;padding:12px;background:#185FA5;color:#fff;border:none;border-radius:var(--border-radius-md);font-size:15px;font-weight:500;cursor:pointer;transition:opacity .15s"
+        onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
+        Institution anlegen
+      </button>
+      <div class="auth-message" id="superadmin-create-inst-message" style="margin-top:10px"></div>
+    </div>
+  </div>
+</div>
 
 <!-- SuperAdmin: neuen Admin anlegen -->
 <div class="superadmin-modal-v76" id="superadmin-create-admin-modal">

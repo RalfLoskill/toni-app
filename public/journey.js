@@ -6,7 +6,7 @@
 // Build-Stempel: im Browser per `window.TONI_JOURNEY_BUILD` abfragbar.
 // Wenn dieser Wert NICHT "v86-assignments-progress-group" ist, lädt der
 // Browser eine veraltete Datei (Cache/Deploy), nicht diese Version.
-window.TONI_JOURNEY_BUILD = "v119-delete-institution";
+window.TONI_JOURNEY_BUILD = "v143-double-hash-fix";
 
 /* Lernreisen V1: ergänzt das bestehende Dashboard, ohne das Design zu ersetzen. */
 const DEFAULT_LEARNING_JOURNEYS = [{
@@ -2109,6 +2109,9 @@ async function startOnboardingVerification(){
     // UND der Code als zusätzlicher Fallback in der URL bleibt.
     // Redirect-URL: aktuelle URL + registration=1.
     const redirectUrl = new URL(window.location.href);
+    redirectUrl.hash = ""; // WICHTIG: Fragment entfernen, sonst entsteht beim
+    // Magic-Link-Rücksprung '##access_token=…' (doppeltes #) und Supabase kann
+    // den Token nicht parsen -> "keine Sitzung erstellt".
     redirectUrl.searchParams.set("registration","1");
     // P3-5 (URL-Fallback): Den gemerkten Code IN die Redirect-URL einbetten, damit er den
     // Magic-Link-Roundtrip GARANTIERT übersteht – auch wenn der Link in einem neuen Tab
