@@ -6,7 +6,7 @@
 // Build-Stempel: im Browser per `window.TONI_JOURNEY_BUILD` abfragbar.
 // Wenn dieser Wert NICHT "v86-assignments-progress-group" ist, lädt der
 // Browser eine veraltete Datei (Cache/Deploy), nicht diese Version.
-window.TONI_JOURNEY_BUILD = "v143-double-hash-fix";
+window.TONI_JOURNEY_BUILD = "v154-theme-order-fix";
 
 /* Lernreisen V1: ergänzt das bestehende Dashboard, ohne das Design zu ersetzen. */
 const DEFAULT_LEARNING_JOURNEYS = [{
@@ -71,7 +71,7 @@ function renderLearningJourneyModal(){
   const j=activeJourney(),pct=journeyProgress(j),cur=currentStep(j);
   document.getElementById('lr-modal-title').textContent=j.title;document.getElementById('lr-modal-sub').textContent=j.description;document.getElementById('lr-goal').textContent=j.goal;document.getElementById('lr-progress-number').textContent=pct+'%';document.getElementById('lr-progress-fill').style.width=pct+'%';document.getElementById('lr-current-title').textContent='Aufgaben der aktuellen Station: '+cur.title;
   document.getElementById('lr-mini-list').innerHTML=j.steps.map((s,i)=>{const st=stepStatus(s,i,j),icon=st==='done'?'✓':st==='current'?i+1:'–';return`<div class="lr-mini-item"><div class="lr-mini-dot ${st}">${icon}</div><div><strong>${s.title}</strong><br><span class="wz-label">${s.subtitle}</span></div></div>`;}).join('');
-  document.getElementById('lr-stations').innerHTML=toniRenderJourneyTimeline(j);
+  document.getElementById('lr-stations').innerHTML=(typeof window.toniRenderJourneyStations==='function')?window.toniRenderJourneyStations(j):toniRenderJourneyTimeline(j);
   const grid=document.getElementById('lr-task-grid'); if(grid) grid.innerHTML='';
   toniRenderJourneySidePanel(j,pct);
 }
@@ -130,6 +130,9 @@ function toniRenderJourneyTimeline(j){
     </div>`;
   }).join('')+`</div>`;
 }
+// Explizit global verfügbar machen, damit die ausgelagerte Theme-Engine
+// (journey_theme.js) den klassischen Renderer als Fallback aufrufen kann.
+window.toniRenderJourneyTimeline = toniRenderJourneyTimeline;
 
 // Brücke zur V98-Auswahl: wählt die Station und rendert ihre Aufgaben unten
 window.toniTimelineSelect=function(index){
@@ -2391,6 +2394,11 @@ function resetJourneyEditor(){
     const el = document.getElementById(id);
     if(el) el.value = "";
   });
+  // Erscheinungsbild auf Standard (classic) zurücksetzen.
+  const themeEl = document.getElementById("journey-theme");
+  if(themeEl) themeEl.value = "classic";
+  if(typeof window.toniSetEditorTheme === "function") window.toniSetEditorTheme("classic");
+  else if(typeof window.toniRefreshThemeTrigger === "function") window.toniRefreshThemeTrigger();
 }
 
 function parseJourneyStructureV16(text){
@@ -2476,13 +2484,37 @@ function buildJourneyFromFormV16(id){
   const subject = document.getElementById("journey-subject").value.trim();
   const goal = document.getElementById("journey-goal").value.trim();
   const description = document.getElementById("journey-description").value.trim();
-  const structure = document.getElementById("journey-structure").value.trim();
 
   if(!title) throw new Error("Bitte gib einen Titel ein.");
   if(!goal) throw new Error("Bitte gib ein Lernziel ein.");
-  if(!structure) throw new Error("Bitte lege Stationen und Aufgaben an.");
 
-  const steps = parseJourneyStructureV16(structure);
+  // Quelle der Stationen: bevorzugt das Builder-Array (enthält STABILE
+  // Aufgaben-IDs + reiche Felder wie quiz_data/youtube_video_id). Nur wenn
+  // es leer ist, aus dem Textfeld parsen (Fallback, vergibt neue IDs).
+  let steps;
+  const rich = window.TONI_JOURNEY_BUILDER_STATIONS;
+  if(Array.isArray(rich) && rich.length){
+    // tiefe Kopie, damit der STATE/Builder unberührt bleibt; IDs beibehalten.
+    steps = JSON.parse(JSON.stringify(rich)).map((s, si) => ({
+      ...s,
+      id: s.id || ("station-" + (si + 1) + "-" + uuidLikeV16().slice(0,8)),
+      tasks: (s.tasks || []).map((t, ti) => ({
+        ...t,
+        id: t.id || ("task-" + (si + 1) + "-" + (ti + 1) + "-" + uuidLikeV16().slice(0,8)),
+        status: t.status || (si === 0 ? "todo" : "locked"),
+        required: t.required !== false
+      }))
+    }));
+  } else {
+    const structure = document.getElementById("journey-structure").value.trim();
+    if(!structure) throw new Error("Bitte lege Stationen und Aufgaben an.");
+    steps = parseJourneyStructureV16(structure);
+  }
+
+  // Erscheinungsbild (Theme) aus dem Editor. Fallback classic.
+  const themeEl = document.getElementById("journey-theme");
+  const theme = (themeEl && typeof themeEl.value === "string" && themeEl.value.trim())
+    ? themeEl.value.trim() : "classic";
 
   return {
     id: id || uuidLikeV16(),
@@ -2490,12 +2522,15 @@ function buildJourneyFromFormV16(id){
     subject,
     goal,
     description,
+    theme,
     steps
   };
 }
 
 function rowToJourneyV16(row){
-  const j = row.journey_json || {};
+  let j = row.journey_json || {};
+  // Absicherung: journey_json kann aus manchen Abfragen als String kommen.
+  if(typeof j === "string"){ try{ j = JSON.parse(j) || {}; }catch(e){ j = {}; } }
   return {
     id: row.id || j.id || uuidLikeV16(),
     title: row.title || j.title || "Lernreise",
@@ -2506,6 +2541,7 @@ function rowToJourneyV16(row){
     cover_image_name: j.cover_image_name || row.cover_image_name || "",
     cover_image_path: j.cover_image_path || row.cover_image_path || "",
     cover_image_embedded: j.cover_image_embedded || row.cover_image_embedded || "",
+    theme: j.theme || row.theme || "classic",
     steps: j.steps || []
   };
 }
@@ -2698,6 +2734,15 @@ function editAdminJourney(id){
   document.getElementById("journey-goal").value = j.goal || "";
   document.getElementById("journey-description").value = j.description || "";
   document.getElementById("journey-structure").value = journeyToStructureTextV16(j);
+
+  // Erscheinungsbild (Theme) vorbelegen – Picker aktualisiert die Kachel.
+  const themeEl = document.getElementById("journey-theme");
+  if (themeEl) themeEl.value = j.theme || "classic";
+  if (typeof window.toniSetEditorTheme === "function") {
+    window.toniSetEditorTheme(j.theme || "classic");
+  } else if (typeof window.toniRefreshThemeTrigger === "function") {
+    window.toniRefreshThemeTrigger();
+  }
 
   document.getElementById("journey-admin-panel")?.scrollIntoView({behavior:"smooth", block:"start"});
 }
@@ -4059,10 +4104,10 @@ function startQrScanLoopV20(){const video=document.getElementById("journey-qr-vi
 async function assignJourneyFromManualCode(){const raw=document.getElementById("manual-journey-code")?.value.trim();if(!raw){setScanStatusV20("Bitte gib einen Code ein.","err");return;}try{setScanStatusV20("Code wird geprüft …");await assignJourneyFromCodeV20(raw);setScanStatusV20("✅ Lernreise wurde hinzugefügt.","ok");setTimeout(closeJourneyScanModal,800);}catch(error){setScanStatusV20("Code konnte nicht zugeordnet werden:<br>"+toniV20Escape(error.message),"err");}}
 async function getCurrentStudentProfileV20(){let profile=window.TONI_AUTH_PROFILE;if(profile?.id&&profile?.email)return profile;try{const token=typeof getAuthAccessToken==="function"?await getAuthAccessToken():null;if(!token)throw new Error("Bitte melde dich zuerst als Student an.");const userResponse=await fetch(`${window.SUPABASE_URL}/auth/v1/user`,{headers:{"apikey":window.SUPABASE_ANON_KEY,"Authorization":"Bearer "+token}});if(!userResponse.ok)throw new Error("Nutzer konnte nicht geladen werden.");const user=await userResponse.json();const rows=await supabaseRequest(`profiles?id=eq.${user.id}&select=id,email,display_name,class_name,first_name,last_name,role&limit=1`);profile=rows?.[0]||{id:user.id,email:user.email,role:"student",display_name:user.email};window.TONI_AUTH_PROFILE=profile;window.TONI_ACTIVE_PROFILE_ID=profile.id;localStorage.setItem("toni_profile_id",profile.id);localStorage.setItem("toni_role",profile.role||"student");return profile;}catch(error){throw new Error("Bitte melde dich zuerst vollständig an. "+error.message);}}
 async function assignJourneyFromCodeV20(rawCode){const journeyId=parseJourneyQrPayloadV20(rawCode);const profile=await getCurrentStudentProfileV20();if(!profile?.id||!profile?.email)throw new Error("Dein Profil konnte nicht eindeutig ermittelt werden.");if(typeof supabaseRequest!=="function"){const rows=getLocalAssignmentsV18?getLocalAssignmentsV18():[];const exists=rows.some(a=>String(a.learning_journey_template_id)===String(journeyId)&&String(a.student_email).toLowerCase()===String(profile.email).toLowerCase());if(!exists){rows.unshift({id:"assign-"+Date.now(),learning_journey_template_id:journeyId,student_profile_id:profile.id,student_email:profile.email,student_display_name:profile.display_name||profile.email,student_class_name:profile.class_name||"",status:"assigned",created_at:new Date().toISOString(),updated_at:new Date().toISOString()});setLocalAssignmentsV18?.(rows);}appendMsg?.("toni","✅ Lernreise wurde hinzugefügt.",typeof time==="function"?time():"","desktop");return;}const payload={learning_journey_template_id:journeyId,student_profile_id:profile.id,student_email:String(profile.email).toLowerCase(),student_first_name:profile.first_name||"",student_last_name:profile.last_name||"",student_display_name:profile.display_name||profile.email,student_class_name:profile.class_name||"",assigned_by_profile_id:null,status:"assigned",updated_at:new Date().toISOString()};try{await supabaseRequest("learning_journey_assignments?on_conflict=learning_journey_template_id,student_email",{method:"POST",headers:{"Prefer":"resolution=merge-duplicates,return=representation"},body:JSON.stringify([payload])});}catch(error){if(String(error.message||"").includes("duplicate")||String(error.message||"").includes("23505")){}else{throw error;}}appendMsg?.("toni","✅ Lernreise wurde deinem Profil zugeordnet.",typeof time==="function"?time():"","desktop");}
-async function loadAssignedJourneysForStudentV20(){const profile=await getCurrentStudentProfileV20();if(typeof supabaseRequest!=="function"){const assignments=(getLocalAssignmentsV18?getLocalAssignmentsV18():[]).filter(a=>String(a.student_email).toLowerCase()===String(profile.email).toLowerCase());const journeys=typeof getLocalJourneysV16==="function"?getLocalJourneysV16():[];return assignments.map(a=>{const j=journeys.find(x=>String(x.id)===String(a.learning_journey_template_id));return {assignment:a,journey_template:j};}).filter(x=>x.journey_template);}const rows=await supabaseRequest(`learning_journey_assignments?select=*,learning_journey_templates(*)&or=(student_profile_id.eq.${encodeURIComponent(profile.id)},student_email.eq.${encodeURIComponent(String(profile.email).toLowerCase())})&order=created_at.desc`);return (rows||[]).map(r=>({assignment:r,journey_template:r.learning_journey_templates})).filter(x=>x.journey_template);}
+async function loadAssignedJourneysForStudentV20(){const profile=await getCurrentStudentProfileV20();if(typeof supabaseRequest!=="function"){const assignments=(getLocalAssignmentsV18?getLocalAssignmentsV18():[]).filter(a=>String(a.student_email).toLowerCase()===String(profile.email).toLowerCase());const journeys=typeof getLocalJourneysV16==="function"?getLocalJourneysV16():[];const out=assignments.map(a=>{const j=journeys.find(x=>String(x.id)===String(a.learning_journey_template_id));return {assignment:a,journey_template:j};}).filter(x=>x.journey_template);return (typeof toniApplyFreshMergeToState==="function")?(toniApplyFreshMergeToState(out),out):out;}const rows=await supabaseRequest(`learning_journey_assignments?select=*,learning_journey_templates(*)&or=(student_profile_id.eq.${encodeURIComponent(profile.id)},student_email.eq.${encodeURIComponent(String(profile.email).toLowerCase())})&order=created_at.desc`);const out=(rows||[]).map(r=>({assignment:r,journey_template:r.learning_journey_templates})).filter(x=>x.journey_template);return (typeof toniApplyFreshMergeToState==="function")?(toniApplyFreshMergeToState(out),out):out;}
 async function openJourneySwitchModal(){const modal=document.getElementById("journey-switch-modal");const list=document.getElementById("journey-switch-list");modal?.classList.add("open");if(list)list.innerHTML=`<div class="assignment-empty">Lernreisen werden geladen …</div>`;try{const rows=await loadAssignedJourneysForStudentV20();if(!rows.length){list.innerHTML=`<div class="assignment-empty">Dir ist noch keine Lernreise zugeordnet. Nutze „Lernreise hinzufügen“, um einen QR-Code zu scannen.</div>`;return;}list.innerHTML=rows.map((row,index)=>{const t=row.journey_template||{};const j=t.journey_json||{};const title=t.title||j.title||"Lernreise";const subject=t.subject||j.subject||"Ohne Fach";const goal=t.goal||j.goal||"";const steps=(j.steps||[]).length;window["TONI_SWITCH_JOURNEY_"+index]=t;return `<div class="switch-item"><div><div class="switch-title">${toniV20Escape(title)}</div><div class="switch-meta">${toniV20Escape(subject)} · ${steps} Station(en)<br>${goal?"Ziel: "+toniV20Escape(goal):""}</div></div><button class="switch-start-btn" onclick="startAssignedJourneyV20(${index})">Starten</button></div>`;}).join("");}catch(error){console.error("Lernreisen wechseln:",error);list.innerHTML=`<div class="assignment-empty">⚠️ Lernreisen konnten nicht geladen werden:<br>${toniV20Escape(error.message)}</div>`;}}
 function closeJourneySwitchModal(){document.getElementById("journey-switch-modal")?.classList.remove("open");}
-function normalizeTemplateToJourneyV20(template){const j=template.journey_json||{};return {id:template.id||j.id,title:template.title||j.title||"Lernreise",subject:template.subject||j.subject||"",goal:template.goal||j.goal||"",description:template.description||j.description||"",cover_image:j.cover_image||template.cover_image||"",cover_image_name:j.cover_image_name||template.cover_image_name||"",cover_image_path:j.cover_image_path||template.cover_image_path||"",cover_image_embedded:j.cover_image_embedded||template.cover_image_embedded||"",steps:j.steps||[]};}
+function normalizeTemplateToJourneyV20(template){const j=template.journey_json||{};return {id:template.id||j.id,title:template.title||j.title||"Lernreise",subject:template.subject||j.subject||"",goal:template.goal||j.goal||"",description:template.description||j.description||"",cover_image:j.cover_image||template.cover_image||"",cover_image_name:j.cover_image_name||template.cover_image_name||"",cover_image_path:j.cover_image_path||template.cover_image_path||"",cover_image_embedded:j.cover_image_embedded||template.cover_image_embedded||"",theme:j.theme||template.theme||"classic",steps:j.steps||[]};}
 function startAssignedJourneyV20(index){const template=window["TONI_SWITCH_JOURNEY_"+index];if(!template)return;const journey=normalizeTemplateToJourneyV20(template);ensureLearningState?.();STATE.learningJourneys=STATE.learningJourneys||[];const pos=STATE.learningJourneys.findIndex(j=>String(j.id)===String(journey.id));if(pos>=0)STATE.learningJourneys[pos]=journey;else STATE.learningJourneys.push(journey);STATE.activeJourneyId=journey.id;saveState?.(STATE);syncJourneyToDashboard?.();closeJourneySwitchModal();if(typeof renderLearningJourneyModal==="function"){renderLearningJourneyModal();document.getElementById("lr-modal")?.classList.add("open");}appendMsg?.("toni",`📚 Lernreise gewechselt: <strong>${toniV20Escape(journey.title)}</strong>`,typeof time==="function"?time():"","desktop");}
 const TONI_V20_ORIGINAL_LOAD_ASSIGNMENT_TABLE=window.loadJourneyAssignmentTable;if(typeof TONI_V20_ORIGINAL_LOAD_ASSIGNMENT_TABLE==="function"){window.loadJourneyAssignmentTable=async function(){const result=await TONI_V20_ORIGINAL_LOAD_ASSIGNMENT_TABLE.apply(this,arguments);updateAssignmentHeaderV20();return result;};}
 const TONI_V20_ORIGINAL_APPLY_ROLE_UI=window.applyRoleUI;window.applyRoleUI=function(){if(typeof TONI_V20_ORIGINAL_APPLY_ROLE_UI==="function")TONI_V20_ORIGINAL_APPLY_ROLE_UI();installStudentJourneyButtonsV20();};
@@ -4270,6 +4315,7 @@ function toniV24NormalizeTemplate(template){
     subject: template.subject || j.subject || template.area || j.area || "",
     goal: template.goal || j.goal || "",
     description: template.description || j.description || "",
+    theme: j.theme || template.theme || "classic",
     steps: j.steps || []
   };
 }
@@ -4377,6 +4423,126 @@ window.toniV23OpenActiveJourney = function(){
     alert("Die Lernreise kann aktuell nicht geöffnet werden.");
   }
 };
+
+/* ============================================================
+ * TONI – Live-Abgleich Schüler-Reise mit DB-Template (Säule 2)
+ * Beim Öffnen wird der INHALT (Titel, Stationen, Aufgaben, Theme, Cover)
+ * IMMER frisch aus dem DB-Template genommen; der FORTSCHRITT (task.status,
+ * aktive Station) des Schülers wird per Aufgaben-ID darübergelegt.
+ * Geänderte/neue Aufgaben (ID nicht mehr vorhanden) starten offen/locked.
+ * ============================================================ */
+function toniMergeProgressIntoTemplate(freshJourney, oldJourney){
+  if(!freshJourney) return freshJourney;
+  if(!oldJourney || !Array.isArray(oldJourney.steps)) return freshJourney;
+  // Alte Stati per Aufgaben-ID indizieren.
+  const statusById = {};
+  oldJourney.steps.forEach(s => (s.tasks || []).forEach(t => {
+    if(t && t.id) statusById[t.id] = t.status;
+  }));
+  // Frisches Template klonen und Stati übernehmen, wo die ID noch existiert.
+  const merged = JSON.parse(JSON.stringify(freshJourney));
+  merged.steps = (merged.steps || []).map((s, si) => ({
+    ...s,
+    tasks: (s.tasks || []).map(t => {
+      const prev = (t && t.id && Object.prototype.hasOwnProperty.call(statusById, t.id))
+        ? statusById[t.id] : null;
+      // Vorhandener Fortschritt gewinnt; sonst Template-Default bzw. todo/locked.
+      const status = prev || t.status || (si === 0 ? "todo" : "locked");
+      return { ...t, status };
+    })
+  }));
+  return merged;
+}
+
+async function toniLoadFreshAssignedJourney(journeyId){
+  if(typeof loadAssignedJourneysForStudentV20 !== "function") return null;
+  try{
+    const rows = await loadAssignedJourneysForStudentV20();
+    const match = (rows || []).find(r => {
+      const t = r.journey_template || r.learning_journey_templates || r;
+      return t && String(t.id) === String(journeyId);
+    });
+    if(!match) return null;
+    const template = match.journey_template || match.learning_journey_templates || match;
+    // Bevorzugt die V24-Normalisierung (liest theme + steps korrekt).
+    if(typeof toniV24NormalizeTemplate === "function") return toniV24NormalizeTemplate(template);
+    if(typeof normalizeTemplateToJourneyV20 === "function") return normalizeTemplateToJourneyV20(template);
+    return template.journey_json || template;
+  }catch(e){
+    console.warn("TONI: frisches Template konnte nicht geladen werden:", e);
+    return null;
+  }
+}
+
+// Öffnen-Pfad live abgleichen: frisches Template + Fortschritt mergen.
+(function(){
+  const origOpen = window.toniV23OpenActiveJourney;
+  window.toniV23OpenActiveJourney = function(){
+    let active = null;
+    try{ active = (typeof toniV24GetActiveJourney === "function") ? toniV24GetActiveJourney() : null; }catch(e){}
+    if(!active || !active.id){
+      // Keine aktive Reise -> Originalverhalten (öffnet ggf. Auswahl).
+      return origOpen ? origOpen.apply(this, arguments) : undefined;
+    }
+    // Asynchron frisch laden, mergen, in STATE schreiben, dann rendern.
+    toniLoadFreshAssignedJourney(active.id).then(fresh => {
+      try{
+        if(fresh){
+          const merged = toniMergeProgressIntoTemplate(fresh, active);
+          if(typeof ensureLearningState === "function") ensureLearningState();
+          if(typeof STATE !== "undefined"){
+            STATE.learningJourneys = STATE.learningJourneys || [];
+            const pos = STATE.learningJourneys.findIndex(j => String(j.id) === String(merged.id));
+            if(pos >= 0) STATE.learningJourneys[pos] = merged;
+            else STATE.learningJourneys.push(merged);
+            STATE.activeJourneyId = merged.id;
+            window.TONI_V24_CURRENT_JOURNEY = merged;
+            saveState?.(STATE);
+          }
+        }
+      }catch(e){ console.warn("TONI: Merge fehlgeschlagen, nutze Bestehendes:", e); }
+      // Rendern (frisch gemergt oder – falls Laden fehlschlug – Bestehendes).
+      if(typeof renderLearningJourneyModal === "function"){
+        renderLearningJourneyModal();
+        document.getElementById("lr-modal")?.classList.add("open");
+      }
+    });
+  };
+})();
+
+/* ============================================================
+ * ROBUSTER ANSATZ: STATE-Abgleich an der zentralen DATENQUELLE.
+ * Der Wrap-Versuch von außen scheiterte, weil loadAssignedJourneysForStudentV20
+ * eine freie Funktionsdeklaration ist und an 10 Stellen über die freie Bindung
+ * aufgerufen wird (window-Override greift dort nicht). Daher: reine Helper-
+ * Funktion, die DIREKT in der Funktionsdefinition aufgerufen wird (siehe dort).
+ * Inhalt+Theme frisch aus DB, Fortschritt per Aufgaben-ID erhalten.
+ * ============================================================ */
+function toniApplyFreshMergeToState(rows){
+  try{
+    if(Array.isArray(rows) && typeof STATE !== "undefined" && Array.isArray(STATE.learningJourneys)){
+      rows.forEach(function(r){
+        const template = r.journey_template || r.learning_journey_templates || r;
+        if(!template) return;
+        const fresh = (typeof toniV24NormalizeTemplate === "function")
+          ? toniV24NormalizeTemplate(template)
+          : (typeof normalizeTemplateToJourneyV20 === "function" ? normalizeTemplateToJourneyV20(template) : null);
+        if(!fresh || !fresh.id) return;
+        const pos = STATE.learningJourneys.findIndex(j => String(j.id) === String(fresh.id));
+        if(pos >= 0){
+          // Vorhandene Reise: Inhalt+Theme frisch, Fortschritt aus alter Version erhalten.
+          STATE.learningJourneys[pos] = toniMergeProgressIntoTemplate(fresh, STATE.learningJourneys[pos]);
+        } else {
+          // Reise zugewiesen, aber noch nicht im STATE -> frisch aufnehmen.
+          STATE.learningJourneys.push(fresh);
+        }
+      });
+      saveState?.(STATE);
+    }
+  }catch(e){ console.warn("TONI: Fresh-Merge beim Laden fehlgeschlagen:", e); }
+  return rows;
+}
+if(typeof window !== "undefined") window.toniApplyFreshMergeToState = toniApplyFreshMergeToState;
 
 // Wechsel-Funktion nachschärfen: Titel sofort merken und Header aktualisieren
 if(typeof window.startAssignedJourneyV20 === "function"){
@@ -6268,6 +6434,7 @@ function toniV50NormalizeTemplate(template){
     subject: template?.subject || j.subject || "",
     goal: template?.goal || j.goal || "",
     description: template?.description || j.description || "Individuelle Lernreise mit Aufgaben, Praxisbezug und Reflexion.",
+    theme: j.theme || template?.theme || "classic",
     steps: j.steps || []
   };
 }
@@ -7409,6 +7576,7 @@ window.addEventListener("resize", () => {
       subject: template?.subject || j.subject || "Ohne Fach",
       goal: template?.goal || j.goal || "",
       description: template?.description || j.description || "",
+      theme: j.theme || template?.theme || "classic",
       steps: j.steps || []
     };
   }
@@ -7674,6 +7842,7 @@ window.addEventListener("resize", () => {
       subject: template?.subject || j.subject || "",
       goal: template?.goal || j.goal || "",
       description: template?.description || j.description || "",
+      theme: j.theme || template?.theme || "classic",
       steps: j.steps || []
     };
   }
@@ -7938,6 +8107,7 @@ window.addEventListener("resize", () => {
       subject: template?.subject || j.subject || "",
       goal: template?.goal || j.goal || "",
       description: template?.description || j.description || "",
+      theme: j.theme || template?.theme || "classic",
       steps: j.steps || []
     };
   }
@@ -13574,6 +13744,7 @@ window.addEventListener("resize", () => {
       subject,
       goal,
       description,
+      theme:(document.getElementById("journey-theme")?.value || "").trim() || "classic",
       cover_image:document.getElementById("journey-cover-image")?.value || "",
       cover_image_name:document.getElementById("journey-cover-name")?.value || "",
       cover_image_path:document.getElementById("journey-cover-storage-path")?.value || "",

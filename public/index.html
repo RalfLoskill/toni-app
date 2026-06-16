@@ -8950,6 +8950,19 @@ input.youtube-force-invalid-v105{
             <textarea class="lr-form-textarea" id="journey-description" placeholder="Kurze Beschreibung der Lernreise"></textarea>
           </div>
 
+          <div class="lr-form-group">
+            <label class="lr-form-label">Erscheinungsbild</label>
+            <input type="hidden" id="journey-theme" value="classic"/>
+            <button type="button" class="toni-tp-trigger" id="journey-theme-trigger" onclick="toniOpenThemePicker&&toniOpenThemePicker()">
+              <div class="toni-tp-thumb"></div>
+              <div class="toni-tp-meta">
+                <div class="toni-tp-label">Erscheinungsbild</div>
+                <div class="toni-tp-name">Klassisch</div>
+              </div>
+              <div class="toni-tp-change">Ändern ▾</div>
+            </button>
+          </div>
+
 
           <div class="lr-form-group journey-cover-upload-v89">
             <label class="lr-form-label" for="journey-cover-upload">Startbildschirm / Hintergrundbild <span class="optional-note-v89">optional</span></label>
@@ -9544,7 +9557,13 @@ input.youtube-force-invalid-v105{
 
 <script src="/chat.js?v=12"></script>
 
-<script src="/journey.js?v=143"></script>
+<script src="/journey.js?v=154"></script>
+<script src="/journey/theme/journey_theme.js?v=4"></script>
+<script src="/journey/theme/journey_theme_space.js?v=9"></script>
+<script src="/journey/theme/journey_theme_football.js?v=2"></script>
+<script src="/journey/theme/journey_theme_jungle.js?v=3"></script>
+<script src="/journey/theme/journey_theme_haus.js?v=3"></script>
+<script src="/journey/theme/journey_theme_picker.js?v=3"></script>
 <script src="/journey_editor_v111.js?v=55"></script>
 <script src="/admin.js"></script>
 <script src="/ui.js?v=8"></script>
