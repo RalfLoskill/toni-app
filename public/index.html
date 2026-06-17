@@ -8497,6 +8497,12 @@ input.youtube-force-invalid-v105{
 #journey-admin-panel .journey-editor-toolbar{ justify-content:flex-start !important; }
 /* V95: 'lokal gespeichert'-Status beim Cover-Upload entfernen */
 .cover-upload-status-v91{ display:none !important; }
+/* V97: Bei hochgeladenem Startbild rechten Erscheinungsbild-Kasten auf
+   linke Box-Höhe strecken. Greift nur, wenn die Vorschau sichtbar ist
+   (also .cover-preview-v89 NICHT .hidden). Ohne Bild bleibt alles oben bündig. */
+.cover-theme-row-v92:has(.cover-preview-v89:not(.hidden)){ align-items:stretch; }
+.cover-theme-row-v92:has(.cover-preview-v89:not(.hidden)) .cover-theme-col-v92{ display:flex; }
+.cover-theme-row-v92:has(.cover-preview-v89:not(.hidden)) .cover-theme-col-v92 .toni-tp-trigger{ height:100%; align-items:flex-start; }
 /* V95: Lernreise-Kacheln dezent farbig (Plus-Kachel bleibt unverändert) */
 #journey-admin-panel #admin-journey-list .journey-tile:not(.journey-tile-add){
   background:#f0f6ff;
@@ -8950,34 +8956,33 @@ input.youtube-force-invalid-v105{
             <textarea class="lr-form-textarea" id="journey-description" placeholder="Kurze Beschreibung der Lernreise"></textarea>
           </div>
 
-          <div class="lr-form-group">
-            <label class="lr-form-label">Erscheinungsbild</label>
-            <input type="hidden" id="journey-theme" value="classic"/>
-            <button type="button" class="toni-tp-trigger" id="journey-theme-trigger" onclick="toniOpenThemePicker&&toniOpenThemePicker()">
-              <div class="toni-tp-thumb"></div>
-              <div class="toni-tp-meta">
-                <div class="toni-tp-label">Erscheinungsbild</div>
-                <div class="toni-tp-name">Klassisch</div>
-              </div>
-              <div class="toni-tp-change">Ändern ▾</div>
-            </button>
-          </div>
-
-
           <div class="lr-form-group journey-cover-upload-v89">
-            <label class="lr-form-label" for="journey-cover-upload">Startbildschirm / Hintergrundbild <span class="optional-note-v89">optional</span></label>
+            <label class="lr-form-label" for="journey-cover-upload">Startbildschirm / Thema <span class="optional-note-v89">optional</span></label>
             <input type="hidden" id="journey-cover-image"/>
             <input type="hidden" id="journey-cover-name"/>
-            <div class="cover-upload-box-v89">
-              <div class="cover-upload-main-v89">
-                <input class="cover-file-input-v89" id="journey-cover-upload" type="file" accept="image/*" onchange="toniV89HandleCoverUpload(event)"/>
-                <div class="cover-upload-note-v89">
-                  Lade optional ein Hintergrundbild für das Deckblatt der Lernreise hoch. Ohne Upload bleibt der Hintergrund weiß.
+            <div class="cover-theme-row-v92" style="display:flex;flex-wrap:wrap;gap:16px;align-items:flex-start;">
+              <div class="cover-upload-box-v89" style="flex:1 1 280px;min-width:0;">
+                <div class="cover-upload-main-v89">
+                  <input class="cover-file-input-v89" id="journey-cover-upload" type="file" accept="image/*" onchange="toniV89HandleCoverUpload(event)"/>
+                  <div class="cover-upload-note-v89">
+                    Lade optional ein Hintergrundbild für das Deckblatt der Lernreise hoch. Ohne Upload bleibt der Hintergrund weiß.
+                  </div>
+                </div>
+                <div class="cover-preview-v89 hidden" id="journey-cover-preview">
+                  <img id="journey-cover-preview-img" alt="Vorschau Hintergrundbild"/>
+                  <button type="button" class="cover-clear-btn-v89" onclick="toniV89ClearCoverImage()">Bild entfernen</button>
                 </div>
               </div>
-              <div class="cover-preview-v89 hidden" id="journey-cover-preview">
-                <img id="journey-cover-preview-img" alt="Vorschau Hintergrundbild"/>
-                <button type="button" class="cover-clear-btn-v89" onclick="toniV89ClearCoverImage()">Bild entfernen</button>
+              <div class="cover-theme-col-v92" style="flex:1 1 240px;min-width:0;">
+                <input type="hidden" id="journey-theme" value="classic"/>
+                <button type="button" class="toni-tp-trigger" id="journey-theme-trigger" onclick="toniOpenThemePicker&&toniOpenThemePicker()">
+                  <div class="toni-tp-thumb"></div>
+                  <div class="toni-tp-meta">
+                    <div class="toni-tp-label">Erscheinungsbild</div>
+                    <div class="toni-tp-name">Klassisch</div>
+                  </div>
+                  <div class="toni-tp-change">Ändern ▾</div>
+                </button>
               </div>
             </div>
           </div>
@@ -9557,12 +9562,15 @@ input.youtube-force-invalid-v105{
 
 <script src="/chat.js?v=12"></script>
 
-<script src="/journey.js?v=154"></script>
+<script src="/journey.js?v=157"></script>
 <script src="/journey/theme/journey_theme.js?v=4"></script>
 <script src="/journey/theme/journey_theme_space.js?v=9"></script>
 <script src="/journey/theme/journey_theme_football.js?v=2"></script>
 <script src="/journey/theme/journey_theme_jungle.js?v=3"></script>
 <script src="/journey/theme/journey_theme_haus.js?v=3"></script>
+<script src="/journey/theme/journey_theme_salon.js?v=5"></script>
+<script src="/journey/theme/journey_theme_london.js?v=3"></script>
+<script src="/journey/theme/journey_theme_afrika.js?v=9"></script>
 <script src="/journey/theme/journey_theme_picker.js?v=3"></script>
 <script src="/journey_editor_v111.js?v=55"></script>
 <script src="/admin.js"></script>

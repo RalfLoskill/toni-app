@@ -6,7 +6,7 @@
 // Build-Stempel: im Browser per `window.TONI_JOURNEY_BUILD` abfragbar.
 // Wenn dieser Wert NICHT "v86-assignments-progress-group" ist, lädt der
 // Browser eine veraltete Datei (Cache/Deploy), nicht diese Version.
-window.TONI_JOURNEY_BUILD = "v154-theme-order-fix";
+window.TONI_JOURNEY_BUILD = "v157-cover-theme-polish";
 
 /* Lernreisen V1: ergänzt das bestehende Dashboard, ohne das Design zu ersetzen. */
 const DEFAULT_LEARNING_JOURNEYS = [{
@@ -6039,6 +6039,9 @@ function toniV45ClampToViewport(){
     if(el.classList.contains('lernreise')||el.closest('.lernreise-wrap'))return;
     // Neue Kopfzeile (v26) nicht antasten – sie verwaltet ihr Layout selbst
     if(el.closest('.topbar-v26'))return;
+    // Theme-Szenen (z.B. Afrika-Skyline) zeigen bewusst einen breiteren Ausschnitt
+    // als den Viewport – nicht auf 100% zurückklemmen, sonst springt der Ausschnitt.
+    if(el.closest('.toni-afrika__skyline')||(el.classList&&el.classList.contains('toni-afrika__skyline')))return;
     const rect=el.getBoundingClientRect();
     if(rect.width>vw+4){el.style.maxWidth='100%';el.style.minWidth='0';if(style.display==='grid'||style.display==='flex')el.style.overflowX='hidden';}
   });
@@ -8679,7 +8682,7 @@ window.addEventListener("resize", () => {
       group.className = "lr-form-group journey-cover-upload-v89 journey-cover-upload-v90";
       group.innerHTML = `
         <label class="lr-form-label" for="journey-cover-upload">
-          Startbildschirm / Hintergrundbild <span class="optional-note-v89">optional</span>
+          Startbildschirm / Thema <span class="optional-note-v89">optional</span>
         </label>
         <input type="hidden" id="journey-cover-image"/>
         <input type="hidden" id="journey-cover-name"/>
@@ -9219,7 +9222,7 @@ window.addEventListener("resize", () => {
       ui.preview.classList.remove("hidden");
       ui.trigger?.classList.add("cover-has-image-v91");
       if(ui.trigger) ui.trigger.innerHTML = "🖼️ Bild ändern";
-      setState(mode === "fallback" ? "lokal gespeichert" : "gespeichert", mode);
+      setState(mode === "fallback" ? "" : "gespeichert", mode);
     }else{
       if(img) img.removeAttribute("src");
       ui.preview.classList.add("hidden");
