@@ -9562,7 +9562,7 @@ input.youtube-force-invalid-v105{
 
 <script src="/chat.js?v=12"></script>
 
-<script src="/journey.js?v=157"></script>
+<script src="/journey.js?v=162"></script>
 <script src="/journey/theme/journey_theme.js?v=4"></script>
 <script src="/journey/theme/journey_theme_space.js?v=9"></script>
 <script src="/journey/theme/journey_theme_football.js?v=2"></script>
@@ -10196,6 +10196,99 @@ input.youtube-force-invalid-v105{
         onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
         Projekt anlegen
       </button>
+    </div>
+  </div>
+</div>
+
+<!-- TONi-Lernreise per KI: Leitfragen -->
+<div class="lr-modal-backdrop" id="toni-ai-journey-modal">
+  <div class="lr-modal toni-create-project-modal" role="dialog" aria-modal="true" style="padding:0;overflow:hidden;display:flex;flex-direction:column">
+    <div class="lr-modal-header lr-typed-head" style="padding:18px 22px;margin:0;display:flex;align-items:flex-start;justify-content:space-between">
+      <div>
+        <div class="lr-modal-title" style="color:#0C447C">TONi Lernreise</div>
+        <div style="font-size:13px;color:#185FA5;margin-top:2px">✨ Leitfragen für eine neue Lernreise</div>
+      </div>
+      <div class="lr-modal-actions">
+        <button onclick="toniCloseAiJourneyModal()" style="background:rgba(255,255,255,.6);border:0.5px solid #85B7EB;color:#185FA5;padding:6px 14px;border-radius:var(--border-radius-md);font-size:13px;cursor:pointer">Schließen</button>
+      </div>
+    </div>
+    <div style="padding:20px 22px;flex:1;overflow-y:auto;overflow-x:hidden;box-sizing:border-box">
+
+      <p style="font-size:13px;color:var(--color-text-secondary);line-height:1.5;margin:0 0 18px">Beantworte so viel du möchtest – Felder dürfen leer bleiben. Aus deinen Angaben erstellt TONi anschließend einen Vorschlag für die Lernreise.</p>
+
+      <!-- 1. Thema -->
+      <div style="margin-bottom:16px">
+        <label style="font-size:13px;font-weight:500;color:var(--color-text-primary);display:block;margin-bottom:6px">1. Thema – worum geht es? *</label>
+        <input id="toni-ai-thema" type="text" placeholder="z. B. Überspannungsschutz in Wohngebäuden"
+          style="width:100%;padding:9px 12px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;background:var(--color-background-primary);color:var(--color-text-primary)">
+      </div>
+
+      <!-- 2. Fach / Lernfeld -->
+      <div style="margin-bottom:16px">
+        <label style="font-size:13px;font-weight:500;color:var(--color-text-primary);display:block;margin-bottom:6px">2. Fach / Lernfeld – welchem Fach zugeordnet?</label>
+        <input id="toni-ai-fach" type="text" placeholder="z. B. Elektrotechnik, Lernfeld 4"
+          style="width:100%;padding:9px 12px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;background:var(--color-background-primary);color:var(--color-text-primary)">
+      </div>
+
+      <!-- 3. Zielgruppe & Klassenstufe -->
+      <div style="margin-bottom:16px">
+        <label style="font-size:13px;font-weight:500;color:var(--color-text-primary);display:block;margin-bottom:6px">3. Zielgruppe &amp; Klassenstufe – welche Lerngruppe, welche Stufe / welches Lehrjahr?</label>
+        <input id="toni-ai-zielgruppe" type="text" placeholder="z. B. Elektroniker EuG, 2. Lehrjahr"
+          style="width:100%;padding:9px 12px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;background:var(--color-background-primary);color:var(--color-text-primary)">
+      </div>
+
+      <!-- 4. Schulart & Bundesland -->
+      <div style="margin-bottom:16px">
+        <label style="font-size:13px;font-weight:500;color:var(--color-text-primary);display:block;margin-bottom:6px">4. Schulart &amp; Bundesland – für Niveau und Lehrplan</label>
+        <input id="toni-ai-schulart" type="text" placeholder="z. B. Berufsschule, Rheinland-Pfalz"
+          style="width:100%;padding:9px 12px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;background:var(--color-background-primary);color:var(--color-text-primary)">
+      </div>
+
+      <!-- 5. Lernziele -->
+      <div style="margin-bottom:16px">
+        <label style="font-size:13px;font-weight:500;color:var(--color-text-primary);display:block;margin-bottom:6px">5. Lernziele – was sollen die Lernenden danach können? <span style="font-weight:400;color:var(--color-text-tertiary)">(leer → TONi leitet aus Thema + Lehrplan ab)</span></label>
+        <textarea id="toni-ai-lernziele" rows="3" placeholder="z. B. Schutzkonzept normgerecht planen und Bauteile auswählen"
+          style="width:100%;padding:9px 12px;border:1px solid #D8D2C4;border-radius:var(--border-radius-md);font-size:14px;resize:vertical;background:var(--color-background-primary);color:var(--color-text-primary)"></textarea>
+      </div>
+
+      <!-- 6. Umfang -->
+      <div style="margin-bottom:16px">
+        <label style="font-size:13px;font-weight:500;color:var(--color-text-primary);display:block;margin-bottom:6px">6. Umfang – wie viele Unterrichtsstunden? <span style="font-weight:400;color:var(--color-text-tertiary)">(leer → TONi schlägt eine sinnvolle Zahl vor)</span></label>
+        <input id="toni-ai-umfang" type="text" placeholder="z. B. 8 Unterrichtsstunden"
+          style="width:100%;padding:9px 12px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;background:var(--color-background-primary);color:var(--color-text-primary)">
+      </div>
+
+      <!-- 7. Didaktisches Muster -->
+      <div style="margin-bottom:16px">
+        <label style="font-size:13px;font-weight:500;color:var(--color-text-primary);display:block;margin-bottom:6px">7. Didaktisches Muster – Standard pro Station</label>
+        <textarea id="toni-ai-muster" rows="2" placeholder="z. B. Lerninhalt → Quiz → Arbeitsauftrag → Quiz"
+          style="width:100%;padding:9px 12px;border:1px solid #D8D2C4;border-radius:var(--border-radius-md);font-size:14px;resize:vertical;background:var(--color-background-primary);color:var(--color-text-primary)"></textarea>
+      </div>
+
+      <!-- 8. Besondere Wünsche -->
+      <div style="margin-bottom:20px">
+        <label style="font-size:13px;font-weight:500;color:var(--color-text-primary);display:block;margin-bottom:6px">8. Besondere Wünsche – Aufgabentypen, Videos einbinden, Quiz-Tiefe</label>
+        <textarea id="toni-ai-wuensche" rows="3" placeholder="z. B. mehr offene Arbeitsaufträge, ein Erklärvideo je Station"
+          style="width:100%;padding:9px 12px;border:1px solid #D8D2C4;border-radius:var(--border-radius-md);font-size:14px;resize:vertical;background:var(--color-background-primary);color:var(--color-text-primary)"></textarea>
+      </div>
+
+      <button id="toni-ai-submit-btn" onclick="toniSubmitAiJourney()"
+        style="width:100%;padding:12px;background:#185FA5;color:#fff;border:none;border-radius:var(--border-radius-md);font-size:15px;font-weight:500;cursor:pointer;transition:opacity .15s"
+        onmouseover="if(!this.disabled)this.style.opacity='.85'" onmouseout="if(!this.disabled)this.style.opacity='1'">
+        Lernreise erstellen lassen
+      </button>
+      <div id="toni-ai-gen-status" style="display:none;margin-top:10px;font-size:13px;color:#185FA5;text-align:center"></div>
+
+      <!-- Ausgabe: generierter Prompt (erscheint nach Klick) -->
+      <div id="toni-ai-prompt-box" style="display:none;margin-top:20px">
+        <label style="font-size:13px;font-weight:500;color:var(--color-text-primary);display:block;margin-bottom:6px">Generierter Prompt</label>
+        <textarea id="toni-ai-prompt-output" rows="12" readonly
+          style="width:100%;padding:9px 12px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:13px;line-height:1.5;resize:vertical;background:var(--color-background-secondary);color:var(--color-text-primary);font-family:inherit"></textarea>
+        <button onclick="toniCopyAiJourneyPrompt(this)"
+          style="margin-top:8px;padding:8px 14px;background:rgba(24,95,165,.1);color:#185FA5;border:0.5px solid #85B7EB;border-radius:var(--border-radius-md);font-size:13px;font-weight:500;cursor:pointer">
+          In Zwischenablage kopieren
+        </button>
+      </div>
     </div>
   </div>
 </div>

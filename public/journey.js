@@ -6,7 +6,7 @@
 // Build-Stempel: im Browser per `window.TONI_JOURNEY_BUILD` abfragbar.
 // Wenn dieser Wert NICHT "v86-assignments-progress-group" ist, lädt der
 // Browser eine veraltete Datei (Cache/Deploy), nicht diese Version.
-window.TONI_JOURNEY_BUILD = "v157-cover-theme-polish";
+window.TONI_JOURNEY_BUILD = "v162-ai-journey-agent";
 
 /* Lernreisen V1: ergänzt das bestehende Dashboard, ohne das Design zu ersetzen. */
 const DEFAULT_LEARNING_JOURNEYS = [{
@@ -2650,12 +2650,161 @@ function renderAdminJourneyListV16(rows){
       </div>`;
   }).join("");
 
-  list.innerHTML = plusTile + tiles;
+  // TONi-KI-Kachel: öffnet das Leitfragen-Modal für die KI-gestützte Erstellung.
+  const toniTile = `
+      <div class="journey-tile journey-tile-add journey-tile-toni" onclick="toniOpenAiJourneyModal()" role="button" tabindex="0" title="Lernreise mit TONi erstellen">
+        <div class="journey-tile-add-icon">+</div>
+        <div class="journey-tile-add-label">TONi Lernreise</div>
+      </div>`;
+
+  list.innerHTML = plusTile + tiles + toniTile;
 }
 
 // === Einklappbarer Lernreise-Editor (V93) ===
 // Der Editor (aside.journey-admin-card) ist standardmäßig eingeklappt und wird
 // über die Plus-Kachel (neu) oder "Bearbeiten" (gefüllt) ausgeklappt.
+// === TONi-Lernreise per KI (Leitfragen-Modal) ===
+// Schritt 1: Modal mit Leitfragen öffnen/schließen. Die eigentliche
+// KI-Generierung folgt in einem späteren Schritt; hier wird zunächst nur
+// die Eingabe gesammelt.
+function toniOpenAiJourneyModal(){
+  const m = document.getElementById("toni-ai-journey-modal");
+  if(!m) return;
+  // Eingaben zurücksetzen (Muster-Feld auf den Standardtext).
+  const reset = {
+    "toni-ai-thema":"", "toni-ai-fach":"", "toni-ai-zielgruppe":"",
+    "toni-ai-schulart":"", "toni-ai-lernziele":"", "toni-ai-umfang":"",
+    "toni-ai-muster":"", "toni-ai-wuensche":""
+  };
+  Object.keys(reset).forEach(id => { const el = document.getElementById(id); if(el) el.value = reset[id]; });
+  // Prompt-Ausgabe zurücksetzen (alten Prompt nicht stehen lassen).
+  const box = document.getElementById("toni-ai-prompt-box");
+  const out = document.getElementById("toni-ai-prompt-output");
+  if(box) box.style.display = "none";
+  if(out) out.value = "";
+  m.classList.add("open");
+  setTimeout(() => { const t = document.getElementById("toni-ai-thema"); if(t) t.focus(); }, 100);
+}
+function toniCloseAiJourneyModal(){
+  const m = document.getElementById("toni-ai-journey-modal");
+  if(m) m.classList.remove("open");
+}
+function toniCollectAiJourneyInput(){
+  const val = id => (document.getElementById(id)?.value || "").trim();
+  return {
+    thema:      val("toni-ai-thema"),
+    fach:       val("toni-ai-fach"),
+    zielgruppe: val("toni-ai-zielgruppe"),
+    schulart:   val("toni-ai-schulart"),
+    lernziele:  val("toni-ai-lernziele"),
+    umfang:     val("toni-ai-umfang"),
+    muster:     val("toni-ai-muster"),
+    wuensche:   val("toni-ai-wuensche")
+  };
+}
+// Baut aus den Eingaben den Lernreisen-Prompt. Feste Eingangssätze immer,
+// die antwortabhängigen Sätze nur, wenn die jeweilige Antwort ausgefüllt ist.
+function toniBuildAiJourneyPrompt(data){
+  const lines = [
+    "Erstelle mir eine ausführliche und professionelle Lernreise im Toni-Lernreisenformat.",
+    "Die Lernreise soll alle Aufgaben-Elemente (Information, Aufgabe, Video, Quiz, Reflexion) enthalten.",
+    "Erstelle für die Lernreise qualitativ hochwertige Grafiken und Bilder.",
+    "Entwerfe ein zum Thema passendes Hintergrundbild.",
+    "Erstelle mir eine Lernreise zum Thema: " + data.thema
+  ];
+  if(data.fach)       lines.push("Das Thema ist in folgendes Fach/Lernfeld eingebettet: " + data.fach);
+  if(data.zielgruppe) lines.push("Berücksichtige die folgende Zielgruppe: " + data.zielgruppe);
+  if(data.schulart)   lines.push("Berücksichtige den Lehrplan für folgende Schulart und/oder Bundesland: " + data.schulart);
+  if(data.lernziele)  lines.push("Die Lernreise soll folgende Lernziele/Kompetenzen vermitteln: " + data.lernziele);
+  if(data.umfang)     lines.push("Für die Erarbeitung der Lernreise steht der folgende Umfang zur Verfügung: " + data.umfang);
+  if(data.muster)     lines.push("Berücksichtige als Ablaufmuster den folgenden Ablauf: " + data.muster);
+  if(data.wuensche)   lines.push("Berücksichtige die folgenden Punkte: " + data.wuensche);
+  return lines.join("\n");
+}
+async function toniSubmitAiJourney(){
+  const data = toniCollectAiJourneyInput();
+  // Nur Frage 1 (Thema) ist Pflicht, alle anderen optional.
+  if(!data.thema){
+    alert("Bitte gib mindestens das Thema an (Frage 1).");
+    const t = document.getElementById("toni-ai-thema"); if(t) t.focus();
+    return;
+  }
+  const prompt = toniBuildAiJourneyPrompt(data);
+  window.TONI_AI_JOURNEY_INPUT = data;
+  window.TONI_AI_JOURNEY_PROMPT = prompt;
+
+  // Prompt zur Transparenz weiterhin anzeigen.
+  const out = document.getElementById("toni-ai-prompt-output");
+  const box = document.getElementById("toni-ai-prompt-box");
+  if(out) out.value = prompt;
+  if(box) box.style.display = "block";
+
+  // Button in Ladezustand versetzen.
+  const btn = document.getElementById("toni-ai-submit-btn");
+  const status = document.getElementById("toni-ai-gen-status");
+  const setBusy = (busy, msg) => {
+    if(btn){ btn.disabled = busy; btn.style.opacity = busy ? "0.6" : "1"; btn.style.cursor = busy ? "default" : "pointer"; }
+    if(status){ status.textContent = msg || ""; status.style.display = msg ? "block" : "none"; }
+  };
+
+  setBusy(true, "TONi erstellt die Lernreise … das kann eine Minute dauern.");
+  try{
+    const resp = await fetch("/api/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agentType: "journey_builder", prompt })
+    });
+    const result = await resp.json().catch(() => ({}));
+    if(!resp.ok || !result.journey){
+      throw new Error(result.error || ("Generierung fehlgeschlagen (HTTP " + resp.status + ")."));
+    }
+
+    // Ergebnis in die TONi-Datei-Hülle packen und über den bestehenden,
+    // RLS-konformen Import-Weg validieren + speichern.
+    const paket = {
+      format: "toni-lernreise",
+      format_version: 1,
+      exported_at: new Date().toISOString(),
+      exported_by_role: "tutor",
+      journey: result.journey
+    };
+    const check = (typeof toniValidateImportPaket === "function")
+      ? toniValidateImportPaket(paket)
+      : { ok: true, journey: result.journey };
+    if(!check.ok) throw new Error(check.error || "Die erzeugte Lernreise ist ungültig.");
+
+    setBusy(true, "Lernreise wird gespeichert …");
+    if(typeof toniPerformImport === "function"){
+      await toniPerformImport(check.journey);
+    }else{
+      throw new Error("Speicherfunktion nicht verfügbar.");
+    }
+
+    setBusy(false, "");
+    toniCloseAiJourneyModal();
+    alert("✅ Die Lernreise \"" + (check.journey.title || "") + "\" wurde erstellt und erscheint in deiner Übersicht.");
+  }catch(err){
+    setBusy(false, "");
+    alert("Die Lernreise konnte nicht erstellt werden:\n" + (err && err.message ? err.message : err) +
+      "\n\nDein Prompt bleibt erhalten – du kannst es erneut versuchen.");
+  }
+}
+function toniCopyAiJourneyPrompt(btn){
+  const out = document.getElementById("toni-ai-prompt-output");
+  if(!out) return;
+  const done = () => { if(btn){ const o = btn.textContent; btn.textContent = "Kopiert ✓"; setTimeout(() => { btn.textContent = o; }, 1500); } };
+  if(navigator.clipboard && navigator.clipboard.writeText){
+    navigator.clipboard.writeText(out.value).then(done).catch(() => { out.select(); document.execCommand("copy"); done(); });
+  }else{
+    out.select(); document.execCommand("copy"); done();
+  }
+}
+// Global verfügbar machen (TONI arbeitet ohne Modul-System).
+window.toniOpenAiJourneyModal = toniOpenAiJourneyModal;
+window.toniCloseAiJourneyModal = toniCloseAiJourneyModal;
+window.toniSubmitAiJourney = toniSubmitAiJourney;
+window.toniCopyAiJourneyPrompt = toniCopyAiJourneyPrompt;
+
 function toniGetJourneyEditorCard(){
   const panel=document.getElementById("journey-admin-panel");
   return panel ? panel.querySelector(".journey-admin-grid > aside.journey-admin-card") : null;
