@@ -437,11 +437,17 @@
     const minLen = parseInt(t.reflexion_min_length,10) || 0;
 
     const scaleRows = scales.map((sc,xi)=>`
-      <div class="v111-qopt">
-        <span style="font-size:16px">⭐</span>
-        <input class="v111-inp" style="margin:0" value="${E.esc(sc.label||"")}" placeholder="Frage zur Selbsteinschätzung ${xi+1}"
+      <div class="v111-qopt" style="flex-wrap:wrap">
+        <input class="v111-inp" style="margin:0;flex:1 1 100%" value="${E.esc(sc.label||"")}" placeholder="Frage zur Selbsteinschätzung ${xi+1}"
           oninput="TONI_EDITOR_V111_UI.reflexionEditScale(${si},${ti},${xi},this.value)">
-        <button class="v111-matdel" title="Entfernen" onclick="TONI_EDITOR_V111_UI.reflexionDelScale(${si},${ti},${xi})">✕</button>
+        <label style="font-size:12px;color:var(--v111-t2);display:flex;align-items:center;gap:6px;margin-top:4px">Darstellung:
+          <select class="v111-inp" style="margin:0;width:auto;padding:4px 8px"
+            onchange="TONI_EDITOR_V111_UI.reflexionSetScaleType(${si},${ti},${xi},this.value)">
+            <option value="stars"${(sc.scale_type||"stars")==="stars"?" selected":""}>⭐ Sterne (1–5)</option>
+            <option value="words"${sc.scale_type==="words"?" selected":""}>Wortskala (noch nicht…sicher)</option>
+          </select>
+        </label>
+        <button class="v111-matdel" title="Entfernen" style="margin-top:4px" onclick="TONI_EDITOR_V111_UI.reflexionDelScale(${si},${ti},${xi})">✕</button>
       </div>`).join("");
 
     const helperRows = helpers.map((h,hi)=>`
@@ -658,6 +664,7 @@
     // Reflexions-Editor
     reflexionAddScale(si,ti){ const t=stations()[si]?.tasks[ti]; if(t){ t.reflexion_scales=Array.isArray(t.reflexion_scales)?t.reflexion_scales:[]; t.reflexion_scales.push({label:""}); renderPanelOnly(); syncOnly(); } },
     reflexionEditScale(si,ti,xi,val){ const t=stations()[si]?.tasks[ti]; if(t&&Array.isArray(t.reflexion_scales)&&t.reflexion_scales[xi]){ t.reflexion_scales[xi].label=val; syncOnly(); } },
+    reflexionSetScaleType(si,ti,xi,val){ const t=stations()[si]?.tasks[ti]; if(t&&Array.isArray(t.reflexion_scales)&&t.reflexion_scales[xi]){ t.reflexion_scales[xi].scale_type=(val==="words"?"words":"stars"); commit(); } },
     reflexionDelScale(si,ti,xi){ const t=stations()[si]?.tasks[ti]; if(t&&Array.isArray(t.reflexion_scales)){ t.reflexion_scales.splice(xi,1); renderPanelOnly(); syncOnly(); } },
     reflexionAddHelper(si,ti){ const t=stations()[si]?.tasks[ti]; if(t){ t.reflexion_helpers=Array.isArray(t.reflexion_helpers)?t.reflexion_helpers:[]; t.reflexion_helpers.push(""); renderPanelOnly(); syncOnly(); } },
     reflexionEditHelper(si,ti,hi,val){ const t=stations()[si]?.tasks[ti]; if(t&&Array.isArray(t.reflexion_helpers)){ t.reflexion_helpers[hi]=val; syncOnly(); } },

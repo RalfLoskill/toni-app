@@ -6,7 +6,7 @@
 // Build-Stempel: im Browser per `window.TONI_JOURNEY_BUILD` abfragbar.
 // Wenn dieser Wert NICHT "v86-assignments-progress-group" ist, lädt der
 // Browser eine veraltete Datei (Cache/Deploy), nicht diese Version.
-window.TONI_JOURNEY_BUILD = "v167-heading-toggle-loesung-format";
+window.TONI_JOURNEY_BUILD = "v173-duplizieren-insert-pattern";
 
 /* Lernreisen V1: ergänzt das bestehende Dashboard, ohne das Design zu ersetzen. */
 const DEFAULT_LEARNING_JOURNEYS = [{
@@ -216,7 +216,7 @@ function openLearningTask(id){
     case 'Lerninhalt': toniRenderLerninhalt(task,contentEl); if(answerEl){answerEl.style.display='';answerEl.value=task.answer||'';answerEl.placeholder='Notiere dir, was du Neues gelernt hast…';} break;
     case 'Video': toniRenderVideo(task,contentEl); if(answerEl){answerEl.style.display='';answerEl.value=task.answer||'';answerEl.placeholder='Notiere dir Kernaussagen aus dem Video…';} break;
     case 'Quiz': task._quizIndex=0; task._quizCorrect=0; (task.quiz_data?.questions||[]).forEach(q=>{delete q._answered;}); toniRenderQuiz(task,contentEl); if(answerEl){answerEl.style.display='';answerEl.value=task.answer||'';answerEl.placeholder='Notiere dir Gedanken zum Quiz…';} break;
-    case 'Reflexion': toniRenderReflexion(task,contentEl); if(answerEl){answerEl.style.display='';answerEl.value=task.answer||'';answerEl.placeholder='Schreib deine Gedanken auf…';} break;
+    case 'Reflexion': toniRenderReflexion(task,contentEl); if(answerEl){answerEl.style.display='';answerEl.value=toniDecodeAnswer(task.answer).note;answerEl.placeholder='Schreib deine Gedanken auf…';} break;
     case 'Aufgabe': toniRenderAufgabe(task,contentEl); if(answerEl){answerEl.style.display='';answerEl.value=task.answer||'';answerEl.placeholder='Schreibe deinen Rechenweg oder deine Antwort…';} break;
     default:
       contentEl.innerHTML=`<strong>Auftrag:</strong><br>${task.content||task.description||task.title}`;
@@ -321,6 +321,17 @@ function toniCloseLightbox(){
 }
 window.toniOpenLightbox = toniOpenLightbox;
 window.toniCloseLightbox = toniCloseLightbox;
+
+// V112: Gibt formatierten Text sicher aus. Enthält der Text bereits HTML-Tags
+// (vom Editor erzeugt: <b>,<i>,<ul>,<h4>,…), wird er direkt als HTML gerendert.
+// Reiner Text (Alt-Daten, Seed-Daten) wird escaped und \n -> <br> umgesetzt,
+// damit dort keine Zeilenumbrüche verloren gehen und kein HTML eingeschleust wird.
+function toniRenderRichText(s){
+  const str = String(s == null ? '' : s);
+  const hasHtml = /<(b|i|em|strong|u|ul|ol|li|h4|h3|sup|sub|br|div|p|span)\b/i.test(str);
+  return hasHtml ? str : toniEsc(str).replace(/\n/g,'<br>');
+}
+window.toniRenderRichText = toniRenderRichText;
 
 function toniRenderLerninhalt(task,el){
   if(!el) return;
@@ -473,7 +484,33 @@ function toniRenderReflexion(task,el){
     return '';
   }).join('');
 
-  const scalesHtml = scales.map((sc,si)=>`<div style="background:var(--blue-light,#dbeafe);border:1px solid var(--color-border-tertiary,#e2e8f0);border-radius:10px;padding:12px 14px;margin-bottom:10px"><div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:6px">${toniEsc(sc.label||'Wie gut verstehst du das Thema?')}</div><div style="display:flex;gap:6px" class="reflexion-stars" data-scale="${si}">${[1,2,3,4,5].map(i=>`<button onclick="toniReflexionStar(${si},${i})" style="font-size:22px;background:none;border:none;cursor:pointer;opacity:.35" data-star="${i}">⭐</button>`).join('')}</div></div>`).join('');
+  // V170: Gespeicherte Selbsteinschätzungen aus answer wiederherstellen, damit
+  // die Vorauswahl beim erneuten Öffnen sichtbar ist.
+  const savedVals = (function(){
+    if(Array.isArray(task.reflexion_values) && task.reflexion_values.length) return task.reflexion_values;
+    const dec = toniDecodeAnswer(task.answer);
+    if(dec.values && dec.values.length){ task.reflexion_values = dec.values; return dec.values; }
+    return [];
+  })();
+  const TONI_WORT_STUFEN = ["noch nicht","ansatzweise","überwiegend","sicher"];
+  const scalesHtml = scales.map((sc,si)=>{
+    const cur = parseInt(savedVals[si],10) || 0;
+    const label = `<div style="font-size:13px;font-weight:600;color:var(--color-text-primary);margin-bottom:8px;line-height:1.5">${toniEsc(sc.label||'Wie gut verstehst du das Thema?')}</div>`;
+    let control;
+    if(sc.scale_type === "words"){
+      control = `<div style="display:flex;gap:6px;flex-wrap:wrap" class="reflexion-words" data-scale="${si}">` +
+        TONI_WORT_STUFEN.map((w,i)=>{
+          const on = (i+1)===cur;
+          return `<button onclick="toniReflexionWord(${si},${i+1})" data-step="${i+1}" style="flex:1;min-width:78px;padding:8px 10px;background:${on?'var(--color-background-info,#E6F1FB)':'var(--color-background-primary)'};border:${on?'2px':'0.5px'} solid ${on?'var(--color-border-info,#185FA5)':'var(--color-border-secondary)'};border-radius:8px;font-size:13px;color:${on?'var(--color-text-info,#0C447C)':'var(--color-text-primary)'};font-weight:${on?'600':'400'};cursor:pointer">${toniEsc(w)}</button>`;
+        }).join('') +
+        `</div>`;
+    } else {
+      control = `<div style="display:flex;gap:6px" class="reflexion-stars" data-scale="${si}">` +
+        [1,2,3,4,5].map(i=>`<button onclick="toniReflexionStar(${si},${i})" style="font-size:22px;background:none;border:none;cursor:pointer;opacity:${i<=cur?'1':'.35'}" data-star="${i}">⭐</button>`).join('') +
+        `</div>`;
+    }
+    return `<div style="background:var(--blue-light,#dbeafe);border:1px solid var(--color-border-tertiary,#e2e8f0);border-radius:10px;padding:12px 14px;margin-bottom:10px">${label}${control}</div>`;
+  }).join('');
 
   const helpersHtml = helpers.length
     ? `<div style="background:var(--color-background-secondary);border-radius:8px;padding:10px 12px;margin-bottom:12px"><div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:6px">Denk auch daran:</div>${helpers.map(h=>`<div style="font-size:13px;color:var(--color-text-primary);line-height:1.6;margin-bottom:4px">• ${toniEsc(h)}</div>`).join('')}</div>`
@@ -483,15 +520,61 @@ function toniRenderReflexion(task,el){
     ? `<div style="font-size:12px;color:var(--color-text-tertiary);margin-top:4px" id="reflexion-minhint">Mindestens ${minLen} Zeichen${task.required?' (Pflicht)':''}. <span id="reflexion-charcount">0</span>/${minLen}</div>`
     : '';
 
-  el.innerHTML=`<div style="font-size:14px;color:var(--color-text-primary);line-height:1.7;margin-bottom:12px">${toniEsc(prompt)}</div>${mediaHtml}${scalesHtml}${helpersHtml}${minHint}`;
+  el.innerHTML=`<div class="toni-lerninhalt-text" style="font-size:14px;color:var(--color-text-primary);line-height:1.7;margin-bottom:12px">${toniRenderRichText(prompt)}</div>${mediaHtml}${scalesHtml}${helpersHtml}${minHint}`;
 }
 window.toniReflexionStar=function(scaleIdx,val){
   const container=document.querySelector('.reflexion-stars[data-scale="'+scaleIdx+'"]');
   if(container) container.querySelectorAll('button').forEach((btn,i)=>{btn.style.opacity=i<val?'1':'0.3';});
   const task=findTask(STATE.selectedTaskId)?.task;
-  if(task){ task._reflexionStars=Array.isArray(task._reflexionStars)?task._reflexionStars:[]; task._reflexionStars[scaleIdx]=val; }
+  if(task){ task.reflexion_values=Array.isArray(task.reflexion_values)?task.reflexion_values:[]; task.reflexion_values[scaleIdx]=val; saveSelectedTaskAnswer(); }
 };
-function saveSelectedTaskAnswer(){const f=findTask(STATE.selectedTaskId);if(!f)return;f.task.answer=document.getElementById('lr-answer')?.value||f.task.answer||'';saveState(STATE);}
+// V169/V170: Wortskala – markiert die gewählte Stufe, speichert persistent.
+window.toniReflexionWord=function(scaleIdx,val){
+  const container=document.querySelector('.reflexion-words[data-scale="'+scaleIdx+'"]');
+  if(container) container.querySelectorAll('button').forEach((btn)=>{
+    const step=parseInt(btn.getAttribute('data-step'),10);
+    const on = step===val;
+    btn.style.background = on ? 'var(--color-background-info,#E6F1FB)' : 'var(--color-background-primary)';
+    btn.style.borderColor = on ? 'var(--color-border-info,#185FA5)' : 'var(--color-border-secondary)';
+    btn.style.borderWidth = on ? '2px' : '0.5px';
+    btn.style.color = on ? 'var(--color-text-info,#0C447C)' : 'var(--color-text-primary)';
+    btn.style.fontWeight = on ? '600' : '400';
+  });
+  const task=findTask(STATE.selectedTaskId)?.task;
+  if(task){ task.reflexion_values=Array.isArray(task.reflexion_values)?task.reflexion_values:[]; task.reflexion_values[scaleIdx]=val; saveSelectedTaskAnswer(); }
+};
+// V170: Reflexions-Selbsteinschätzungen persistent machen.
+// Das DB-Schema speichert pro Task nur das Textfeld `answer`. Damit die
+// Skalenwerte (Sterne/Wortskala) einen Reload überleben, kodieren wir sie als
+// unsichtbaren Marker ans Ende von `answer`. Der reine Notiztext bleibt davor.
+var TONI_RX_MARK = "\n\u200b[[TONI_RX:";  // Zero-Width-Space + Marker, im Textfeld unsichtbar
+function toniEncodeAnswerWithRx(noteText, values){
+  const clean = String(noteText||"").replace(/\n?\u200b\[\[TONI_RX:[\s\S]*?\]\]\s*$/,"");
+  const vals = Array.isArray(values) ? values : [];
+  if(!vals.some(v=>v)) return clean;            // keine Werte -> nur Text
+  return clean + TONI_RX_MARK + JSON.stringify(vals) + "]]";
+}
+function toniDecodeAnswer(answer){
+  const s = String(answer||"");
+  const m = s.match(/\u200b\[\[TONI_RX:([\s\S]*?)\]\]\s*$/);
+  let values = [];
+  if(m){ try{ values = JSON.parse(m[1]); }catch(e){ values = []; } }
+  const note = s.replace(/\n?\u200b\[\[TONI_RX:[\s\S]*?\]\]\s*$/,"");
+  return { note, values: Array.isArray(values) ? values : [] };
+}
+function saveSelectedTaskAnswer(){
+  const f=findTask(STATE.selectedTaskId);if(!f)return;
+  const note=document.getElementById('lr-answer')?.value;
+  const normType=toniNormalizeType?toniNormalizeType(f.task.type):f.task.type;
+  if(normType==='Reflexion'){
+    // Notiztext + Skalenwerte zusammen in answer kodieren.
+    const vals=Array.isArray(f.task.reflexion_values)?f.task.reflexion_values:[];
+    f.task.answer=toniEncodeAnswerWithRx(note!=null?note:toniDecodeAnswer(f.task.answer).note, vals);
+  } else {
+    f.task.answer=note||f.task.answer||'';
+  }
+  saveState(STATE);
+}
 
 // Aufgabe-Typ: optionale Ergebnisprüfung + optionale Musterlösung + Selbsteinschätzung
 function toniRenderAufgabe(task,el){
@@ -510,11 +593,11 @@ function toniRenderAufgabe(task,el){
   let topHtml;
   if(media){
     topHtml=`<div class="toni-auf-top">
-      <div class="toni-auf-prompt">${toniEsc(prompt).replace(/\n/g,'<br>')}</div>
+      <div class="toni-auf-prompt toni-lerninhalt-text">${toniRenderRichText(prompt)}</div>
       <div class="toni-auf-media"><div class="toni-auf-media-label">📎 Material</div>${media}</div>
     </div>`;
   }else{
-    topHtml=`<div class="toni-auf-prompt" style="margin-bottom:14px">${toniEsc(prompt).replace(/\n/g,'<br>')}</div>`;
+    topHtml=`<div class="toni-auf-prompt toni-lerninhalt-text" style="margin-bottom:14px">${toniRenderRichText(prompt)}</div>`;
   }
 
   let html=`<div class="toni-auf">${topHtml}`;
@@ -537,7 +620,7 @@ function toniRenderAufgabe(task,el){
         <span>💡 Musterlösung anzeigen</span><span id="aufgabe-solution-hint" class="toni-auf-sol-hint">erst nach einem Versuch</span>
       </div>
       <div id="aufgabe-solution-body" class="toni-auf-sol-body toni-lerninhalt-text" style="display:none">
-        ${/<(b|i|em|strong|ul|ol|li|h4|sup|sub|br|div|p)\b/i.test(String(task.solution||'')) ? String(task.solution) : toniEsc(task.solution).replace(/\n/g,'<br>')}
+        ${toniRenderRichText(task.solution)}
         <div id="aufgabe-selfcheck" class="toni-auf-self">
           <div class="toni-auf-self-title">Wie gut passt deine Lösung?</div>
           <div class="toni-auf-self-row">
@@ -2698,6 +2781,7 @@ function renderAdminJourneyListV16(rows){
         <div class="journey-tile-actions">
           <button class="journey-tile-action" onclick="editAdminJourney('${row.id}')" title="Bearbeiten"><span>✏️</span>Bearbeiten</button>
           <button class="journey-tile-action" onclick="toniExportJourney('${row.id}')" title="Exportieren"><span>⬇️</span>Export</button>
+          <button class="journey-tile-action" onclick="duplicateAdminJourney('${row.id}')" title="Duplizieren" aria-label="Duplizieren"><span>📑</span></button>
           <button class="journey-tile-action danger" onclick="deleteAdminJourney('${row.id}')" title="Löschen" aria-label="Löschen"><span>🗑️</span></button>
         </div>
       </div>`;
@@ -3157,6 +3241,96 @@ async function deleteAdminJourney(id){
     alert("Lernreise konnte nicht gelöscht werden:\n" + error.message);
   }
 }
+
+// V171: Lernreise duplizieren. Erzeugt eine eigenständige Kopie mit neuer ID,
+// neuen Stations-/Task-IDs (damit Fortschritte nicht mit dem Original kollidieren)
+// und dem Titelzusatz „– Kopie". Speichert über denselben Pfad wie das Anlegen.
+async function duplicateAdminJourney(id){
+  if(!canManageLearningJourneysV16()){
+    alert("Nur Admins und Tutoren können Lernreisen duplizieren.");
+    return;
+  }
+  const row = findAdminJourneyRowV16(id);
+  if(!row) return;
+
+  try{
+    const src = rowToJourneyV16(row);
+    // Tiefe Kopie, damit das Original unangetastet bleibt.
+    const copy = JSON.parse(JSON.stringify(src));
+    const newId = uuidLikeV16();
+    copy.id = newId;
+    copy.title = (src.title || "Lernreise") + " – Kopie";
+    // Neue IDs für Stationen und Aufgaben vergeben (sonst teilen sich Original und
+    // Kopie dieselben task_id und damit denselben Fortschritt in der DB).
+    (copy.steps || []).forEach((s, si) => {
+      s.id = "station-" + (si + 1) + "-" + uuidLikeV16().slice(0, 8);
+      (s.tasks || []).forEach((t, ti) => {
+        t.id = "task-" + (si + 1) + "-" + (ti + 1) + "-" + uuidLikeV16().slice(0, 8);
+        t.status = (si === 0 ? "todo" : (t.status === "done" ? "locked" : t.status || "locked"));
+        // frische Aufgabe: keine übernommenen Antworten/Fortschritte
+        t.answer = "";
+        if(t.reflexion_values) delete t.reflexion_values;
+      });
+    });
+
+    const ownerId = getJourneyOwnerIdV16();
+    const rowData = {
+      owner_profile_id: ownerId,
+      title: copy.title,
+      subject: copy.subject || "",
+      goal: copy.goal || "",
+      description: copy.description || "",
+      journey_json: copy,
+      updated_at: new Date().toISOString()
+    };
+
+    if(typeof supabaseRequest === "function" && ownerId){
+      // Exakt dasselbe Muster wie das (funktionierende) manuelle Anlegen einer
+      // Lernreise: id explizit mitsenden, journey_json als Objekt, return=representation.
+      try{
+        await supabaseRequest("learning_journey_templates", {
+          method: "POST",
+          headers: {"Prefer":"return=representation"},
+          body: JSON.stringify([{...rowData, id: newId}])
+        });
+      }catch(insErr){
+        const m = String(insErr && insErr.message || insErr);
+        // Diagnose: Häufige PostgREST-Eigenheit – mit return=representation braucht der
+        // Insert SELECT-Rechte auf die neue Zeile. Großes journey_json (eingebettete
+        // Bilder) oder die Rücklese-Policy können diesen RLS-Text auslösen. 2. Versuch
+        // OHNE Rücklesen (minimal) klärt, ob es wirklich die Policy oder das Rücklesen ist.
+        if(/row-level security|violates|rls/i.test(m)){
+          await supabaseRequest("learning_journey_templates", {
+            method: "POST",
+            headers: {"Prefer":"return=minimal"},
+            body: JSON.stringify([{...rowData, id: newId}])
+          });
+        }else{
+          throw insErr;
+        }
+      }
+    }else{
+      const rows = getLocalJourneysV16();
+      rows.unshift({...rowData, id: newId, _source:"local", created_at:new Date().toISOString()});
+      setLocalJourneysV16(rows);
+    }
+
+    await loadAdminLearningJourneys();
+    appendMsg?.("toni", `📑 Kopie erstellt: <strong>${escapeToniV16(copy.title)}</strong>`, typeof time === "function" ? time() : "", "desktop");
+  }catch(error){
+    console.error("Lernreise duplizieren:", error, {ownerId: getJourneyOwnerIdV16()});
+    const msg = String(error && error.message || error);
+    if(/row-level security|violates|rls|permission/i.test(msg)){
+      alert("Die Kopie konnte serverseitig nicht gespeichert werden (Zugriffsrichtlinie der Datenbank).\n\n"
+        + "Mögliche Ursache: Das Anlegen neuer Lernreisen ist für dein Profil/deine Institution per RLS nicht erlaubt, "
+        + "obwohl das Bearbeiten bestehender erlaubt ist.\n\n"
+        + "Technische Meldung: " + msg);
+    } else {
+      alert("Lernreise konnte nicht dupliziert werden:\n" + msg);
+    }
+  }
+}
+window.duplicateAdminJourney = duplicateAdminJourney;
 
 /* TONI – Lernreise exportieren */
 function toniSlugifyTitle(title){
