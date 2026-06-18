@@ -313,8 +313,8 @@
       <div class="v111-typerow">${typeBtns}</div>
       <div class="v111-flabel">Titel</div>
       <input class="v111-inp" value="${E.esc(t.title||"")}" oninput="TONI_EDITOR_V111_UI.editTask(${si},${ti},'title',this.value)">
-      <div class="v111-flabel">Beschreibung / Inhalt</div>
-      <textarea class="v111-inp v111-ta" oninput="TONI_EDITOR_V111_UI.editTask(${si},${ti},'description',this.value)">${E.esc(t.description||t.content||"")}</textarea>
+      <div class="v111-flabel">Arbeitsanweisung</div>
+      <textarea class="v111-inp v111-ta" placeholder="Kurze Anweisung an die Lernenden, z. B. „Lies den Inhalt aufmerksam durch.“" oninput="TONI_EDITOR_V111_UI.editTask(${si},${ti},'description',this.value)">${E.esc(t.description||"")}</textarea>
       ${typeSpecificHtml(t,si,ti)}
       ${materialHtml(t,si,ti)}
       <div class="v111-panelfoot">
@@ -354,7 +354,51 @@
     if(type==="Aufgabe"){
       return aufgabeEditorHtml(t,si,ti);
     }
+    if(type==="Lerninhalt"){
+      return lerninhaltEditorHtml(t,si,ti);
+    }
     return "";
+  }
+
+  // V112: Eigenes Lernstoff-Feld fuer Lerninhalt. contenteditable (HTML), damit
+  // Fett/Absatz direkt sichtbar sind und KEINE <b>-Zeichen im Editor erscheinen.
+  // Mini-Toolbar: Fett, Absatz. Lädt t.content, schreibt nach t.content zurueck.
+  // V113: Wiederverwendbare Formatier-Toolbar + contenteditable-Feld.
+  // fieldKey: "content" (Lernstoff) oder "solution" (Musterlösung). idSuffix
+  // unterscheidet die DOM-IDs, sodass beide Felder gleichzeitig existieren koennen.
+  function richToolbarHtml(t,si,ti,fieldKey,placeholder){
+    const key = fieldKey || "content";
+    const idBase = key==="solution" ? ("v111-solution-"+si+"-"+ti) : ("v111-content-"+si+"-"+ti);
+    const html = (typeof t[key] === "string") ? t[key] : "";
+    const C = `TONI_EDITOR_V111_UI.contentCmd(${si},${ti},`;
+    const fk = `,'${key}')`;
+    return `<div class="v111-lerntoolbar">
+        <button type="button" class="v111-lernbtn" title="Fett (Text markieren, dann klicken)"
+          onmousedown="event.preventDefault()" onclick="${C}'bold'${fk}"><b>F</b></button>
+        <button type="button" class="v111-lernbtn" title="Kursiv (Text markieren, dann klicken)"
+          onmousedown="event.preventDefault()" onclick="${C}'italic'${fk}"><i>K</i></button>
+        <button type="button" class="v111-lernbtn" title="Hochstellen, z. B. x²"
+          onmousedown="event.preventDefault()" onclick="${C}'sup'${fk}">x<sup>2</sup></button>
+        <button type="button" class="v111-lernbtn" title="Tiefstellen, z. B. H₂O"
+          onmousedown="event.preventDefault()" onclick="${C}'sub'${fk}">x<sub>2</sub></button>
+        <button type="button" class="v111-lernbtn v111-lernbtn-icon" title="Aufzählung (Punkte)"
+          onmousedown="event.preventDefault()" onclick="${C}'list'${fk}"><span class="v111-listdots"></span></button>
+        <button type="button" class="v111-lernbtn" title="Nummerierte Aufzählung (1. 2. 3.)"
+          onmousedown="event.preventDefault()" onclick="${C}'orderedlist'${fk}">1.2.3.</button>
+        <button type="button" class="v111-lernbtn" title="Überschrift (klicken zum Ein-/Ausschalten)"
+          onmousedown="event.preventDefault()" onclick="${C}'heading'${fk}">Überschrift</button>
+      </div>
+      <div id="${idBase}" class="v111-lernedit" contenteditable="true"
+        data-ph="${E.esc(placeholder||"")}"
+        oninput="TONI_EDITOR_V111_UI.editContentHtml(${si},${ti},this.innerHTML,'${key}')">${html}</div>`;
+  }
+
+  function lerninhaltEditorHtml(t,si,ti){
+    return `<div class="v111-rxcard v111-lerncard">
+      <div class="v111-flabel" style="margin-bottom:8px">📖 Lerninhalt (Lernstoff)</div>
+      ${richToolbarHtml(t,si,ti,"content","Hier den eigentlichen Lerntext eingeben…")}
+      <div style="font-size:11px;color:var(--v111-t3);margin-top:6px">Text markieren und Button klicken. „Überschrift“ wirkt auf die aktuelle Zeile und lässt sich durch erneutes Klicken zurücksetzen. Die Lernenden sehen den Text formatiert.</div>
+    </div>`;
   }
 
   // Aufgabe-Editor: optionale Ergebnisprüfung (Ergebnis + Einheit) und Musterlösung
@@ -372,10 +416,9 @@
         </div>
         <div style="font-size:11px;color:var(--v111-t3);margin-top:6px">Leer lassen für offene Aufgaben ohne automatische Prüfung. Nach 3 Fehlversuchen wird die Musterlösung empfohlen.</div>
       </div>
-      <div class="v111-rxcard">
+      <div class="v111-rxcard v111-lerncard">
         <div class="v111-flabel" style="margin-bottom:8px">💡 Musterlösung (optional)</div>
-        <textarea class="v111-inp" style="min-height:90px;resize:vertical" placeholder="Musterlösung oder Bewertungskriterien – wird dem Schüler nach einem Versuch aufklappbar angezeigt."
-          oninput="TONI_EDITOR_V111_UI.editTask(${si},${ti},'solution',this.value)">${E.esc(t.solution||"")}</textarea>
+        ${richToolbarHtml(t,si,ti,"solution","Musterlösung oder Bewertungskriterien – wird dem Schüler nach einem Versuch aufklappbar angezeigt.")}
         <div style="font-size:11px;color:var(--v111-t3);margin-top:6px">Nach dem Aufklappen kann sich der Schüler selbst einschätzen (stimmt / teilweise / nochmal).</div>
       </div>
     </div>`;
@@ -537,7 +580,50 @@
     addTask(i){ const s=stations()[i]; if(!s)return; s.tasks=s.tasks||[]; s.tasks.push(E.makeTask("Aufgabe","Neue Aufgabe")); ui.editing={si:i,ti:s.tasks.length-1}; commit(); },
     openTask(si,ti){ ui.editing={si,ti}; render(); },
     closeTask(){ ui.editing=null; commit(); },
-    editTask(si,ti,key,val){ const t=stations()[si]?.tasks[ti]; if(t){ t[key]=val; if(key==="description")t.content=val; if(typeof syncJourneyBuilderToLegacyTextareaV17==="function")syncJourneyBuilderToLegacyTextareaV17(); updatePreviewOnly(); } },
+    editTask(si,ti,key,val){ const t=stations()[si]?.tasks[ti]; if(t){ t[key]=val;
+      // V112: description (Arbeitsanweisung) und content (Lernstoff) sind GETRENNT.
+      // Frueher wurde hier t.content=val gespiegelt – das ueberschrieb den vollen
+      // Lerninhalt mit der kurzen Anweisung. Diese Spiegelung gibt es nur noch fuer
+      // Typen OHNE eigenes Inhaltsfeld (Quiz/Video/Reflexion), damit deren kurze
+      // Beschreibung wie bisher auch als content in die Ansicht durchschlaegt.
+      if(key==="description" && E.normType(t.type)!=="Lerninhalt") t.content=val;
+      if(typeof syncJourneyBuilderToLegacyTextareaV17==="function")syncJourneyBuilderToLegacyTextareaV17(); updatePreviewOnly(); } },
+    // V112: Lernstoff-Feld (contenteditable, HTML). Schreibt direkt nach t.content.
+    editContentHtml(si,ti,html,fieldKey){ const t=stations()[si]?.tasks[ti]; if(t){ t[fieldKey||"content"]=html;
+      if(typeof syncJourneyBuilderToLegacyTextareaV17==="function")syncJourneyBuilderToLegacyTextareaV17(); } },
+    // V112: Mini-Toolbar-Befehl (Fett/Absatz) auf dem aktiven Lernstoff-Feld.
+    contentCmd(si,ti,cmd,fieldKey){
+      // fieldKey: "content" (Lernstoff, Standard) oder "solution" (Musterlösung).
+      const key = fieldKey || "content";
+      const id = key==="solution" ? ("v111-solution-"+si+"-"+ti) : ("v111-content-"+si+"-"+ti);
+      const ed=document.getElementById(id);
+      if(!ed) return;
+      ed.focus();
+      try{
+        switch(cmd){
+          case "bold":      document.execCommand("bold"); break;
+          case "italic":    document.execCommand("italic"); break;
+          case "sup":       document.execCommand("superscript"); break;
+          case "sub":       document.execCommand("subscript"); break;
+          case "list":      document.execCommand("insertUnorderedList"); break;
+          case "orderedlist": document.execCommand("insertOrderedList"); break;
+          case "heading": {
+            // Toggle: steht der Cursor schon in einer Ueberschrift (h4), zuruecksetzen
+            // auf normalen Absatz; sonst zur Ueberschrift machen.
+            let node = window.getSelection && window.getSelection().anchorNode;
+            let inHeading = false;
+            while(node && node !== ed){
+              if(node.nodeType===1 && node.tagName && node.tagName.toLowerCase()==="h4"){ inHeading=true; break; }
+              node = node.parentNode;
+            }
+            document.execCommand("formatBlock", false, inHeading ? "div" : "h4");
+            break;
+          }
+        }
+      }catch(e){}
+      const t=stations()[si]?.tasks[ti];
+      if(t){ t[key]=ed.innerHTML; if(typeof syncJourneyBuilderToLegacyTextareaV17==="function")syncJourneyBuilderToLegacyTextareaV17(); }
+    },
     setTaskType(si,ti,type){ const t=stations()[si]?.tasks[ti]; if(t){ t.type=type; commit(); } },
     editHead(fieldId,val){ const f=field(fieldId); if(f){ f.value=val; updatePreviewOnly(); } },
     delTask(si,ti){ const s=stations()[si]; if(s){ s.tasks.splice(ti,1); ui.editing=null; commit(); } },
@@ -789,6 +875,25 @@
       ${S} .v111-yterr{font-size:12px!important;color:#854F0B!important;margin-top:6px!important}
       ${S} .v111-reflex{margin-bottom:10px!important}
       ${S} .v111-rxcard{background:var(--v111-bg1)!important;border:0.5px solid var(--v111-b1)!important;border-radius:10px!important;padding:11px!important;margin-top:8px!important}
+      ${S} .v111-lerncard{background:#E6F1FB!important;border:0.5px solid #B5D4F4!important}
+      ${S} .v111-lerntoolbar{display:flex!important;gap:6px!important;margin-bottom:6px!important}
+      ${S} .v111-lernbtn{font-size:12px!important;padding:4px 10px!important;border:0.5px solid var(--v111-b2)!important;border-radius:6px!important;background:var(--v111-bg1)!important;color:var(--v111-t1)!important;cursor:pointer!important;line-height:1.4!important}
+      ${S} .v111-lernbtn:hover{background:#fff!important;border-color:#185FA5!important;color:#185FA5!important}
+      ${S} .v111-lernbtn-icon{display:inline-flex!important;align-items:center!important;justify-content:center!important;min-width:30px!important}
+      ${S} .v111-listdots{display:inline-block!important;width:4px!important;height:16px!important;position:relative!important}
+      ${S} .v111-listdots:before{content:""!important;position:absolute!important;left:0!important;width:4px!important;height:4px!important;border-radius:50%!important;background:currentColor!important;box-shadow:0 6px 0 currentColor,0 12px 0 currentColor!important;top:0!important}
+      ${S} .v111-lernedit{min-height:150px!important;max-height:340px!important;overflow-y:auto!important;background:var(--v111-bg1)!important;border:0.5px solid var(--v111-b2)!important;border-radius:8px!important;padding:9px 11px!important;font-size:13px!important;line-height:1.6!important;color:var(--v111-t1)!important;font-family:inherit!important;outline:none!important}
+      ${S} .v111-lernedit:focus{border-color:#185FA5!important}
+      ${S} .v111-lernedit:empty:before{content:attr(data-ph)!important;color:var(--v111-t3)!important}
+      ${S} .v111-lernedit b,${S} .v111-lernedit strong{font-weight:600!important}
+      ${S} .v111-lernedit p{margin:0 0 8px!important}
+      ${S} .v111-lernedit i,${S} .v111-lernedit em{font-style:italic!important}
+      ${S} .v111-lernedit sup{font-size:.75em!important;vertical-align:super!important}
+      ${S} .v111-lernedit sub{font-size:.75em!important;vertical-align:sub!important}
+      ${S} .v111-lernedit h4{font-size:17px!important;font-weight:600!important;margin:12px 0 5px!important;line-height:1.35!important;color:var(--v111-t1)!important}
+      ${S} .v111-lernedit ul{margin:6px 0 8px!important;padding-left:22px!important;list-style:disc!important}
+      ${S} .v111-lernedit ol{margin:6px 0 8px!important;padding-left:24px!important;list-style:decimal!important}
+      ${S} .v111-lernedit li{margin:2px 0!important}
       ${S} .v111-rxrow{display:flex!important;align-items:center!important;justify-content:space-between!important;font-size:12px!important;font-weight:500!important;color:var(--v111-t1)!important;cursor:pointer!important}
       ${S} .v111-pvmedia{margin:8px 0!important}
       ${S} .v111-pvimg{max-width:100%!important;border-radius:8px!important;margin-bottom:6px!important;display:block!important}

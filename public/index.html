@@ -9562,7 +9562,7 @@ input.youtube-force-invalid-v105{
 
 <script src="/chat.js?v=12"></script>
 
-<script src="/journey.js?v=162"></script>
+<script src="/journey.js?v=167"></script>
 <script src="/journey/theme/journey_theme.js?v=4"></script>
 <script src="/journey/theme/journey_theme_space.js?v=9"></script>
 <script src="/journey/theme/journey_theme_football.js?v=2"></script>
@@ -9572,7 +9572,7 @@ input.youtube-force-invalid-v105{
 <script src="/journey/theme/journey_theme_london.js?v=3"></script>
 <script src="/journey/theme/journey_theme_afrika.js?v=9"></script>
 <script src="/journey/theme/journey_theme_picker.js?v=3"></script>
-<script src="/journey_editor_v111.js?v=55"></script>
+<script src="/journey_editor_v111.js?v=59"></script>
 <script src="/admin.js"></script>
 <script src="/ui.js?v=8"></script>
 
@@ -10216,6 +10216,7 @@ input.youtube-force-invalid-v105{
 
       <p style="font-size:13px;color:var(--color-text-secondary);line-height:1.5;margin:0 0 18px">Beantworte so viel du möchtest – Felder dürfen leer bleiben. Aus deinen Angaben erstellt TONi anschließend einen Vorschlag für die Lernreise.</p>
 
+      <div id="toni-ai-step1">
       <!-- 1. Thema -->
       <div style="margin-bottom:16px">
         <label style="font-size:13px;font-weight:500;color:var(--color-text-primary);display:block;margin-bottom:6px">1. Thema – worum geht es? *</label>
@@ -10272,23 +10273,60 @@ input.youtube-force-invalid-v105{
           style="width:100%;padding:9px 12px;border:1px solid #D8D2C4;border-radius:var(--border-radius-md);font-size:14px;resize:vertical;background:var(--color-background-primary);color:var(--color-text-primary)"></textarea>
       </div>
 
-      <button id="toni-ai-submit-btn" onclick="toniSubmitAiJourney()"
+      <button id="toni-ai-submit-btn" onclick="toniRequestOutline()"
         style="width:100%;padding:12px;background:#185FA5;color:#fff;border:none;border-radius:var(--border-radius-md);font-size:15px;font-weight:500;cursor:pointer;transition:opacity .15s"
         onmouseover="if(!this.disabled)this.style.opacity='.85'" onmouseout="if(!this.disabled)this.style.opacity='1'">
-        Lernreise erstellen lassen
+        Vorschlag erstellen
       </button>
       <div id="toni-ai-gen-status" style="display:none;margin-top:10px;font-size:13px;color:#185FA5;text-align:center"></div>
+      </div><!-- /toni-ai-step1 -->
 
-      <!-- Ausgabe: generierter Prompt (erscheint nach Klick) -->
-      <div id="toni-ai-prompt-box" style="display:none;margin-top:20px">
-        <label style="font-size:13px;font-weight:500;color:var(--color-text-primary);display:block;margin-bottom:6px">Generierter Prompt</label>
-        <textarea id="toni-ai-prompt-output" rows="12" readonly
-          style="width:100%;padding:9px 12px;border:0.5px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:13px;line-height:1.5;resize:vertical;background:var(--color-background-secondary);color:var(--color-text-primary);font-family:inherit"></textarea>
-        <button onclick="toniCopyAiJourneyPrompt(this)"
-          style="margin-top:8px;padding:8px 14px;background:rgba(24,95,165,.1);color:#185FA5;border:0.5px solid #85B7EB;border-radius:var(--border-radius-md);font-size:13px;font-weight:500;cursor:pointer">
-          In Zwischenablage kopieren
-        </button>
-      </div>
+      <!-- ============ SCHRITT 2: Zwischenansicht (Vorschau) ============ -->
+      <div id="toni-ai-step2" style="display:none">
+        <div style="margin-bottom:18px">
+          <label style="font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--color-text-secondary);display:block;margin-bottom:6px">Titel</label>
+          <input type="text" id="toni-ai-o-title"
+            style="width:100%;padding:10px 12px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:15px;color:var(--color-text-primary)">
+        </div>
+        <div style="margin-bottom:18px">
+          <label style="font-size:11px;font-weight:800;letter-spacing:.04em;text-transform:uppercase;color:var(--color-text-secondary);display:block;margin-bottom:6px">Lernziel</label>
+          <textarea id="toni-ai-o-goal" rows="3"
+            style="width:100%;padding:10px 12px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;resize:vertical;color:var(--color-text-primary);font-family:inherit"></textarea>
+        </div>
+
+        <div style="font-size:15px;font-weight:800;color:#0C447C;margin:20px 0 4px">Kompetenzen</div>
+        <div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:12px">Wähle aus, welche Kompetenzen die Lernreise abdecken soll. Abgewählte werden nicht berücksichtigt.</div>
+        <div id="toni-ai-o-komp"></div>
+        <div style="display:flex;gap:8px;margin-top:4px">
+          <input type="text" id="toni-ai-o-komp-neu" placeholder="Eigene Kompetenz formulieren …"
+            onkeydown="if(event.key==='Enter'){event.preventDefault();toniOutlineAddKomp();}"
+            style="flex:1;padding:10px 12px;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;color:var(--color-text-primary)">
+          <button onclick="toniOutlineAddKomp()" title="Kompetenz hinzufügen"
+            style="flex:0 0 44px;width:44px;border:none;background:#185FA5;color:#fff;border-radius:var(--border-radius-md);font-size:22px;cursor:pointer;line-height:1">+</button>
+        </div>
+
+        <div style="font-size:15px;font-weight:800;color:#0C447C;margin:22px 0 4px">Vorgesehene Stationen</div>
+        <div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:10px">Vorschlag auf Basis deiner Angaben. Die endgültigen Stationen werden aus den gewählten Kompetenzen abgeleitet.</div>
+        <div id="toni-ai-o-stations" style="border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);padding:6px 14px;background:var(--color-background-secondary)"></div>
+
+        <div style="font-size:15px;font-weight:800;color:#0C447C;margin:22px 0 4px">Entwicklungstiefe</div>
+        <div style="font-size:12px;color:var(--color-text-secondary);margin-bottom:12px">Mehr Tiefe bedeutet ausführlichere Inhalte und Grafiken – und längere Denkzeit.</div>
+        <div style="padding:4px 0 0">
+          <div style="padding:0 12.5%">
+            <input type="range" id="toni-ai-tiefe" min="0" max="3" step="1" value="0" oninput="toniOutlineUpdateTiefe()"
+              style="width:100%;margin:0;height:6px;border-radius:6px;accent-color:#185FA5;cursor:pointer">
+          </div>
+          <div id="toni-ai-tiefe-marks" style="display:flex;margin-top:10px"></div>
+        </div>
+
+        <div style="margin-top:24px;display:flex;gap:10px;flex-wrap:wrap">
+          <button onclick="toniOutlineBack()"
+            style="padding:13px 18px;background:#fff;color:#185FA5;border:1px solid var(--color-border-secondary);border-radius:var(--border-radius-md);font-size:14px;font-weight:600;cursor:pointer">Zurück</button>
+          <button id="toni-ai-final-btn" onclick="toniSubmitAiJourney()"
+            style="flex:1 1 auto;padding:13px;background:#185FA5;color:#fff;border:none;border-radius:var(--border-radius-md);font-size:15px;font-weight:700;cursor:pointer">Lernreise erstellen</button>
+        </div>
+        <div id="toni-ai-final-status" style="display:none;margin-top:10px;font-size:13px;color:#185FA5;text-align:center"></div>
+      </div><!-- /toni-ai-step2 -->
     </div>
   </div>
 </div>

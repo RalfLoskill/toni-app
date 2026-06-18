@@ -25,6 +25,79 @@ export default async function handler(req, res) {
   const { agentType, context } = req.body || {};
 
   // ================================================================
+  // SCHRITT 1: Outline-Generator (journey_outline)
+  // Schnell + klein: liefert nur Titel, Lernziel, Kompetenzen und eine
+  // Stationsvorschau – KEINE Inhalte, keine Bilder. Dient der Zwischenansicht,
+  // in der der Tutor prüft und Kompetenzen wählt.
+  // Erwartet: { agentType:"journey_outline", prompt }
+  // Antwortet: { outline:{ title, goal, competencies:[...], stations:[{title,description}] } }
+  // ================================================================
+  if (agentType === 'journey_outline') {
+    const prompt = (req.body && typeof req.body.prompt === 'string') ? req.body.prompt.trim() : '';
+    if (!prompt) return res.status(400).json({ error: 'Kein Prompt übergeben.' });
+    if (prompt.length > 8000) return res.status(413).json({ error: 'Prompt zu lang.' });
+
+    const OUTLINE_SYSTEM = `Du bist Autor:in für die Lernplattform TONi. Erstelle eine kompakte VORSCHAU (Outline) für eine Lernreise.
+Antworte AUSSCHLIESSLICH mit einem einzigen gültigen JSON-Objekt – KEIN Markdown, KEINE Code-Fences, KEIN Text davor oder danach.
+Verwende in Texten nur normale ASCII-Satzzeichen (keine Pfeile wie -> als Sonderzeichen, keine typografischen Anführungszeichen).
+
+Struktur:
+{
+ "title": string,                       // prägnanter Titel der Lernreise
+ "goal": string,                        // 1-2 Sätze Lernzielbeschreibung
+ "competencies": [string, ...],         // 4-8 konkrete Kompetenzen ("Die Lernenden koennen ...")
+ "stations": [ { "title": string, "description": string }, ... ]  // 3-6 vorgesehene Stationen
+}
+Inhaltlich: didaktisch sinnvoll, fachlich korrekt, Deutsch, altersgerecht zur genannten Zielgruppe.
+KEINE Aufgaben, keine Inhalte, keine Bilder – nur diese Outline. Halte dich kurz.`;
+
+    try {
+      const aiResp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({
+          model: process.env.TONI_AI_OUTLINE_MODEL || 'claude-sonnet-4-6',
+          max_tokens: 2000,
+          system: OUTLINE_SYSTEM,
+          messages: [{ role: 'user', content: prompt }]
+        })
+      });
+      if (!aiResp.ok) {
+        const detail = await aiResp.text().catch(() => '');
+        console.error('journey_outline Claude-Fehler:', detail.slice(0, 500));
+        return res.status(502).json({ error: 'KI-Dienst nicht erreichbar.' });
+      }
+      const data = await aiResp.json();
+      let text = (data.content || []).map(b => (b && b.type === 'text' ? b.text : '')).join('').trim();
+      text = text.replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
+      const f = text.indexOf('{'), l = text.lastIndexOf('}');
+      if (f !== -1 && l !== -1) text = text.slice(f, l + 1);
+      let outline;
+      try { outline = JSON.parse(text); }
+      catch (e) {
+        try { outline = JSON.parse(text.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')); }
+        catch (e2) {
+          console.error('journey_outline Parse-Fehler:', e2 && e2.message);
+          return res.status(422).json({ error: 'Die Outline-Antwort war kein gültiges JSON.' });
+        }
+      }
+      if (!outline || !outline.title || !Array.isArray(outline.competencies)) {
+        return res.status(422).json({ error: 'Die Outline ist unvollständig.' });
+      }
+      // Defensiv normalisieren.
+      outline.goal = outline.goal || '';
+      outline.competencies = outline.competencies.filter(c => typeof c === 'string' && c.trim()).slice(0, 12);
+      outline.stations = Array.isArray(outline.stations)
+        ? outline.stations.filter(s => s && s.title).map(s => ({ title: String(s.title), description: String(s.description || '') })).slice(0, 8)
+        : [];
+      return res.status(200).json({ outline });
+    } catch (err) {
+      console.error('journey_outline Fehler:', err);
+      return res.status(500).json({ error: 'Unerwarteter Fehler bei der Vorschau.' });
+    }
+  }
+
+  // ================================================================
   // SONDERFALL: Lernreisen-Generator (journey_builder)
   // Eigener Zweig – nutzt ein stärkeres Modell und viele Tokens und gibt
   // ein journey-Objekt zurück (NICHT message/ui_updates). Der bestehende
@@ -40,6 +113,20 @@ export default async function handler(req, res) {
     if (prompt.length > 8000) {
       return res.status(413).json({ error: 'Prompt zu lang.' });
     }
+
+    // Entwicklungstiefe (vom Slider). Steuert Bilder, Umfang und max_tokens.
+    // Stufen: basis | basis_plus | extension | high
+    const depth = (req.body && typeof req.body.depth === 'string') ? req.body.depth : 'extension';
+    const depthCfg = {
+      basis:      { bilder: false, maxTokens: 8000,  umfang: '3-4 Stationen mit je 3-4 Aufgaben, knappe aber vollständige Inhalte.' },
+      basis_plus: { bilder: false, maxTokens: 12000, umfang: '4-5 Stationen mit je 4-5 Aufgaben, etwas ausführlichere Inhalte.' },
+      extension:  { bilder: true,  maxTokens: 16000, umfang: '4-6 Stationen mit je 4-5 Aufgaben, ausführliche Inhalte mit Grafiken.' },
+      high:       { bilder: true,  maxTokens: 24000, umfang: '6-8 Stationen mit je 5-6 Aufgaben, sehr ausführliche, vertiefte Inhalte mit Grafiken und Rückbezügen zwischen den Stationen.' }
+    }[depth] || { bilder: true, maxTokens: 16000, umfang: '4-6 Stationen mit je 4-5 Aufgaben, ausführliche Inhalte mit Grafiken.' };
+
+    const bilderHinweis = depthCfg.bilder
+      ? `Bilder: Erzeuge KEIN rohes SVG. Wenn bei einem Lerninhalt eine Grafik sinnvoll ist, gib stattdessen ein Feld "image_spec":{ "title": string, "kind": "diagram"|"bars"|"cycle"|"list", "labels": [string, ...] } an. Der Server zeichnet daraus die Grafik. "labels" sind kurze Begriffe (max. 6). Nutze "cycle" fuer gegenlaeufige Prozesse (genau 2 Pole als labels[0]/labels[1], optional Pfeil-Beschriftung labels[2]/labels[3]), "bars" fuer Vergleiche, "diagram" fuer ein zentrales Thema mit zugeordneten Begriffen, "list" fuer eine einfache Aufzaehlung. Mindestens ein Lerninhalt soll eine image_spec enthalten. cover_image bleibt leer (der Server erzeugt das Deckblatt).`
+      : `Bilder: In dieser Stufe KEINE Bilder. Setze KEINE image_spec, lass blocks und cover_image leer.`;
 
     const JOURNEY_SYSTEM = `Du bist Autor:in für die Lernplattform TONi. Erzeuge eine vollständige Lernreise als JSON.
 Antworte AUSSCHLIESSLICH mit einem einzigen gültigen JSON-Objekt – KEIN Markdown, KEINE Code-Fences, KEIN Text davor oder danach.
@@ -69,82 +156,111 @@ Typ-Zusatzfelder:
 - Video: youtube_video_id:"" (LEER lassen, KEINE ID erfinden – Tutor trägt sie nach).
 - Aufgabe: solution (Musterlösung). Optional expected_answer + expected_unit.
 - Reflexion: reflexion_prompt, reflexion_scales:[{label}], reflexion_helpers:[...].
-Bilder: Erzeuge KEIN rohes SVG. Wenn bei einem Lerninhalt eine Grafik sinnvoll ist,
-gib stattdessen ein Feld "image_spec":{ "title": string, "kind": "diagram"|"bars"|"cycle"|"list",
-"labels": [string, ...] } an. Der Server zeichnet daraus die Grafik. "labels" sind kurze
-Begriffe (max. 6). Nutze "cycle" für gegenläufige Prozesse (genau 2 Pole als labels[0]/labels[1],
-optional Beschriftung der Pfeile als labels[2]/labels[3]), "bars" für Vergleiche, "diagram" für
-ein zentrales Thema mit zugeordneten Begriffen, "list" für eine einfache Aufzählung.
-Mindestens ein Lerninhalt der Reise soll eine image_spec enthalten. cover_image bleibt leer
-(der Server erzeugt das Deckblatt).
+${bilderHinweis}
+Umfang dieser Stufe: ${depthCfg.umfang}
 Inhalt: didaktisch sinnvoll, fachlich korrekt, Deutsch, altersgerecht. Pro Station mehrere Aufgaben; über die Reise alle fünf Typen.`;
 
     try {
-      const aiResp = await fetch('https://api.anthropic.com/v1/messages', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-api-key': ANTHROPIC_API_KEY,
-          'anthropic-version': '2023-06-01'
-        },
-        body: JSON.stringify({
-          model: process.env.TONI_AI_JOURNEY_MODEL || 'claude-sonnet-4-6',
-          max_tokens: 16000,
-          system: JOURNEY_SYSTEM,
-          messages: [{ role: 'user', content: prompt }]
-        })
-      });
-
-      if (!aiResp.ok) {
-        const detail = await aiResp.text().catch(() => '');
-        console.error('journey_builder Claude-Fehler:', detail.slice(0, 500));
-        return res.status(502).json({ error: 'KI-Dienst nicht erreichbar.' });
-      }
-
-      const data = await aiResp.json();
-      const text = (data.content || []).map(b => (b && b.type === 'text' ? b.text : '')).join('').trim();
-      const stopReason = data.stop_reason || '(unbekannt)';
-
-      // JSON robust herauslösen.
-      let jsonText = text.replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
-      const first = jsonText.indexOf('{');
-      const last = jsonText.lastIndexOf('}');
-      if (first !== -1 && last !== -1) jsonText = jsonText.slice(first, last + 1);
-
-      // Häufige KI-JSON-Fehler reparieren: rohe Steuerzeichen (außer den in
-      // JSON-Strings ohnehin unzulässigen) entfernen, die das Parsen sprengen.
-      // Zeilenumbrüche/Tabs in Strings sind oft die Ursache von
-      // "Invalid character"-Fehlern.
+      // Stärkere JSON-Reparatur: Steuerzeichen entfernen, typografische Quotes
+      // normalisieren, Trailing-Commas entfernen, offene Klammern/Brackets am
+      // Ende schließen (fängt leicht abgeschnittene Antworten ab).
       function repairJsonText(s){
-        // Entferne nicht druckbare Steuerzeichen (U+0000–U+001F) außer \t \n \r,
-        // diese werden anschließend separat behandelt.
-        return s
+        let t = s
           .replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')
-          // verbreitete „smarte" Anführungszeichen in Werten stören selten,
-          // aber doppelte typografische Quotes können JSON brechen -> normalisieren
-          .replace(/[\u201C\u201D]/g, '\\"');
+          .replace(/[\u201C\u201D]/g, '"')
+          .replace(/[\u2018\u2019]/g, "'")
+          .replace(/[\u2190-\u21FF]/g, '->')        // Pfeil-Sonderzeichen
+          .replace(/,\s*([}\]])/g, '$1');           // Trailing-Commas vor } oder ]
+        // Bei abgeschnittenem JSON: unvollständiges Ende kappen. Zähle echte
+        // (nicht escapte) Anführungszeichen; bei ungerader Zahl ist ein String
+        // offen -> bis zum letzten sicheren Strukturzeichen zurückschneiden.
+        const quotes = (t.match(/(?<!\\)"/g) || []).length;
+        if (quotes % 2 !== 0) {
+          const lastSafe = Math.max(t.lastIndexOf('"}'), t.lastIndexOf('",'), t.lastIndexOf('"]'));
+          if (lastSafe !== -1) t = t.slice(0, lastSafe + 1);
+        }
+        // Dangling Komma/Doppelpunkt am Ende entfernen.
+        t = t.replace(/[,:]\s*$/, '');
+        // Offene Klammern in KORREKTER Reihenfolge schließen: Stack aufbauen,
+        // dabei Strings überspringen, am Ende in umgekehrter Reihenfolge schließen.
+        const stack = [];
+        let inStr = false, esc = false;
+        for (let i = 0; i < t.length; i++) {
+          const c = t[i];
+          if (inStr) {
+            if (esc) { esc = false; }
+            else if (c === '\\') { esc = true; }
+            else if (c === '"') { inStr = false; }
+            continue;
+          }
+          if (c === '"') inStr = true;
+          else if (c === '{' || c === '[') stack.push(c);
+          else if (c === '}' || c === ']') stack.pop();
+        }
+        // Falls die Antwort mitten im String endete: schließendes " ergänzen.
+        if (inStr) t += '"';
+        while (stack.length) {
+          const open = stack.pop();
+          t += open === '{' ? '}' : ']';
+        }
+        return t;
       }
 
-      let journey = null;
-      let parseErr = null;
-      try {
-        journey = JSON.parse(jsonText);
-      } catch (e1) {
-        parseErr = e1;
-        // Zweiter Versuch mit Reparatur.
-        try {
-          journey = JSON.parse(repairJsonText(jsonText));
-        } catch (e2) {
-          parseErr = e2;
+      function extractAndParse(rawText){
+        let jt = rawText.replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
+        const f = jt.indexOf('{'), l = jt.lastIndexOf('}');
+        // 1. Versuch: sauber zwischen erstem { und letztem } parsen.
+        if (f !== -1 && l !== -1 && l > f) {
+          try { return { ok: true, journey: JSON.parse(jt.slice(f, l + 1)) }; } catch (e) {}
         }
+        // 2. Versuch: ab erstem { reparieren (NICHT auf letztes } zuschneiden,
+        // damit die Klammer-Schließung abgeschnittene Antworten retten kann).
+        const fromStart = f !== -1 ? jt.slice(f) : jt;
+        try { return { ok: true, journey: JSON.parse(repairJsonText(fromStart)) }; }
+        catch (e2) { return { ok: false, err: e2 }; }
+      }
+
+      // Bis zu 2 Versuche: sporadisch liefert das Modell ungültiges JSON, ein
+      // zweiter Aufruf ist dann meist sauber.
+      let journey = null, lastErr = null, lastText = '', lastStop = '';
+      for (let attempt = 1; attempt <= 2 && !journey; attempt++) {
+        const aiResp = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': ANTHROPIC_API_KEY,
+            'anthropic-version': '2023-06-01'
+          },
+          body: JSON.stringify({
+            model: process.env.TONI_AI_JOURNEY_MODEL || 'claude-sonnet-4-6',
+            max_tokens: depthCfg.maxTokens,
+            system: JOURNEY_SYSTEM,
+            messages: [{ role: 'user', content: prompt }]
+          })
+        });
+
+        if (!aiResp.ok) {
+          const detail = await aiResp.text().catch(() => '');
+          console.error('journey_builder Claude-Fehler (Versuch ' + attempt + '):', detail.slice(0, 500));
+          // Bei Netzwerk-/Dienstfehler nicht weiter probieren.
+          return res.status(502).json({ error: 'KI-Dienst nicht erreichbar.' });
+        }
+
+        const data = await aiResp.json();
+        lastText = (data.content || []).map(b => (b && b.type === 'text' ? b.text : '')).join('').trim();
+        lastStop = data.stop_reason || '(unbekannt)';
+        const parsed = extractAndParse(lastText);
+        if (parsed.ok) { journey = parsed.journey; break; }
+        lastErr = parsed.err;
+        console.error('journey_builder Parse-Fehler (Versuch ' + attempt + '). stop_reason=' + lastStop +
+          ' len=' + lastText.length + ' err=' + (lastErr && lastErr.message));
       }
 
       if (!journey) {
-        // Details NUR serverseitig (Vercel-Logs), nicht an den Browser.
-        console.error('journey_builder JSON-Parse-Fehler. stop_reason=' + stopReason +
-          ' len=' + text.length + ' err=' + (parseErr && parseErr.message) +
-          ' anfang=' + JSON.stringify(text.slice(0, 200)) +
-          ' ende=' + JSON.stringify(text.slice(-200)));
+        console.error('journey_builder JSON-Parse-Fehler endgültig. stop_reason=' + lastStop +
+          ' len=' + lastText.length + ' err=' + (lastErr && lastErr.message) +
+          ' anfang=' + JSON.stringify(lastText.slice(0, 200)) +
+          ' ende=' + JSON.stringify(lastText.slice(-200)));
         return res.status(422).json({ error: 'Die KI-Antwort war kein gültiges JSON.' });
       }
 
@@ -164,20 +280,20 @@ Inhalt: didaktisch sinnvoll, fachlich korrekt, Deutsch, altersgerecht. Pro Stati
 
           // BILDER: Die KI liefert KEIN rohes SVG (Fehlerquelle), sondern
           // optional eine strukturierte image_spec. Der Server baut daraus ein
-          // sauberes SVG als Data-URL. So kommt nie rohes Markup ins KI-JSON.
-          if (t.image_spec && typeof t.image_spec === 'object') {
+          // sauberes SVG als Data-URL. Nur bei Stufen mit Bildern.
+          if (depthCfg.bilder && t.image_spec && typeof t.image_spec === 'object') {
             const url = buildSvgFromSpec(t.image_spec);
             if (url) {
               if (!Array.isArray(t.blocks)) t.blocks = [];
               t.blocks.unshift({ type: 'image', url, alt: String(t.image_spec.title || 'Abbildung') });
             }
-            delete t.image_spec;
           }
+          if (t.image_spec) delete t.image_spec;
         });
       });
 
-      // Cover-Hintergrundbild serverseitig aus Titel + Fach erzeugen.
-      if (!journey.cover_image) {
+      // Cover-Hintergrundbild serverseitig erzeugen – nur bei Stufen mit Bildern.
+      if (depthCfg.bilder && !journey.cover_image) {
         journey.cover_image = buildCoverSvg(journey.title || 'Lernreise', journey.subject || '');
         journey.cover_image_name = 'cover.svg';
       }

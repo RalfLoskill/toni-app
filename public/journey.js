@@ -6,7 +6,7 @@
 // Build-Stempel: im Browser per `window.TONI_JOURNEY_BUILD` abfragbar.
 // Wenn dieser Wert NICHT "v86-assignments-progress-group" ist, lädt der
 // Browser eine veraltete Datei (Cache/Deploy), nicht diese Version.
-window.TONI_JOURNEY_BUILD = "v162-ai-journey-agent";
+window.TONI_JOURNEY_BUILD = "v167-heading-toggle-loesung-format";
 
 /* Lernreisen V1: ergänzt das bestehende Dashboard, ohne das Design zu ersetzen. */
 const DEFAULT_LEARNING_JOURNEYS = [{
@@ -285,8 +285,61 @@ function toniNormalizeType(type){
 function toniTypeIcon(type){return({'Lerninhalt':'📖 ','Aufgabe':'✏️ ','Quiz':'🎯 ','Video':'🎬 ','Reflexion':'💬 '})[type]||'📌 ';}
 function toniTaskPrompt(type){return({'Lerninhalt':'Lies den Inhalt aufmerksam durch und klicke danach auf "Gelesen – weiter".','Aufgabe':'Bearbeite die Aufgabe und gib deine Antwort ein.','Quiz':'Beantworte die Fragen – du bekommst sofort Feedback.','Video':'Schau das Video und notiere dir drei Kernaussagen.','Reflexion':'Nimm dir kurz Zeit zum Nachdenken. Es gibt keine falsche Antwort.'})[type]||'Bearbeite die Aufgabe Schritt für Schritt.';}
 
+/* V112: Zentrale Bild-Lightbox. Ersetzt window.open(url,'_blank'), das bei
+   data:-URLs (z. B. serverseitig erzeugte SVG-Grafiken) ein leeres Fenster
+   oeffnet, weil Browser data:-Navigation als Top-Level blockieren. Die Lightbox
+   blendet das Bild als Overlay ueber der Seite ein und funktioniert mit jeder
+   URL-Art (data:, https:, Storage). Klick auf den Hintergrund oder ESC schliesst. */
+function toniOpenLightbox(url, alt){
+  if(!url) return;
+  toniCloseLightbox();
+  const ov=document.createElement('div');
+  ov.id='toni-img-lightbox';
+  ov.setAttribute('role','dialog');
+  ov.setAttribute('aria-label', alt || 'Bildansicht');
+  ov.style.cssText='position:fixed;inset:0;z-index:99999;background:rgba(0,0,0,.82);display:flex;align-items:center;justify-content:center;padding:24px;cursor:zoom-out';
+  const img=document.createElement('img');
+  img.src=url;
+  img.alt=alt||'';
+  img.style.cssText='max-width:96vw;max-height:92vh;border-radius:10px;box-shadow:0 8px 40px rgba(0,0,0,.5);background:#fff';
+  const close=document.createElement('button');
+  close.type='button';
+  close.setAttribute('aria-label','Schließen');
+  close.textContent='✕';
+  close.style.cssText='position:absolute;top:16px;right:20px;width:40px;height:40px;border:none;border-radius:50%;background:rgba(255,255,255,.92);color:#222;font-size:18px;cursor:pointer;line-height:1';
+  ov.appendChild(img);
+  ov.appendChild(close);
+  ov.addEventListener('click', function(e){ if(e.target===ov||e.target===close) toniCloseLightbox(); });
+  document.addEventListener('keydown', toniLightboxEsc);
+  document.body.appendChild(ov);
+}
+function toniLightboxEsc(e){ if(e.key==='Escape') toniCloseLightbox(); }
+function toniCloseLightbox(){
+  const ov=document.getElementById('toni-img-lightbox');
+  if(ov) ov.remove();
+  document.removeEventListener('keydown', toniLightboxEsc);
+}
+window.toniOpenLightbox = toniOpenLightbox;
+window.toniCloseLightbox = toniCloseLightbox;
+
 function toniRenderLerninhalt(task,el){
   if(!el) return;
+  // V112: Einmalig Styles fuer formatierten Lerninhalt-Text (Ueberschrift, Liste,
+  // Hoch-/Tiefstellung), damit die Schueleransicht exakt dem Editor entspricht.
+  if(!document.getElementById('toni-lerninhalt-style')){
+    const st=document.createElement('style');
+    st.id='toni-lerninhalt-style';
+    st.textContent=
+      '.toni-lerninhalt-text h4{font-size:15px;font-weight:600;margin:12px 0 4px;line-height:1.4}'+
+      '.toni-lerninhalt-text ul{margin:6px 0 10px;padding-left:22px;list-style:disc}'+
+      '.toni-lerninhalt-text ol{margin:6px 0 10px;padding-left:24px;list-style:decimal}'+
+      '.toni-lerninhalt-text li{margin:3px 0}'+
+      '.toni-lerninhalt-text sup{font-size:.75em;vertical-align:super}'+
+      '.toni-lerninhalt-text sub{font-size:.75em;vertical-align:sub}'+
+      '.toni-lerninhalt-text em,.toni-lerninhalt-text i{font-style:italic}'+
+      '.toni-lerninhalt-text p{margin:0 0 8px}';
+    document.head.appendChild(st);
+  }
   let images=[],files=[],links=[];
   let textHtml=task.content||'';
   const blocks=task.blocks||task.lerninhalt_blocks;
@@ -302,11 +355,11 @@ function toniRenderLerninhalt(task,el){
   const hasMedia=images.length||files.length||links.length;
   el.innerHTML=`<div style="display:flex;gap:16px;align-items:flex-start;flex-wrap:wrap">
     <div style="flex:1;min-width:180px">
-      ${textHtml?`<div style="font-size:14px;line-height:1.75;color:var(--color-text-primary)">${textHtml}</div>`:''}
+      ${textHtml?`<div class="toni-lerninhalt-text" style="font-size:14px;line-height:1.75;color:var(--color-text-primary)">${textHtml}</div>`:''}
     </div>
     ${hasMedia?`<div style="width:240px;flex-shrink:0;background:var(--color-background-secondary);border:0.5px solid var(--color-border-tertiary);border-radius:10px;padding:12px">
       <div style="font-size:11px;font-weight:500;color:var(--color-text-tertiary);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">📎 Material</div>
-      ${images.map(img=>`<img src="${toniEsc(img.url)}" alt="${toniEsc(img.alt||'Bild')}" style="width:100%;border-radius:8px;margin-bottom:8px;cursor:pointer;border:0.5px solid var(--color-border-tertiary);object-fit:cover;max-height:160px" onclick="window.open('${toniEsc(img.url)}','_blank')">`).join('')}
+      ${images.map(img=>`<img src="${toniEsc(img.url)}" alt="${toniEsc(img.alt||'Bild')}" data-fullsrc="${toniEsc(img.url)}" style="width:100%;border-radius:8px;margin-bottom:8px;cursor:zoom-in;border:0.5px solid var(--color-border-tertiary);object-fit:cover;max-height:160px" onclick="toniOpenLightbox(this.dataset.fullsrc,this.alt)">`).join('')}
       ${files.map(f=>`<a href="${toniEsc(f.url)}" target="_blank" download style="display:flex;align-items:center;gap:6px;padding:7px 9px;background:var(--color-background-primary);border:0.5px solid var(--color-border-tertiary);border-radius:7px;margin-bottom:5px;text-decoration:none;color:var(--color-text-primary)"><span>📄</span><span style="font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${toniEsc(f.name||f.url.split('/').pop())}</span><span style="font-size:11px;color:var(--color-text-tertiary)">↓</span></a>`).join('')}
       ${links.map(l=>`<a href="${toniEsc(l.url)}" target="_blank" rel="noopener" style="display:flex;align-items:center;gap:6px;padding:7px 9px;background:#E6F1FB;border:0.5px solid #B5D4F4;border-radius:7px;margin-bottom:5px;text-decoration:none;color:#0C447C"><span>${l.youtube?'▶️':'🔗'}</span><span style="font-size:12px;flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${toniEsc(l.title||l.url)}</span><span style="font-size:11px;opacity:.7">→</span></a>`).join('')}
     </div>`:''}
@@ -483,8 +536,8 @@ function toniRenderAufgabe(task,el){
       <div id="aufgabe-solution-toggle" onclick="toniToggleSolution()" class="toni-auf-sol-toggle">
         <span>💡 Musterlösung anzeigen</span><span id="aufgabe-solution-hint" class="toni-auf-sol-hint">erst nach einem Versuch</span>
       </div>
-      <div id="aufgabe-solution-body" class="toni-auf-sol-body" style="display:none">
-        ${toniEsc(task.solution).replace(/\n/g,'<br>')}
+      <div id="aufgabe-solution-body" class="toni-auf-sol-body toni-lerninhalt-text" style="display:none">
+        ${/<(b|i|em|strong|ul|ol|li|h4|sup|sub|br|div|p)\b/i.test(String(task.solution||'')) ? String(task.solution) : toniEsc(task.solution).replace(/\n/g,'<br>')}
         <div id="aufgabe-selfcheck" class="toni-auf-self">
           <div class="toni-auf-self-title">Wie gut passt deine Lösung?</div>
           <div class="toni-auf-self-row">
@@ -2677,11 +2730,12 @@ function toniOpenAiJourneyModal(){
     "toni-ai-muster":"", "toni-ai-wuensche":""
   };
   Object.keys(reset).forEach(id => { const el = document.getElementById(id); if(el) el.value = reset[id]; });
-  // Prompt-Ausgabe zurücksetzen (alten Prompt nicht stehen lassen).
-  const box = document.getElementById("toni-ai-prompt-box");
-  const out = document.getElementById("toni-ai-prompt-output");
-  if(box) box.style.display = "none";
-  if(out) out.value = "";
+  // Immer mit Schritt 1 (Leitfragen) starten; Schritt 2 (Vorschau) verbergen.
+  const step1 = document.getElementById("toni-ai-step1");
+  const step2 = document.getElementById("toni-ai-step2");
+  if(step1) step1.style.display = "block";
+  if(step2) step2.style.display = "none";
+  window.TONI_AI_OUTLINE = null;
   m.classList.add("open");
   setTimeout(() => { const t = document.getElementById("toni-ai-thema"); if(t) t.focus(); }, 100);
 }
@@ -2721,9 +2775,18 @@ function toniBuildAiJourneyPrompt(data){
   if(data.wuensche)   lines.push("Berücksichtige die folgenden Punkte: " + data.wuensche);
   return lines.join("\n");
 }
-async function toniSubmitAiJourney(){
+// Zwischenstand der Outline (vom Tutor bearbeitbar).
+window.TONI_AI_OUTLINE = null;
+const TONI_AI_TIEFE = [
+  { id:"basis",      t:"Basis",     s:"gute Ausgangslage",  z:"ca. 1 Min" },
+  { id:"basis_plus", t:"Basis +",   s:"höhere Komplexität", z:"ca. 1–2 Min" },
+  { id:"extension",  t:"Extension", s:"mit Bildern",        z:"ca. 2–3 Min" },
+  { id:"high",       t:"High",      s:"mit Regression",     z:"> 4 Min" }
+];
+
+// SCHRITT 1: Outline anfordern und Zwischenansicht zeigen.
+async function toniRequestOutline(){
   const data = toniCollectAiJourneyInput();
-  // Nur Frage 1 (Thema) ist Pflicht, alle anderen optional.
   if(!data.thema){
     alert("Bitte gib mindestens das Thema an (Frage 1).");
     const t = document.getElementById("toni-ai-thema"); if(t) t.focus();
@@ -2731,15 +2794,7 @@ async function toniSubmitAiJourney(){
   }
   const prompt = toniBuildAiJourneyPrompt(data);
   window.TONI_AI_JOURNEY_INPUT = data;
-  window.TONI_AI_JOURNEY_PROMPT = prompt;
 
-  // Prompt zur Transparenz weiterhin anzeigen.
-  const out = document.getElementById("toni-ai-prompt-output");
-  const box = document.getElementById("toni-ai-prompt-box");
-  if(out) out.value = prompt;
-  if(box) box.style.display = "block";
-
-  // Button in Ladezustand versetzen.
   const btn = document.getElementById("toni-ai-submit-btn");
   const status = document.getElementById("toni-ai-gen-status");
   const setBusy = (busy, msg) => {
@@ -2747,38 +2802,175 @@ async function toniSubmitAiJourney(){
     if(status){ status.textContent = msg || ""; status.style.display = msg ? "block" : "none"; }
   };
 
-  setBusy(true, "TONi erstellt die Lernreise … das kann eine Minute dauern.");
+  setBusy(true, "TONi erstellt einen Vorschlag …");
   try{
     const resp = await fetch("/api/agent", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ agentType: "journey_builder", prompt })
+      body: JSON.stringify({ agentType: "journey_outline", prompt })
+    });
+    const result = await resp.json().catch(() => ({}));
+    if(!resp.ok || !result.outline){
+      throw new Error(result.error || ("Vorschlag fehlgeschlagen (HTTP " + resp.status + ")."));
+    }
+    setBusy(false, "");
+    toniRenderOutline(result.outline);
+  }catch(err){
+    setBusy(false, "");
+    alert("Der Vorschlag konnte nicht erstellt werden:\n" + (err && err.message ? err.message : err) +
+      "\n\nDeine Eingaben bleiben erhalten – du kannst es erneut versuchen.");
+  }
+}
+
+// Zwischenansicht (Schritt 2) mit Outline-Daten füllen und anzeigen.
+function toniRenderOutline(outline){
+  // Kompetenzen als bearbeitbare Liste (im State).
+  window.TONI_AI_OUTLINE = {
+    title: outline.title || "",
+    goal: outline.goal || "",
+    competencies: (outline.competencies || []).map(c => ({ text: c, an: true })),
+    stations: outline.stations || []
+  };
+  document.getElementById("toni-ai-o-title").value = window.TONI_AI_OUTLINE.title;
+  document.getElementById("toni-ai-o-goal").value = window.TONI_AI_OUTLINE.goal;
+  toniRenderOutlineKomp();
+  toniRenderOutlineStations();
+  toniRenderTiefeMarks();
+  toniOutlineUpdateTiefe();
+  // Bereiche wechseln: Leitfragen aus, Vorschau ein.
+  document.getElementById("toni-ai-step1").style.display = "none";
+  document.getElementById("toni-ai-step2").style.display = "block";
+}
+
+function toniRenderOutlineKomp(){
+  const box = document.getElementById("toni-ai-o-komp");
+  if(!box) return;
+  box.innerHTML = "";
+  const checkSvg = '<svg viewBox="0 0 24 24" fill="none" style="width:13px;height:13px"><path d="M5 13l4 4L19 7" stroke="#fff" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  window.TONI_AI_OUTLINE.competencies.forEach((k, idx) => {
+    const div = document.createElement("div");
+    div.style.cssText = "display:flex;align-items:flex-start;gap:11px;padding:11px 13px;border:1px solid " +
+      (k.an ? "#185FA5" : "var(--color-border-secondary)") + ";border-radius:var(--border-radius-md);margin-bottom:8px;cursor:pointer;background:" +
+      (k.an ? "#E6F1FB" : "#fff") + (k.an ? "" : ";opacity:.5");
+    const check = '<div style="flex:0 0 22px;width:22px;height:22px;border-radius:6px;border:2px solid ' +
+      (k.an ? "#185FA5" : "#c4d2e2") + ";background:" + (k.an ? "#185FA5" : "transparent") +
+      ';display:grid;place-items:center;margin-top:1px">' + (k.an ? checkSvg : "") + '</div>';
+    const txt = '<div style="font-size:14px;color:var(--color-text-primary)' + (k.an ? "" : ";text-decoration:line-through") + '">' + toniEsc(k.text) + '</div>';
+    div.innerHTML = check + txt;
+    div.onclick = () => { k.an = !k.an; toniRenderOutlineKomp(); };
+    box.appendChild(div);
+  });
+}
+function toniOutlineAddKomp(){
+  const input = document.getElementById("toni-ai-o-komp-neu");
+  const text = (input.value || "").trim();
+  if(!text) return;
+  window.TONI_AI_OUTLINE.competencies.push({ text, an: true });
+  input.value = "";
+  toniRenderOutlineKomp();
+  input.focus();
+}
+function toniRenderOutlineStations(){
+  const box = document.getElementById("toni-ai-o-stations");
+  if(!box) return;
+  box.innerHTML = "";
+  (window.TONI_AI_OUTLINE.stations || []).forEach((s, i) => {
+    const div = document.createElement("div");
+    div.style.cssText = "display:flex;align-items:flex-start;gap:11px;padding:10px 0;border-bottom:1px solid #eef2f7";
+    div.innerHTML = '<div style="flex:0 0 26px;width:26px;height:26px;border-radius:8px;background:#E6F1FB;color:#0C447C;font-weight:800;font-size:13px;display:grid;place-items:center">' + (i+1) + '</div>' +
+      '<div><div style="font-size:14px;font-weight:600">' + toniEsc(s.title) + '</div>' +
+      (s.description ? '<div style="font-size:12px;color:var(--color-text-secondary)">' + toniEsc(s.description) + '</div>' : '') + '</div>';
+    box.appendChild(div);
+  });
+}
+function toniRenderTiefeMarks(){
+  const box = document.getElementById("toni-ai-tiefe-marks");
+  if(!box) return;
+  box.innerHTML = "";
+  TONI_AI_TIEFE.forEach((stufe, i) => {
+    const div = document.createElement("div");
+    div.dataset.i = i;
+    div.style.cssText = "flex:1 1 25%;width:25%;text-align:center;padding:7px 3px;border-radius:9px";
+    div.innerHTML = '<div class="tm-t" style="font-size:12px;font-weight:800;color:var(--color-text-secondary)">' + stufe.t + '</div>' +
+      '<div style="font-size:10px;color:var(--color-text-secondary);line-height:1.25">' + stufe.s + '</div>' +
+      '<div class="tm-z" style="font-size:10px;color:var(--color-text-secondary);margin-top:2px">' + stufe.z + '</div>';
+    box.appendChild(div);
+  });
+}
+function toniOutlineUpdateTiefe(){
+  const i = parseInt(document.getElementById("toni-ai-tiefe").value, 10);
+  document.querySelectorAll("#toni-ai-tiefe-marks > div").forEach(m => {
+    const aktiv = parseInt(m.dataset.i,10) === i;
+    m.style.background = aktiv ? "#E6F1FB" : "transparent";
+    const t = m.querySelector(".tm-t"), z = m.querySelector(".tm-z");
+    if(t) t.style.color = aktiv ? "#0C447C" : "var(--color-text-secondary)";
+    if(z){ z.style.color = aktiv ? "#185FA5" : "var(--color-text-secondary)"; z.style.fontWeight = aktiv ? "700" : "400"; }
+  });
+}
+function toniOutlineBack(){
+  document.getElementById("toni-ai-step2").style.display = "none";
+  document.getElementById("toni-ai-step1").style.display = "block";
+}
+
+// SCHRITT 2: finale Lernreise erzeugen aus bearbeiteter Outline + Tiefe.
+async function toniSubmitAiJourney(){
+  const o = window.TONI_AI_OUTLINE;
+  if(!o){ alert("Kein Vorschlag vorhanden."); return; }
+  const title = (document.getElementById("toni-ai-o-title").value || "").trim();
+  const goal = (document.getElementById("toni-ai-o-goal").value || "").trim();
+  const gewaehlt = o.competencies.filter(k => k.an).map(k => k.text);
+  if(gewaehlt.length === 0){ alert("Bitte wähle mindestens eine Kompetenz aus."); return; }
+  const depth = TONI_AI_TIEFE[parseInt(document.getElementById("toni-ai-tiefe").value,10)].id;
+
+  // Finalen Prompt bauen: Leitfragen + bestätigte Outline + Kompetenzen.
+  const data = window.TONI_AI_JOURNEY_INPUT || {};
+  const lines = [
+    "Erstelle mir eine ausführliche und professionelle Lernreise im Toni-Lernreisenformat.",
+    "Die Lernreise soll alle Aufgaben-Elemente (Information, Aufgabe, Video, Quiz, Reflexion) enthalten.",
+    "Verwende exakt diesen Titel: " + title,
+    "Verwende dieses Lernziel: " + goal,
+    "Decke GENAU diese Kompetenzen ab und leite die Stationen daraus ab:",
+    gewaehlt.map((k,i) => (i+1) + ". " + k).join("\n")
+  ];
+  if(data.fach)       lines.push("Fach/Lernfeld: " + data.fach);
+  if(data.zielgruppe) lines.push("Zielgruppe: " + data.zielgruppe);
+  if(data.schulart)   lines.push("Lehrplan/Schulart/Bundesland: " + data.schulart);
+  if(data.umfang)     lines.push("Umfang: " + data.umfang);
+  if(data.muster)     lines.push("Ablaufmuster je Station: " + data.muster);
+  if(data.wuensche)   lines.push("Besondere Wünsche: " + data.wuensche);
+  const prompt = lines.join("\n");
+  window.TONI_AI_JOURNEY_PROMPT = prompt;
+
+  const btn = document.getElementById("toni-ai-final-btn");
+  const status = document.getElementById("toni-ai-final-status");
+  const zeit = TONI_AI_TIEFE[parseInt(document.getElementById("toni-ai-tiefe").value,10)].z;
+  const setBusy = (busy, msg) => {
+    if(btn){ btn.disabled = busy; btn.style.opacity = busy ? "0.6" : "1"; btn.style.cursor = busy ? "default" : "pointer"; }
+    if(status){ status.textContent = msg || ""; status.style.display = msg ? "block" : "none"; }
+  };
+
+  setBusy(true, "TONi erstellt die Lernreise … Denkzeit " + zeit + ".");
+  try{
+    const resp = await fetch("/api/agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ agentType: "journey_builder", prompt, depth })
     });
     const result = await resp.json().catch(() => ({}));
     if(!resp.ok || !result.journey){
       throw new Error(result.error || ("Generierung fehlgeschlagen (HTTP " + resp.status + ")."));
     }
-
-    // Ergebnis in die TONi-Datei-Hülle packen und über den bestehenden,
-    // RLS-konformen Import-Weg validieren + speichern.
     const paket = {
-      format: "toni-lernreise",
-      format_version: 1,
-      exported_at: new Date().toISOString(),
-      exported_by_role: "tutor",
+      format: "toni-lernreise", format_version: 1,
+      exported_at: new Date().toISOString(), exported_by_role: "tutor",
       journey: result.journey
     };
-    const check = (typeof toniValidateImportPaket === "function")
-      ? toniValidateImportPaket(paket)
-      : { ok: true, journey: result.journey };
+    const check = (typeof toniValidateImportPaket === "function") ? toniValidateImportPaket(paket) : { ok: true, journey: result.journey };
     if(!check.ok) throw new Error(check.error || "Die erzeugte Lernreise ist ungültig.");
 
     setBusy(true, "Lernreise wird gespeichert …");
-    if(typeof toniPerformImport === "function"){
-      await toniPerformImport(check.journey);
-    }else{
-      throw new Error("Speicherfunktion nicht verfügbar.");
-    }
+    if(typeof toniPerformImport === "function"){ await toniPerformImport(check.journey); }
+    else throw new Error("Speicherfunktion nicht verfügbar.");
 
     setBusy(false, "");
     toniCloseAiJourneyModal();
@@ -2786,24 +2978,17 @@ async function toniSubmitAiJourney(){
   }catch(err){
     setBusy(false, "");
     alert("Die Lernreise konnte nicht erstellt werden:\n" + (err && err.message ? err.message : err) +
-      "\n\nDein Prompt bleibt erhalten – du kannst es erneut versuchen.");
-  }
-}
-function toniCopyAiJourneyPrompt(btn){
-  const out = document.getElementById("toni-ai-prompt-output");
-  if(!out) return;
-  const done = () => { if(btn){ const o = btn.textContent; btn.textContent = "Kopiert ✓"; setTimeout(() => { btn.textContent = o; }, 1500); } };
-  if(navigator.clipboard && navigator.clipboard.writeText){
-    navigator.clipboard.writeText(out.value).then(done).catch(() => { out.select(); document.execCommand("copy"); done(); });
-  }else{
-    out.select(); document.execCommand("copy"); done();
+      "\n\nDein Vorschlag bleibt erhalten – du kannst es erneut versuchen.");
   }
 }
 // Global verfügbar machen (TONI arbeitet ohne Modul-System).
 window.toniOpenAiJourneyModal = toniOpenAiJourneyModal;
 window.toniCloseAiJourneyModal = toniCloseAiJourneyModal;
+window.toniRequestOutline = toniRequestOutline;
+window.toniOutlineAddKomp = toniOutlineAddKomp;
+window.toniOutlineUpdateTiefe = toniOutlineUpdateTiefe;
+window.toniOutlineBack = toniOutlineBack;
 window.toniSubmitAiJourney = toniSubmitAiJourney;
-window.toniCopyAiJourneyPrompt = toniCopyAiJourneyPrompt;
 
 function toniGetJourneyEditorCard(){
   const panel=document.getElementById("journey-admin-panel");
