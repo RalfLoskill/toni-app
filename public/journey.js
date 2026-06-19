@@ -564,14 +564,22 @@ function toniDecodeAnswer(answer){
 }
 function saveSelectedTaskAnswer(){
   const f=findTask(STATE.selectedTaskId);if(!f)return;
-  const note=document.getElementById('lr-answer')?.value;
+  const el=document.getElementById('lr-answer');
+  // Wenn das Eingabefeld gar nicht (mehr) existiert, NICHTS überschreiben.
+  // Sonst würde ein durch Re-Render verschwundenes Feld die gespeicherte
+  // Antwort mit Leerstring plätten (Ursache des Datenverlusts beim "Erledigt").
+  if(!el) return;
+  const note=el.value;
   const normType=toniNormalizeType?toniNormalizeType(f.task.type):f.task.type;
   if(normType==='Reflexion'){
     // Notiztext + Skalenwerte zusammen in answer kodieren.
     const vals=Array.isArray(f.task.reflexion_values)?f.task.reflexion_values:[];
-    f.task.answer=toniEncodeAnswerWithRx(note!=null?note:toniDecodeAnswer(f.task.answer).note, vals);
+    // Leeres Feld nicht über bereits vorhandenen Notiztext schreiben.
+    const existingNote=toniDecodeAnswer(f.task.answer).note;
+    const effectiveNote=(note!=null && String(note).trim()!=='') ? note : existingNote;
+    f.task.answer=toniEncodeAnswerWithRx(effectiveNote, vals);
   } else {
-    f.task.answer=note||f.task.answer||'';
+    f.task.answer=(note!=null && String(note).trim()!=='') ? note : (f.task.answer||'');
   }
   saveState(STATE);
 }
@@ -760,13 +768,36 @@ function completeSelectedLearningTask(){
       }
     }
   }
-  saveSelectedTaskAnswer();completeLearningTask(STATE.selectedTaskId);closeLearningTask();
+  // Feldwert ZUERST sichern, solange das Eingabefeld garantiert noch existiert
+  // und nicht durch einen Wrapper/Re-Render ersetzt wurde. Erst danach Status
+  // setzen und schließen. Verhindert, dass die Antwort beim "Erledigt" verloren
+  // geht, weil ein Re-Render das Feld vorher leert.
+  saveSelectedTaskAnswer();
+  completeLearningTask(STATE.selectedTaskId);
+  closeLearningTask();
 }
-// Live-Zähler für die Mindestlänge
+// Live-Zähler für die Mindestlänge + Live-Persistenz der Eingabe
 document.addEventListener('input',function(e){
   if(e.target&&e.target.id==='lr-answer'){
     const cc=document.getElementById('reflexion-charcount');
     if(cc) cc.textContent=String((e.target.value||'').trim().length);
+    // Eingabe sofort in die aktive Task-Instanz übernehmen, damit der Text
+    // auch bei einem zwischenzeitlichen Re-Render oder beim Schließen/Erledigt
+    // nie verloren geht. Schreibt in genau die Instanz, die der Snapshot liest.
+    try{
+      if(typeof findTask==='function' && typeof STATE!=='undefined' && STATE.selectedTaskId){
+        const f=findTask(STATE.selectedTaskId);
+        if(f && f.task){
+          const normType=toniNormalizeType?toniNormalizeType(f.task.type):f.task.type;
+          if(normType==='Reflexion'){
+            const vals=Array.isArray(f.task.reflexion_values)?f.task.reflexion_values:[];
+            f.task.answer=toniEncodeAnswerWithRx(e.target.value, vals);
+          }else{
+            f.task.answer=e.target.value;
+          }
+        }
+      }
+    }catch(err){ /* Live-Persistenz darf nie die Eingabe stören */ }
   }
 });
 function completeLearningTask(id){const f=findTask(id);if(!f)return;f.task.status='done';if(f.task.title==='Praxisaufgabe bearbeiten'&&STATE.goals.open.includes('Praxisaufgabe bearbeiten')){STATE.goals.open=STATE.goals.open.filter(g=>g!=='Praxisaufgabe bearbeiten');STATE.goals.completed.push('Praxisaufgabe bearbeiten');}unlockJourneyTasks();syncJourneyToDashboard();renderLearningJourneyModal();showXPToast(20);appendMsg('toni',`✅ Gut gemacht! <strong>${f.task.title}</strong> ist erledigt. Dein Lernfortschritt liegt jetzt bei <strong>${journeyProgress()}%</strong>.`,time(),'desktop');}
@@ -4942,21 +4973,39 @@ window.toniV23OpenActiveJourney = function(){
 function toniMergeProgressIntoTemplate(freshJourney, oldJourney){
   if(!freshJourney) return freshJourney;
   if(!oldJourney || !Array.isArray(oldJourney.steps)) return freshJourney;
-  // Alte Stati per Aufgaben-ID indizieren.
-  const statusById = {};
+  // Alten Fortschritt per Aufgaben-ID indizieren: status UND answer (+ Reflexion).
+  // WICHTIG: Bisher wurde nur der status übernommen, wodurch beim Frisch-Merge
+  // (Login/Neuladen) alle Schülereingaben (answer) verloren gingen, obwohl sie
+  // in der DB korrekt gespeichert waren. Wir indizieren jetzt das ganze
+  // Fortschritts-Bündel pro Task-ID.
+  const progressById = {};
   oldJourney.steps.forEach(s => (s.tasks || []).forEach(t => {
-    if(t && t.id) statusById[t.id] = t.status;
+    if(t && t.id){
+      progressById[t.id] = {
+        status: t.status,
+        answer: t.answer,
+        reflexion_values: Array.isArray(t.reflexion_values) ? t.reflexion_values : undefined,
+        updated_at: t.updated_at
+      };
+    }
   }));
-  // Frisches Template klonen und Stati übernehmen, wo die ID noch existiert.
+  // Frisches Template klonen und Fortschritt übernehmen, wo die ID noch existiert.
   const merged = JSON.parse(JSON.stringify(freshJourney));
   merged.steps = (merged.steps || []).map((s, si) => ({
     ...s,
     tasks: (s.tasks || []).map(t => {
-      const prev = (t && t.id && Object.prototype.hasOwnProperty.call(statusById, t.id))
-        ? statusById[t.id] : null;
+      const prev = (t && t.id && Object.prototype.hasOwnProperty.call(progressById, t.id))
+        ? progressById[t.id] : null;
       // Vorhandener Fortschritt gewinnt; sonst Template-Default bzw. todo/locked.
-      const status = prev || t.status || (si === 0 ? "todo" : "locked");
-      return { ...t, status };
+      const status = (prev && prev.status) || t.status || (si === 0 ? "todo" : "locked");
+      const out = { ...t, status };
+      if(prev){
+        // Eingabe nur übernehmen, wenn vorhanden – Template-Wert nicht mit "" plätten.
+        if(prev.answer != null && String(prev.answer) !== "") out.answer = prev.answer;
+        if(prev.reflexion_values !== undefined) out.reflexion_values = prev.reflexion_values;
+        if(prev.updated_at) out.updated_at = prev.updated_at;
+      }
+      return out;
     })
   }));
   return merged;
@@ -5555,6 +5604,7 @@ window.addEventListener("DOMContentLoaded", () => {
 window.TONI_V40_PROGRESS_SAVE_TIMER = null;
 window.TONI_V40_PROGRESS_LOADING = false;
 window.TONI_V40_LAST_SAVE_KEY = "";
+window.TONI_V40_ALLOW_RESET = false;
 
 function toniV40IsUuid(value){
   return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(value || "").trim());
@@ -5693,6 +5743,27 @@ async function toniV40SaveActiveProgressNow(showIndicator=false){
 
   const snapshot = toniV40Snapshot(journey);
   if(!snapshot) return;
+
+  // SCHUTZWALL gegen Race-Condition beim Laden:
+  // Beim Login/Öffnen wird die Reise zunächst FRISCH aus dem Template gebaut
+  // (alle answer leer, alle status "todo") und erst danach der gespeicherte
+  // Stand drübergelegt. Feuert in diesem Zeitfenster ein automatischer Save,
+  // würde er den echten Fortschritt mit dem Leerzustand überschreiben.
+  // Daher: Einen Save, der einen zuvor vorhandenen Fortschritt auf komplett
+  // leer zurücksetzen würde, NICHT durchlassen – außer es ist ein
+  // ausdrücklicher Reset (window.TONI_V40_ALLOW_RESET === true, vom
+  // Reset-Pfad gesetzt). So gehen echte Eingaben nie verloren, ein echter
+  // Reset auf 0 % bleibt aber möglich.
+  const tasksFlat = snapshot.journey.steps.flatMap(s => s.tasks || []);
+  const snapshotIsEmpty =
+    snapshot.progress_percent === 0 &&
+    tasksFlat.every(t => (t.status || "todo") === "todo" && !String(t.answer || "").trim());
+
+  if(snapshotIsEmpty && window.TONI_V40_ALLOW_RESET !== true){
+    // Wenn wir gerade laden, ist dieser Leer-Save mit hoher Wahrscheinlichkeit
+    // der Frischzustand vor dem Apply – verwerfen.
+    return;
+  }
 
   const saveKey = JSON.stringify({
     jid: journey.id,
@@ -5856,6 +5927,9 @@ async function toniV40LoadMostRecentAssignedProgress(){
   if(!toniV40CanPersist()) return;
   if(typeof loadAssignedJourneysForStudentV20 !== "function") return;
 
+  // Während des gesamten Ladevorgangs Saves blockieren, damit der frisch aus
+  // dem Template gebaute Leerzustand nicht in die DB zurückgeschrieben wird.
+  window.TONI_V40_PROGRESS_LOADING = true;
   try{
     const assigned = await loadAssignedJourneysForStudentV20();
     if(!assigned || !assigned.length) return;
@@ -5922,6 +5996,11 @@ async function toniV40LoadMostRecentAssignedProgress(){
     if(typeof toniV24UpdateHeaderNow === "function") toniV24UpdateHeaderNow();
   }catch(error){
     console.warn("TONI V40 letzten Lernstand laden:", error);
+  }finally{
+    // Einen evtl. durch syncJourneyToDashboard angestoßenen Debounce-Save
+    // verwerfen, BEVOR das Flag fällt, damit kein verzögerter Leer-Save feuert.
+    clearTimeout(window.TONI_V40_PROGRESS_SAVE_TIMER);
+    window.TONI_V40_PROGRESS_LOADING = false;
   }
 }
 
@@ -6004,7 +6083,6 @@ if(typeof window.startAssignedJourneyV20 === "function"){
   window.startAssignedJourneyV20 = async function(index){
     const result = TONI_V40_ORIGINAL_START_ASSIGNED.apply(this, arguments);
     await toniV40ApplyProgressForActiveJourney();
-    await toniV40SaveActiveProgressNow(false);
     return result;
   };
 }
@@ -11790,6 +11868,9 @@ window.addEventListener("resize", () => {
       // zuerst den V40-Cache zurücksetzen, sonst kann die Speicherroutine identische/alte States überspringen
       window.TONI_V40_LAST_SAVE_KEY = "";
       window.TONI_V40_PROGRESS_LOADING = false;
+      // Ausdrücklicher Reset: Schutzwall gegen Leer-Saves (Fix C) für diesen
+      // Vorgang außer Kraft setzen, damit der echte 0-%-Stand gespeichert wird.
+      window.TONI_V40_ALLOW_RESET = true;
 
       if(typeof toniV40Snapshot === "function" && typeof supabaseRequest === "function" && typeof toniV40IsUuid === "function" && toniV40IsUuid(resetJourney.id)){
         const snapshot = toniV40Snapshot(resetJourney);
@@ -11814,6 +11895,7 @@ window.addEventListener("resize", () => {
 
         window.TONI_V40_LAST_SAVE_KEY = "";
         if(typeof toniV40Indicator === "function") toniV40Indicator("Lernreise wurde auf 0 % zurückgesetzt", "ok");
+        setTimeout(() => { window.TONI_V40_ALLOW_RESET = false; }, 2000);
         return;
       }
 
@@ -11825,6 +11907,8 @@ window.addEventListener("resize", () => {
       console.error("TONI V101 Reset speichern:", error);
       if(typeof toniV40Indicator === "function") toniV40Indicator("Reset konnte nicht gespeichert werden", "err");
       throw error;
+    }finally{
+      setTimeout(() => { window.TONI_V40_ALLOW_RESET = false; }, 2000);
     }
   }
 
@@ -15260,4 +15344,183 @@ window.addEventListener("resize", () => {
   }
   new MutationObserver(()=>{if(document.getElementById('task-type')&&!document.getElementById('task-type').__toniEnh)enhance();}).observe(document.body,{childList:true,subtree:true});
   if(document.readyState!=='loading')enhance();else document.addEventListener('DOMContentLoaded',enhance);
+})();
+
+/* ============================================================
+ * TONI V110 – Reset als letzte Station (theme-unabhängig)
+ * ------------------------------------------------------------
+ * Hängt einen dezenten "Lernreise zurücksetzen"-Button ans Ende
+ * des sichtbaren Stations-Inhalts. WICHTIGE Erkenntnis aus der
+ * Diagnose: Alle Themes sind Vollbild-Themes und füllen
+ * #lr-stations mit GENAU EINEM Wurzelelement .toni-<theme>, das
+ * den gesamten Bildschirm einnimmt. Ein Element NACH dieser Wurzel
+ * (direkt in #lr-stations) landet unterhalb des Viewports und ist
+ * unsichtbar. Daher hängen wir den Button als LETZTES KIND IN die
+ * Theme-Wurzel selbst – dann sitzt er im Scroll-Fluss des Themes.
+ *
+ * Außerdem überschreibt jedes Theme #lr-stations.innerHTML bei
+ * jedem Render -> der Button wird nach jedem renderLearningJourneyModal
+ * neu angehängt.
+ *
+ * Vorgaben:
+ *  - passwortgeschützt für alle (nutzt toniV99OpenRestartPasswordModal)
+ *  - alter Text-Link "Lernreise neu starten" wird entfernt
+ *  - nur sichtbar bei Fortschritt > 0 %
+ *  - dezenter, kompakter Button im normalen Fluss als letztes Element
+ * ============================================================ */
+(function(){
+  "use strict";
+
+  var STYLE_ID = "toni-v110-reset-style";
+  var BTN_ID = "toni-v110-reset-btn";
+
+  function injectStyleOnce(){
+    if(document.getElementById(STYLE_ID)) return;
+    var css = ''
+      + '#' + BTN_ID + '{'
+      + '  display:block;margin:22px auto 26px;'
+      + '  padding:9px 18px;border-radius:999px;cursor:pointer;'
+      + '  font:600 13px/1.2 system-ui,-apple-system,"Segoe UI",sans-serif;'
+      + '  color:#fff;background:rgba(176,0,0,.78);'
+      + '  border:1px solid rgba(255,255,255,.35);'
+      + '  box-shadow:0 2px 8px rgba(0,0,0,.18);'
+      + '  backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px);'
+      + '  transition:background .12s ease,transform .12s ease;'
+      + '  position:relative;z-index:30;'
+      + '}'
+      + '#' + BTN_ID + ':hover{background:rgba(155,0,0,.92);transform:translateY(-1px);}'
+      + '#' + BTN_ID + ':active{transform:translateY(0);}'
+      + '#' + BTN_ID + ' .v110-ico{margin-right:7px;}';
+    var el = document.createElement("style");
+    el.id = STYLE_ID;
+    el.textContent = css;
+    (document.head || document.documentElement).appendChild(el);
+  }
+
+  function currentProgressPercent(){
+    try{
+      var j = (typeof activeJourney === "function") ? activeJourney() : null;
+      if(!j) return 0;
+      if(typeof journeyProgress === "function") return journeyProgress(j) || 0;
+    }catch(e){}
+    return 0;
+  }
+
+  function removeOldRestartLink(){
+    try{
+      document.querySelectorAll('#lr-modal .v98-restart-link, #lr-modal .card-link[onclick*="toniV99OpenRestartPasswordModal"], #lr-modal .card-link[onclick*="toniV98RestartLearningJourney"]').forEach(function(link){
+        link.remove();
+      });
+    }catch(e){}
+  }
+
+  function triggerReset(){
+    if(typeof window.toniV99OpenRestartPasswordModal === "function"){
+      window.toniV99OpenRestartPasswordModal();
+    }else if(typeof window.toniV98RestartLearningJourney === "function"){
+      window.toniV98RestartLearningJourney();
+    }else{
+      console.warn("[TONI V110] Kein Reset-Flow verfügbar.");
+    }
+  }
+
+  // Ziel-Container bestimmen: bevorzugt die Theme-Wurzel (#lr-stations > .toni-*),
+  // sonst #lr-stations selbst (classic / kein Theme).
+  function resolveTarget(){
+    var host = document.getElementById("lr-stations");
+    if(!host) return null;
+    // Erstes Kind, dessen Klasse mit "toni-" beginnt = Theme-Wurzel.
+    var child = host.firstElementChild;
+    while(child){
+      if(child.className && /(^|\s)toni-[a-z]+/i.test(child.className) && child.id !== BTN_ID){
+        return child;
+      }
+      child = child.nextElementSibling;
+    }
+    return host; // classic/Fallback
+  }
+
+  function makeButton(){
+    var btn = document.createElement("div");
+    btn.id = BTN_ID;
+    btn.setAttribute("role", "button");
+    btn.setAttribute("tabindex", "0");
+    btn.setAttribute("aria-label", "Lernreise zurücksetzen");
+    btn.innerHTML = '<span class="v110-ico">🔄</span>Lernreise zurücksetzen';
+    btn.addEventListener("click", function(ev){ ev.preventDefault(); ev.stopPropagation(); triggerReset(); });
+    btn.addEventListener("keydown", function(ev){
+      if(ev.key === "Enter" || ev.key === " "){ ev.preventDefault(); ev.stopPropagation(); triggerReset(); }
+    });
+    return btn;
+  }
+
+  function ensureResetButton(){
+    var modal = document.getElementById("lr-modal");
+    var existing = document.getElementById(BTN_ID);
+
+    // Modal zu? -> Button entfernen.
+    if(!modal || !modal.classList.contains("open")){
+      if(existing) existing.remove();
+      return;
+    }
+
+    // Fortschritt 0 %? -> Button entfernen / nicht anzeigen.
+    if(currentProgressPercent() <= 0){
+      if(existing) existing.remove();
+      return;
+    }
+
+    injectStyleOnce();
+    removeOldRestartLink();
+
+    var target = resolveTarget();
+    if(!target) return;
+
+    // Bereits korrekt platziert (letztes Kind des Ziels)? -> nichts tun (Idempotenz).
+    if(existing && existing.parentElement === target && target.lastElementChild === existing){
+      return;
+    }
+
+    // Sonst: vorhandenen entfernen und frisch ans Ende des Ziels hängen.
+    if(existing) existing.remove();
+    target.appendChild(makeButton());
+  }
+
+  function wrapRender(){
+    if(typeof window.renderLearningJourneyModal === "function" && !window.renderLearningJourneyModal.__toniV110Wrapped){
+      var original = window.renderLearningJourneyModal;
+      window.renderLearningJourneyModal = function(){
+        var result = original.apply(this, arguments);
+        // Theme rendert teils asynchron nach -> mehrfach versuchen.
+        setTimeout(ensureResetButton, 0);
+        setTimeout(ensureResetButton, 80);
+        setTimeout(ensureResetButton, 250);
+        return result;
+      };
+      window.renderLearningJourneyModal.__toniV110Wrapped = true;
+    }
+  }
+
+  function boot(){
+    wrapRender();
+    ensureResetButton();
+  }
+
+  // Für Diagnose/Tests global verfügbar machen.
+  window.toniV110EnsureResetButton = ensureResetButton;
+
+  window.addEventListener("DOMContentLoaded", function(){
+    setTimeout(boot, 250);
+    setTimeout(boot, 1000);
+    setTimeout(boot, 2000);
+
+    var observer = new MutationObserver(function(){
+      clearTimeout(window.TONI_V110_TIMER);
+      window.TONI_V110_TIMER = setTimeout(function(){
+        wrapRender();
+        ensureResetButton();
+      }, 100);
+    });
+    observer.observe(document.body, { childList:true, subtree:true });
+  });
 })();

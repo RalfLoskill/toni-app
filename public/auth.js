@@ -766,7 +766,7 @@ function toniApplyRegistrationVariant(){
   }
 }
 
-function openRegistrationRequiredModal(){toniApplyRegistrationVariant();document.getElementById("registration-required-modal")?.classList.add("open");setTimeout(()=>document.getElementById("reg-first-name")?.focus(),80);setTimeout(toniApplyRegistrationVariant,400);}
+function openRegistrationRequiredModal(){if(typeof toniDetectStaffInviteContextEarly==="function"){try{toniDetectStaffInviteContextEarly();}catch(e){}}toniApplyRegistrationVariant();document.getElementById("registration-required-modal")?.classList.add("open");setTimeout(()=>document.getElementById("reg-first-name")?.focus(),80);setTimeout(toniApplyRegistrationVariant,400);}
 function closeRegistrationRequiredModal(){document.getElementById("registration-required-modal")?.classList.remove("open");}
 function checkRegistrationPasswordStrength(){const pw=document.getElementById("reg-password")?.value||"";const o=document.getElementById("registration-password-strength");if(!o)return;if(pw.length>=8){o.className="password-strength ok";o.textContent="Passwortlänge ist ausreichend.";}else{o.className="password-strength err";o.textContent="Bitte mindestens 8 Zeichen verwenden.";}}
 function resetAuthForm(){const e=document.getElementById("auth-email"),p=document.getElementById("auth-password"),a=document.getElementById("auth-password-area"),btn=document.getElementById("auth-continue-btn"),n=document.getElementById("auth-login-note");if(p)p.value="";if(a)a.classList.remove("visible");if(btn)btn.style.display="";if(e){e.disabled=false;e.focus();}if(n)n.textContent="Existiert deine E-Mail bereits, meldest du dich mit Passwort an. Ist sie neu, erhältst du eine Verifizierungs-Mail. Danach gibst du deine personenbezogenen Daten ein und legst ein Passwort fest.";const box=document.getElementById("auth-message");if(box)box.className="auth-message";}
@@ -887,7 +887,36 @@ async function completeSelfRegistration(){
 const toniV7OriginalEnsureProfileForUser=window.ensureProfileForUser;
 window.ensureProfileForUser=async function(user){if(!user)return null;try{const rows=await supabaseRequest(`profiles?id=eq.${user.id}&select=id,display_name,email,class_name,role,password_set,profile_complete,force_password_change,first_name,last_name&limit=1`);if(rows&&rows.length)return rows[0];}catch(e){console.warn(e);}if(typeof toniV7OriginalEnsureProfileForUser==="function"){const p=await toniV7OriginalEnsureProfileForUser(user);if(p){if(typeof p.profile_complete==="undefined")p.profile_complete=false;if(typeof p.password_set==="undefined")p.password_set=false;}return p;}return null;};
 const toniV7OriginalApplyAuthProfile=window.applyAuthProfile;
-window.applyAuthProfile=function(profile){if(typeof toniV7OriginalApplyAuthProfile==="function")toniV7OriginalApplyAuthProfile(profile);if(!window.TONI_SUPPRESS_REGISTRATION_MODAL && shouldCompleteRegistration(profile))setTimeout(openRegistrationRequiredModal,500);};
+// V122: Erkennt einen Admin-/Tutor-Einladungskontext FRÜH (URL-Param oder
+// vorgemerkter sessionStorage-Eintrag), damit das automatische Registrierungs-
+// fenster nie in der falschen (Studenten-)Variante erscheint. Ursache des alten
+// Bugs: applyAuthProfile öffnete das Fenster ~500ms nach Login, während der
+// Admin-Marker erst Sekunden später (nach accept_admin_invite) gesetzt wurde.
+function toniDetectStaffInviteContextEarly(){
+  try{
+    const u = new URL(window.location.href);
+    if(u.searchParams.has("admininvite")){ window.TONI_PENDING_ADMIN_REGISTRATION = true; try{sessionStorage.setItem("toni_admin_registration","1");}catch(e){} return "admin"; }
+    if(u.searchParams.has("tutorinvite")){ window.TONI_PENDING_TUTOR_REGISTRATION = true; try{sessionStorage.setItem("toni_tutor_registration","1");}catch(e){} return "tutor"; }
+  }catch(e){}
+  try{
+    if(sessionStorage.getItem("toni_admin_invite_pending")){ window.TONI_PENDING_ADMIN_REGISTRATION = true; sessionStorage.setItem("toni_admin_registration","1"); return "admin"; }
+    if(sessionStorage.getItem("toni_tutor_invite_pending")){ window.TONI_PENDING_TUTOR_REGISTRATION = true; sessionStorage.setItem("toni_tutor_registration","1"); return "tutor"; }
+    if(sessionStorage.getItem("toni_admin_registration") === "1") return "admin";
+    if(sessionStorage.getItem("toni_tutor_registration") === "1") return "tutor";
+  }catch(e){}
+  return null;
+}
+window.toniDetectStaffInviteContextEarly = toniDetectStaffInviteContextEarly;
+window.applyAuthProfile=function(profile){
+  if(typeof toniV7OriginalApplyAuthProfile==="function")toniV7OriginalApplyAuthProfile(profile);
+  if(window.TONI_SUPPRESS_REGISTRATION_MODAL || !shouldCompleteRegistration(profile)) return;
+  const staff = toniDetectStaffInviteContextEarly();
+  if(staff){
+    setTimeout(()=>{ try{ toniApplyRegistrationVariant(); }catch(e){} openRegistrationRequiredModal(); }, 500);
+  }else{
+    setTimeout(()=>{ openRegistrationRequiredModal(); setTimeout(()=>{ if(toniDetectStaffInviteContextEarly()){ try{ toniApplyRegistrationVariant(); }catch(e){} } }, 600); }, 500);
+  }
+};
 window.addEventListener("DOMContentLoaded",()=>setTimeout(()=>{const client=getSupabaseClient();if(!client)return;client.auth.onAuthStateChange((event)=>{if(event==="PASSWORD_RECOVERY")setTimeout(openPasswordRequiredModal,300);});},1200));
 
 /* =========================================================
@@ -4056,6 +4085,34 @@ function toniV14ApplyCompletedProfile(profile) {
   }
 }
 
+// V122: Stößt die autoritative Einladungs-RPC erneut an, um die Staff-Rolle zu
+// setzen. Liest die vorgemerkte invite_id aus sessionStorage (überlebt den
+// Magic-Link-Roundtrip). Idempotent & serverseitig abgesichert: ohne gültige
+// Einladung bewirkt der Aufruf nichts. Setzt die Rolle NICHT im Frontend selbst.
+async function toniHealStaffRole(accessToken, isAdmin){
+  const key = isAdmin ? "toni_admin_invite_pending" : "toni_tutor_invite_pending";
+  let inviteId = null;
+  try{
+    const raw = sessionStorage.getItem(key);
+    if(raw){ const o = JSON.parse(raw); inviteId = o?.inviteId || null; }
+  }catch(e){}
+  if(!inviteId) return false; // keine vorgemerkte Einladung -> nichts zu heilen
+  const rpc = isAdmin ? "accept_admin_invite_v121" : "accept_tutor_self_invite_v121";
+  try{
+    const r = await fetch(`${window.SUPABASE_URL}/rest/v1/rpc/${rpc}`, {
+      method:"POST",
+      headers:{ "apikey":window.SUPABASE_ANON_KEY, "Authorization":"Bearer "+accessToken, "Content-Type":"application/json" },
+      body: JSON.stringify({ p_invite_id: inviteId })
+    });
+    const txt = await r.text();
+    const res = txt ? JSON.parse(txt) : null;
+    return !!(res && res.ok);
+  }catch(e){
+    console.warn("[ROLE-HEAL] RPC-Aufruf fehlgeschlagen:", e);
+    return false;
+  }
+}
+
 // Finale Überschreibung des Buttons "Registrierung abschließen"
 window.completeSelfRegistration = async function() {
   const isAdminReg = (typeof toniIsAdminRegistration==="function") ? toniIsAdminRegistration() : false;
@@ -4139,6 +4196,47 @@ window.completeSelfRegistration = async function() {
     const savedProfile = await toniV14PatchProfileDirect(accessToken, user, profilePatch);
 
     toniV14ApplyCompletedProfile(savedProfile);
+
+    // V122 SELBSTHEILUNG: Bei Admin-/Tutor-Registrierung sicherstellen, dass die
+    // Rolle tatsächlich gesetzt ist. Die Rolle kommt autoritativ aus der RPC
+    // accept_admin_invite_v121 / accept_tutor_self_invite_v121 (in Etappe 4). Falls
+    // diese – z.B. wegen Timing/Session – nicht durchlief, steht das Profil noch
+    // auf "student", obwohl der Nutzer durch die Admin-/Tutor-Seite kam. Wir setzen
+    // die Rolle NICHT direkt im Frontend (das wäre RLS-seitig unsicher), sondern
+    // stoßen die autoritative RPC erneut an. Sie ist serverseitig abgesichert und
+    // idempotent: ohne gültige Einladung passiert nichts.
+    if(isStaffReg){
+      try{
+        const wantRole = isAdminReg ? "admin" : "tutor";
+        if((savedProfile?.role || "") !== wantRole){
+          await toniHealStaffRole(accessToken, isAdminReg);
+          // Profil erneut laden und prüfen.
+          const reread = await toniV14FetchJson(
+            `${window.SUPABASE_URL}/rest/v1/profiles?id=eq.${encodeURIComponent(user.id)}&select=role,institution_id&limit=1`,
+            { method:"GET", headers:{ "apikey":window.SUPABASE_ANON_KEY, "Authorization":"Bearer "+accessToken } },
+            10000, "Rolle prüfen"
+          ).catch(()=>null);
+          const finalRole = Array.isArray(reread) ? (reread[0]?.role||"") : "";
+          if(finalRole !== wantRole){
+            // Heilung nicht möglich (keine gültige Einladung mehr o.ä.):
+            // ehrliche, klare Meldung statt stillem Halbzustand.
+            console.warn("[ROLE-HEAL] Rolle konnte nicht gesetzt werden. Erwartet:", wantRole, "Ist:", finalRole);
+            setRegistrationMessage(
+              "⚠️ Ihr Profil wurde gespeichert, aber die Rolle <strong>" + wantRole + "</strong> konnte nicht automatisch zugewiesen werden.<br>" +
+              "Bitte öffnen Sie den Einladungslink erneut oder wenden Sie sich an Ihren SuperAdmin/Admin.",
+              "err"
+            );
+            // Trotzdem nicht hart abbrechen: Profil ist gespeichert, nur Rolle offen.
+          }else{
+            try{ if(window.TONI_AUTH_PROFILE){ window.TONI_AUTH_PROFILE.role = finalRole; } }catch(e){}
+          }
+        }
+      }catch(healErr){
+        console.warn("[ROLE-HEAL] Selbstheilung fehlgeschlagen:", healErr);
+        // Bewusst nicht abbrechen – die normale Abschlussmeldung folgt; der
+        // Login-Pfad hat einen weiteren Fallback (siehe toniIsAdminRegistration).
+      }
+    }
 
     setRegistrationMessage("✅ Registrierung abgeschlossen.", "ok");
 
