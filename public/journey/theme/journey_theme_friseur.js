@@ -1,7 +1,7 @@
 /* ============================================================
  * TONI – Lernreisen-Theme: "Friseursalon"
  * Datei: journey_theme_friseur.js
- * Build: theme-friseur-v3-fullscreen-aufgabenfarben
+ * Build: theme-friseur-v6-bild-funkeln
  *
  * TECHNISCHE GRUNDLAGE: Muster des Afrika-Themes (theme-afrika-v9) –
  * gleiche Engine-Anbindung, gleiches Dock-System, gleiche Status-/
@@ -124,6 +124,159 @@
     const c = document.querySelector(".toni-friseur__stop.current");
     if (c) c.scrollIntoView({ behavior: "smooth", block: "center" });
   };
+
+
+  /* ----------------------------------------------------------
+   * FEUERWERK bei Stationsabschluss.
+   * Das Theme merkt sich, welche Stationen "done" sind. Wechselt beim
+   * nächsten Render eine Station NEU auf "done", zündet ein ~4s-Feuerwerk
+   * aus der Bildschirmmitte (mehrere Raketen/Explosionen). Kein Eingriff in
+   * journey.js nötig – wir reagieren rein auf den Render-Zyklus.
+   * -------------------------------------------------------- */
+  var TONI_FRISEUR_DONE = null;   // Set der zuletzt als done bekannten Indizes
+
+  function fireworksColors() {
+    return ["#E0A93B","#F4C95D","#FF6B6B","#5FD6B0","#C2603A","#FFF4D6","#D98A4A","#8FD0FF"];
+  }
+
+  function launchFireworks(durationMs) {
+    durationMs = durationMs || 8000;
+    // Vorhandene Lage entfernen (falls schnell hintereinander)
+    var old = document.getElementById("toni-friseur-fx");
+    if (old) old.remove();
+
+    var layer = document.createElement("div");
+    layer.id = "toni-friseur-fx";
+    layer.setAttribute("aria-hidden", "true");
+    layer.style.cssText =
+      "position:fixed;inset:0;z-index:9000;pointer-events:none;overflow:hidden;";
+    (document.body || document.documentElement).appendChild(layer);
+
+    // prefers-reduced-motion respektieren: dann nur ein kurzer, ruhiger Blitz.
+    var reduce = false;
+    try { reduce = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches; } catch (e) {}
+
+    var cx = window.innerWidth / 2;
+    var cy = window.innerHeight / 2;
+    var colors = fireworksColors();
+
+    // Mehrere Explosionen, über die ganze Dauer verteilt, rund um die Mitte.
+    // progress (0..1) steuert, wie BREIT gestreut und wie GROSS die Explosionen
+    // sind: anfangs eng an der Mitte, gegen Ende weit auslaufend.
+    var bursts = reduce ? 3 : 18;
+    var spawned = 0;
+
+    // spawnBurst(progress, finale):
+    //  progress 0..1 -> mit der Zeit breitere Streuung + größere Radien
+    //  finale=true   -> großer Feuerwerkskörper mit 60 Partikeln
+    function spawnBurst(progress, finale) {
+      if (progress == null) progress = 0;
+      // Streuung wächst mit dem Fortschritt: anfangs nah an der Mitte,
+      // am Ende über fast die ganze Breite/Höhe ("breiter auslaufen").
+      var spreadX = (0.18 + progress * 0.62) * window.innerWidth;   // bis ~80% Breite
+      var spreadY = (0.14 + progress * 0.50) * window.innerHeight;  // bis ~64% Höhe
+      var ox = cx + (Math.random() - 0.5) * spreadX;
+      var oy = cy + (Math.random() - 0.5) * spreadY;
+      var color = colors[Math.floor(Math.random() * colors.length)];
+
+      // Partikelzahl: normal wachsend mit progress; Finale fest 60.
+      var count = finale ? 60
+                : reduce ? 14
+                : Math.round(26 + progress * 22 + Math.random() * 10);
+      // Explosionsradius wächst mit progress; Finale besonders groß.
+      var ring = finale ? (220 + Math.random() * 80)
+                        : (90 + progress * 120 + Math.random() * 80);
+
+      for (var i = 0; i < count; i++) {
+        var ang = (Math.PI * 2 * i) / count + Math.random() * 0.3;
+        var dist = ring * (0.6 + Math.random() * 0.6);
+        var dx = Math.cos(ang) * dist;
+        var dy = Math.sin(ang) * dist;
+        var p = document.createElement("span");
+        var size = (finale ? 6 : 5) + Math.random() * (finale ? 6 : 5);
+        p.style.cssText =
+          "position:absolute;left:" + ox + "px;top:" + oy + "px;width:" + size + "px;height:" + size +
+          "px;border-radius:50%;background:" + color +
+          ";box-shadow:0 0 " + (finale ? 12 : 8) + "px " + color +
+          ";will-change:transform,opacity;opacity:1;";
+        p.style.setProperty("--dx", dx.toFixed(1) + "px");
+        p.style.setProperty("--dy", dy.toFixed(1) + "px");
+        // Finale-Partikel fliegen etwas länger (größerer, weiterer Effekt).
+        var dur = (finale ? 1600 : 1100) + Math.random() * (finale ? 900 : 700);
+        p.style.animation = "toniFriseurFx " + dur + "ms cubic-bezier(.15,.6,.25,1) forwards";
+        layer.appendChild(p);
+      }
+      // heller Blitzkern (im Finale größer)
+      var core = document.createElement("span");
+      var coreR = finale ? 22 : 14;
+      core.style.cssText =
+        "position:absolute;left:" + ox + "px;top:" + oy + "px;width:" + coreR + "px;height:" + coreR +
+        "px;margin:" + (-coreR / 2) + "px 0 0 " + (-coreR / 2) + "px;" +
+        "border-radius:50%;background:#fff;box-shadow:0 0 " + (finale ? 40 : 26) + "px " +
+        (finale ? 16 : 10) + "px " + color + ";opacity:.9;" +
+        "animation:toniFriseurFxCore " + (finale ? 800 : 600) + "ms ease-out forwards;";
+      layer.appendChild(core);
+    }
+
+    // Die letzten ~25% der Explosionen sind die großen 60-Partikel-Körper.
+    var finaleStart = Math.max(1, bursts - (reduce ? 1 : 4));
+
+    // erste Salve sofort
+    spawnBurst(0, false); spawned++;
+    var stepMs = Math.max(260, (durationMs - 900) / bursts);
+    var iv = setInterval(function () {
+      if (spawned >= bursts) { clearInterval(iv); return; }
+      var progress = spawned / (bursts - 1);
+      var finale = spawned >= finaleStart;
+      spawnBurst(progress, finale);
+      // im Finale gelegentlich zwei Körper gleichzeitig für mehr Wumms
+      if (finale && !reduce && Math.random() < 0.5) spawnBurst(progress, true);
+      spawned++;
+    }, stepMs);
+
+    // Aufräumen nach Ablauf (Finale-Partikel fliegen länger -> mehr Puffer)
+    setTimeout(function () {
+      if (layer && layer.parentNode) layer.parentNode.removeChild(layer);
+    }, durationMs + 1600);
+  }
+
+  function injectFireworksStyles() {
+    if (document.getElementById("toni-theme-friseur-fx-css")) return;
+    var css =
+      "@keyframes toniFriseurFx{" +
+        "0%{transform:translate(0,0) scale(1);opacity:1;}" +
+        "70%{opacity:1;}" +
+        "100%{transform:translate(var(--dx),calc(var(--dy) + 26px)) scale(.4);opacity:0;}" +
+      "}" +
+      "@keyframes toniFriseurFxCore{0%{transform:scale(.4);opacity:.95}100%{transform:scale(2.4);opacity:0}}";
+    var el = document.createElement("style");
+    el.id = "toni-theme-friseur-fx-css";
+    el.textContent = css;
+    document.head.appendChild(el);
+  }
+
+  // Vergleicht den aktuellen done-Stand mit dem letzten und zündet bei NEU-done.
+  function checkFireworks(states) {
+    injectFireworksStyles();
+    var nowDone = {};
+    for (var i = 0; i < states.length; i++) if (states[i] === "done") nowDone[i] = true;
+
+    if (TONI_FRISEUR_DONE === null) {
+      // Erstes Rendern: nur merken, NICHT zünden (sonst feuert es beim Öffnen).
+      TONI_FRISEUR_DONE = nowDone;
+      return;
+    }
+    // Gibt es einen Index, der jetzt done ist, vorher aber nicht?
+    var newlyDone = false;
+    for (var k in nowDone) {
+      if (!TONI_FRISEUR_DONE[k]) { newlyDone = true; break; }
+    }
+    TONI_FRISEUR_DONE = nowDone;
+    if (newlyDone) {
+      // kurz warten, bis das neue DOM steht, dann zünden
+      setTimeout(function () { launchFireworks(8000); }, 60);
+    }
+  }
 
   /* ---------------------------------------------------------- CSS */
   function injectStyles() {
@@ -312,7 +465,7 @@ body.toni-friseur-fullscreen #lr-modal.toni-theme-active-friseur .lr-modal-actio
   align-items:center !important;flex-wrap:nowrap !important;width:auto !important;position:static !important;}
 body.toni-friseur-fullscreen #lr-modal.toni-theme-active-friseur .lr-modal-actions button{
   flex:0 0 auto !important;position:static !important;margin:0 !important;
-  background:#fff !important;border:2px solid ${GOLD} !important;color:${GOLD_D} !important;backdrop-filter:blur(4px);}
+  background:#fff !important;border:2px solid ${GOLD} !important;color:${GOLD_D} !important;}
 body.toni-friseur-fullscreen #lr-modal.toni-theme-active-friseur .lr-modal-actions button[onclick*="startNextLearningTask"]{display:none !important;}
 body.toni-friseur-fullscreen #lr-modal.toni-theme-active-friseur #lr-modal-sub,
 body.toni-friseur-fullscreen #lr-modal.toni-theme-active-friseur .lr-modal-sub{display:none !important;}
@@ -329,37 +482,6 @@ body.toni-friseur-fullscreen #lr-task-modal{z-index:5000 !important;}
 body.toni-friseur-fullscreen #lr-task-modal .lr-modal,
 body.toni-friseur-fullscreen #lr-task-modal .lr-modal-card,
 body.toni-friseur-fullscreen #lr-task-modal > div{border:1px solid #D8BE8E !important;}
-/* Aufgaben-Detail im Salon-Look: warme Gold-/Cremetöne statt Standard-Blau.
-   Der Header wird über toniApplyTaskHeaderColor per CSS-Variablen (--lr-type-*)
-   eingefärbt; wir überschreiben diese Variablen im Friseur-Kontext, statt gegen
-   Inline-Styles zu kämpfen. Typen bleiben über leicht variierende Gold-Töne
-   unterscheidbar. */
-body.toni-friseur-fullscreen #lr-task-modal .lr-modal-header.lr-typed-head{
-  --lr-type-color:${GOLD_D} !important; --lr-type-bg:#FBF1D8 !important; --lr-type-text:${GOLD_D} !important;
-  background:linear-gradient(135deg, #FBF1D8, #EFDCB4) !important;border-bottom:1px solid #E0C68E !important;}
-body.toni-friseur-fullscreen #lr-task-modal .lr-modal-header,
-body.toni-friseur-fullscreen #lr-task-modal .card-header{
-  background:linear-gradient(135deg, #FBF1D8, #EFDCB4) !important;border-bottom:1px solid #E0C68E !important;}
-body.toni-friseur-fullscreen #lr-task-modal .lr-task-title,
-body.toni-friseur-fullscreen #lr-task-modal .lr-modal-title{color:${GOLD_D} !important;}
-body.toni-friseur-fullscreen #lr-task-modal .toni-auf-prompt,
-body.toni-friseur-fullscreen #lr-task-modal .lr-task-content{background:#FFFDF8 !important;}
-body.toni-friseur-fullscreen #lr-task-modal .toni-auf-card{
-  background:#FBF4E4 !important;border:0.5px solid #E6D0A2 !important;}
-body.toni-friseur-fullscreen #lr-task-modal .toni-auf-card-title,
-body.toni-friseur-fullscreen #lr-task-modal .toni-auf-self-title{color:${GOLD_D} !important;}
-body.toni-friseur-fullscreen #lr-task-modal .toni-auf-sol-toggle{
-  background:#F4E6C6 !important;color:${GOLD_D} !important;}
-body.toni-friseur-fullscreen #lr-task-modal #lr-answer,
-body.toni-friseur-fullscreen #lr-task-modal textarea{
-  border-color:#E0C68E !important;background:#FFFDF8 !important;}
-body.toni-friseur-fullscreen #lr-task-modal #lr-answer:focus,
-body.toni-friseur-fullscreen #lr-task-modal textarea:focus{border-color:${GOLD} !important;}
-/* Aktions-Buttons (Footer: Starten / Zurücksetzen / Erledigt / Hinweis) im Gold-Akzent */
-body.toni-friseur-fullscreen #lr-task-modal button{
-  border-color:#E0C68E !important;}
-body.toni-friseur-fullscreen #lr-task-modal .lr-success-btn{
-  background:linear-gradient(135deg, ${GOLD}, ${GOLD_D}) !important;color:#fff !important;border:none !important;}
 `;
     const el = document.createElement("style");
     el.id = "toni-theme-friseur-fs-css";
@@ -407,6 +529,7 @@ body.toni-friseur-fullscreen #lr-task-modal .lr-success-btn{
     if (document.body && document.body.classList) document.body.classList.add("toni-friseur-fullscreen");
 
     const states = steps.map(function (s, i) { return stationStatus(s, i, journey); });
+    checkFireworks(states);
     const doneCount = states.filter(function (st) { return st === "done"; }).length;
     const pct = Math.round(doneCount / n * 100);
     const curIdx = states.findIndex(function (st) { return st === "current"; });
@@ -511,5 +634,5 @@ body.toni-friseur-fullscreen #lr-task-modal .lr-success-btn{
     }
   });
 
-  console.info("[TONI-Theme:friseur] Friseursalon-Theme registriert (theme-friseur-v3-fullscreen-aufgabenfarben).");
+  console.info("[TONI-Theme:friseur] Friseursalon-Theme registriert (theme-friseur-v6-bild-funkeln).");
 })();

@@ -3584,6 +3584,96 @@ html{width:100%;max-width:100%;overflow-x:hidden!important}body{width:100%;max-w
   border:1px solid #bfdbfe;
 }
 
+/* ===== V110: Lernreise-Kacheln mit Deckblatt-Hintergrundbild ===== */
+/* Gilt einheitlich für offene UND abgeschlossene Lernreisen. */
+.lr-cover-card-v110.has-cover{
+  position:relative;
+  border-radius:16px;
+  overflow:hidden;
+  min-height:190px;
+  padding:16px;
+  display:flex;
+  flex-direction:column;
+  justify-content:flex-end;
+  border:none !important;
+  box-shadow:0 4px 14px rgba(15,23,42,.12);
+}
+.lr-cover-card-v110.has-cover:hover{
+  transform:translateY(-2px);
+  box-shadow:0 8px 22px rgba(15,23,42,.20);
+  background-color:transparent;
+}
+/* verschwommene Bild-Ebene: zuunterst, leicht skaliert gegen Blur-Ränder */
+.lr-cover-card-v110.has-cover .lr-cover-img-v110{
+  position:absolute;inset:0;z-index:0;pointer-events:none;
+  background-size:cover;background-position:center;background-repeat:no-repeat;
+  filter:blur(4px);transform:scale(1.08);
+}
+/* dunkler Schleier über dem Bild für besseren Kontrast */
+.lr-cover-card-v110.has-cover::before{
+  content:"";
+  position:absolute;inset:0;pointer-events:none;
+  background:linear-gradient(180deg, rgba(0,0,0,.10) 0%, rgba(0,0,0,.30) 100%);
+  z-index:1;
+}
+.lr-cover-card-v110.has-cover > *{position:relative;z-index:2;}
+/* Bild-Ebene NICHT mit anheben – sie bleibt unter dem Schleier */
+.lr-cover-card-v110.has-cover > .lr-cover-img-v110{z-index:0;}
+
+
+/* halbtransparentes Feld: Titel */
+.lr-cover-card-v110.has-cover .lr-cover-titlebox-v110{
+  background:rgba(255,255,255,.85);
+  backdrop-filter:blur(3px);
+  -webkit-backdrop-filter:blur(3px);
+  border-radius:10px;
+  padding:9px 12px;
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  margin-bottom:8px;
+}
+/* halbtransparentes Feld: Beschreibung */
+.lr-cover-card-v110.has-cover .lr-cover-descbox-v110{
+  background:rgba(255,255,255,.80);
+  backdrop-filter:blur(3px);
+  -webkit-backdrop-filter:blur(3px);
+  border-radius:10px;
+  padding:9px 12px;
+  margin-bottom:10px;
+}
+.lr-cover-card-v110.has-cover .lr-cover-title-v110{color:#0f172a;}
+.lr-cover-card-v110.has-cover .lr-cover-pct-v110{color:#1d4ed8;}
+.lr-cover-card-v110.has-cover .lr-cover-desc-v110{color:#334155;}
+
+/* Beschreibung in beiden Fällen auf 3 Zeilen kürzen */
+.lr-cover-card-v110 .lr-cover-desc-v110{
+  display:-webkit-box;
+  -webkit-line-clamp:3;
+  -webkit-box-orient:vertical;
+  overflow:hidden;
+}
+.lr-cover-card-v110 .lr-cover-subject-v110{font-weight:700;}
+
+/* Titelzeile (beide Fälle): Titel links, Prozent rechts */
+.lr-cover-card-v110 .lr-cover-titlebox-v110{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;
+}
+
+/* Fortschrittsbalken unten – über Bild gut sichtbar */
+.lr-cover-card-v110.has-cover .lr-cover-track-v110{
+  background:rgba(255,255,255,.55);
+  border-radius:999px;
+  box-shadow:0 1px 2px rgba(0,0,0,.15) inset;
+}
+
+/* Fallback ohne Bild: bisheriges schlichtes Layout beibehalten */
+.lr-cover-card-v110.no-cover .lr-cover-titlebox-v110{
+  display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:6px;
+}
+.lr-cover-card-v110.no-cover .lr-cover-descbox-v110{margin-bottom:8px;}
+
 .activity-journey-badge-v50{
   display:inline-flex;
   align-items:center;
@@ -8468,6 +8558,52 @@ input.youtube-force-invalid-v105{
 .journey-tile-action.danger{flex:0 0 auto;color:#dc2626}
 .journey-tile-action.danger:hover{background:#fef2f2}
 .journey-tile-action span{font-size:12px}
+/* === V112: Variante A – Deckblatt als Hintergrund (Tutor/Admin-Kacheln) === */
+.journey-tile-cover-v112{
+  position:relative;overflow:hidden;min-height:240px;
+  padding:0 !important;border:none;
+  box-shadow:0 4px 14px rgba(15,23,42,.10);
+  transition:transform .14s ease, box-shadow .14s ease;
+}
+.journey-tile-cover-v112:hover{transform:translateY(-3px);box-shadow:0 10px 28px rgba(15,23,42,.16)}
+/* Verschwommene Bild-Ebene: liegt zuunterst, leicht skaliert gegen Blur-Ränder */
+.journey-tile-cover-img-v112{
+  position:absolute;inset:0;z-index:0;pointer-events:none;
+  background-size:cover;background-position:center;background-repeat:no-repeat;
+  filter:blur(4px);transform:scale(1.08);
+}
+/* V95-Override (#admin-journey-list .journey-tile) gezielt zurücknehmen */
+#journey-admin-panel #admin-journey-list .journey-tile.journey-tile-cover-v112.has-cover{background-color:#475569}
+#journey-admin-panel #admin-journey-list .journey-tile.journey-tile-cover-v112.no-cover{background-color:#e2e8f0;border:1px solid var(--border)}
+.journey-tile-cover-v112.no-cover{background:#e2e8f0}
+.journey-tile-cover-v112.has-cover::before{
+  content:"";position:absolute;inset:0;z-index:1;pointer-events:none;
+  background:linear-gradient(180deg, rgba(10,15,30,.10) 0%, rgba(10,15,30,.52) 60%, rgba(10,15,30,.78) 100%);
+}
+.journey-tile-cover-open-v112{position:absolute;top:12px;right:12px;z-index:3;box-shadow:0 2px 8px rgba(15,23,42,.18)}
+.journey-tile-cover-open-v112:hover{background:#2563eb;color:#fff}
+.journey-tile-cover-body-v112{position:relative;z-index:2;display:flex;flex-direction:column;flex:1;padding:14px;min-width:0}
+.journey-tile-cover-title-v112{
+  color:#fff;font-size:15px;font-weight:900;line-height:1.28;text-shadow:0 1px 4px rgba(0,0,0,.45);
+  padding-right:40px;
+}
+.journey-tile-cover-desc-v112{
+  color:rgba(255,255,255,.94);font-size:12px;line-height:1.5;margin-top:8px;text-shadow:0 1px 3px rgba(0,0,0,.45);
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+}
+.journey-tile-cover-v112.no-cover .journey-tile-cover-title-v112{color:#0f172a;text-shadow:none}
+.journey-tile-cover-v112.no-cover .journey-tile-cover-desc-v112{color:#475569;text-shadow:none}
+.journey-tile-cover-chips-v112{margin-top:auto;padding-top:10px}
+.journey-tile-cover-v112.has-cover .journey-tile-cover-chips-v112 .journey-tile-chip{
+  background:rgba(255,255,255,.92);backdrop-filter:blur(3px);
+}
+.journey-tile-cover-actions-v112{
+  position:relative;z-index:2;margin-top:0;padding:8px 10px;
+  background:rgba(255,255,255,.96);backdrop-filter:blur(6px);
+  border-top:1px solid rgba(255,255,255,.5);
+}
+.journey-tile-cover-v112.no-cover .journey-tile-cover-actions-v112{background:#f8fafc;border-top:1px solid var(--slate-100,#f1f5f9)}
+
 /* Plus-Kachel */
 .journey-tile-add{border:1.5px dashed #93c5fd;background:#f8fbff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;min-height:120px;cursor:pointer;color:#2563eb;border-radius:14px;padding:12px}
 .journey-tile-add:hover{background:#eff6ff}
@@ -8737,7 +8873,7 @@ input.youtube-force-invalid-v105{
     <div class="bottom-grid">
 
       <!-- Linke Spalte: Lernreisen (offen zugeordnet + abgeschlossen) -->
-      <div class="card">
+      <div class="card" id="dashboard-my-journeys-card">
         <div class="card-header">
           <span class="card-title">Meine Lernreisen</span>
         </div>
@@ -8779,7 +8915,7 @@ input.youtube-force-invalid-v105{
     </div>
 
     <!-- Mein Wochenplan (gespiegelt aus Lernreise + Projekten) -->
-    <div class="card">
+    <div class="card" id="dashboard-weekly-plan-card">
       <div class="card-header">
         <span class="card-title">Mein Wochenplan</span>
         <span class="card-link" onclick="renderWeeklyPlan()">Aktualisieren</span>
@@ -9052,6 +9188,7 @@ input.youtube-force-invalid-v105{
           <div class="journey-import-bar" style="margin-bottom:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <input type="file" id="journey-import-file" accept=".json,application/json" style="display:none" onchange="toniHandleImportFile(event)"/>
             <button class="lr-secondary-btn" onclick="document.getElementById('journey-import-file').click()">📥 Lernreise importieren</button>
+            <button class="lr-secondary-btn" onclick="openJourneyScanModal()" title="Lernreise per QR-Code hinzufügen" aria-label="Lernreise per QR-Code scannen">📷 QR-Code scannen</button>
             <span id="journey-import-status" style="font-size:12px;color:#64748b"></span>
           </div>
 
@@ -9562,14 +9699,14 @@ input.youtube-force-invalid-v105{
 
 <script src="/chat.js?v=12"></script>
 
-<script src="/journey.js?v=180"></script>
+<script src="/journey.js?v=189"></script>
 <script src="/journey/theme/journey_theme.js?v=4"></script>
 <script src="/journey/theme/journey_theme_space.js?v=9"></script>
 <script src="/journey/theme/journey_theme_football.js?v=2"></script>
 <script src="/journey/theme/journey_theme_jungle.js?v=3"></script>
 <script src="/journey/theme/journey_theme_haus.js?v=3"></script>
 <script src="/journey/theme/journey_theme_salon.js?v=5"></script>
-<script src="/journey/theme/journey_theme_friseur.js?v=3"></script>
+<script src="/journey/theme/journey_theme_friseur.js?v=6"></script>
 <script src="/journey/theme/journey_theme_london.js?v=3"></script>
 <script src="/journey/theme/journey_theme_afrika.js?v=9"></script>
 <script src="/journey/theme/journey_theme_picker.js?v=3"></script>

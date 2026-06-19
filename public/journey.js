@@ -2324,7 +2324,7 @@ async function startOnboardingVerification(){
 
 function resendOnboardingVerification(){ startOnboardingVerification(); }
 
-window.applyRoleUI=function(){if(typeof toniGroupsOriginalApplyRoleUI==="function")toniGroupsOriginalApplyRoleUI();const panel=document.getElementById("group-panel");if(panel)panel.classList.toggle("visible",canManageGroups());const sp=document.getElementById("student-panel");if(sp)sp.classList.toggle("visible",canManageGroups());if(canManageGroups()){setTimeout(loadTutorGroups,100);setTimeout(refreshStudentList,150);}};
+window.applyRoleUI=function(){if(typeof toniGroupsOriginalApplyRoleUI==="function")toniGroupsOriginalApplyRoleUI();const panel=document.getElementById("group-panel");if(panel)panel.classList.toggle("visible",canManageGroups());const sp=document.getElementById("student-panel");if(sp)sp.classList.toggle("visible",canManageGroups());const hideForStaff=canManageGroups();const myJourneys=document.getElementById("dashboard-my-journeys-card");if(myJourneys)myJourneys.style.display=hideForStaff?"none":"";const weeklyPlan=document.getElementById("dashboard-weekly-plan-card");if(weeklyPlan)weeklyPlan.style.display=hideForStaff?"none":"";if(canManageGroups()){setTimeout(loadTutorGroups,100);setTimeout(refreshStudentList,150);if(typeof toniV19SetupCollapsibleJourneySections==="function")setTimeout(toniV19SetupCollapsibleJourneySections,200);}};
 
 const toniGroupsOriginalHandleAuthSession=window.handleAuthSession;
 window.handleAuthSession=async function(session){if(typeof toniGroupsOriginalHandleAuthSession==="function")await toniGroupsOriginalHandleAuthSession(session);setTimeout(handleJoinLinkAfterLogin,300);};
@@ -2797,19 +2797,28 @@ function renderAdminJourneyListV16(rows){
     const tasks = (j.steps || []).reduce((sum, s) => sum + ((s.tasks || []).length), 0);
     const src = row._source === "local" ? "local" : "remote";
     const statusLabel = src === "local" ? "lokal" : "gespeichert";
+    // Variante A: Deckblatt als Hintergrund. Ohne Bild -> neutraler Fallback.
+    // Das Bild liegt in einer eigenen, leicht verschwommenen Ebene, damit der
+    // Text darüber bei beliebigen Motiven gut lesbar bleibt.
+    const coverImg = j.cover_image || j.cover_image_embedded || "";
+    const hasCover = !!coverImg;
+    const imgLayer = hasCover
+      ? `<div class="journey-tile-cover-img-v112" style="background-image:url('${escapeToniV16(coverImg)}')"></div>`
+      : "";
     return `
-      <div class="journey-tile">
-        <div class="journey-tile-head">
-          <div class="journey-tile-title">${escapeToniV16(j.title)}</div>
-          <button class="journey-tile-open" title="Öffnen" aria-label="Öffnen" onclick="openAdminJourney('${row.id}')">→</button>
+      <div class="journey-tile journey-tile-cover-v112 ${hasCover ? "has-cover" : "no-cover"}">
+        ${imgLayer}
+        <button class="journey-tile-open journey-tile-cover-open-v112" title="Öffnen" aria-label="Öffnen" onclick="openAdminJourney('${row.id}')">→</button>
+        <div class="journey-tile-cover-body-v112">
+          <div class="journey-tile-title journey-tile-cover-title-v112">${escapeToniV16(j.title)}</div>
+          <div class="journey-tile-cover-desc-v112">${escapeToniV16(j.goal || j.subject || "–")}</div>
+          <div class="journey-tile-chips journey-tile-cover-chips-v112">
+            <span class="journey-tile-chip chip-stations">${stations} Station(en)</span>
+            <span class="journey-tile-chip chip-tasks">${tasks} Aufgabe(n)</span>
+            <span class="journey-tile-chip chip-status ${src}">${statusLabel}</span>
+          </div>
         </div>
-        <div class="journey-tile-chips">
-          <span class="journey-tile-chip chip-stations">${stations} Station(en)</span>
-          <span class="journey-tile-chip chip-tasks">${tasks} Aufgabe(n)</span>
-          <span class="journey-tile-chip chip-status ${src}">${statusLabel}</span>
-        </div>
-        <div class="journey-tile-desc">${escapeToniV16(j.goal || j.subject || "–")}</div>
-        <div class="journey-tile-actions">
+        <div class="journey-tile-actions journey-tile-cover-actions-v112">
           <button class="journey-tile-action" onclick="editAdminJourney('${row.id}')" title="Bearbeiten"><span>✏️</span>Bearbeiten</button>
           <button class="journey-tile-action" onclick="toniExportJourney('${row.id}')" title="Exportieren"><span>⬇️</span>Export</button>
           <button class="journey-tile-action" onclick="duplicateAdminJourney('${row.id}')" title="Duplizieren" aria-label="Duplizieren"><span>📑</span></button>
@@ -4343,7 +4352,9 @@ window.addEventListener("DOMContentLoaded", () => {
 
 window.TONI_SECTION_OPEN_STATE = {
   manage: sessionStorage.getItem("toni_section_manage_open") === "1",
-  assign: sessionStorage.getItem("toni_section_assign_open") === "1"
+  assign: sessionStorage.getItem("toni_section_assign_open") === "1",
+  students: sessionStorage.getItem("toni_section_students_open") === "1",
+  groups: sessionStorage.getItem("toni_section_groups_open") === "1"
 };
 
 function toniV19MakeSectionCollapsible(panelId, sectionKey, labelWhenClosed) {
@@ -4410,6 +4421,12 @@ function toniV19ApplySectionState(panelId, sectionKey) {
   if (sectionKey === "assign") {
     sessionStorage.setItem("toni_section_assign_open", open ? "1" : "0");
   }
+  if (sectionKey === "students") {
+    sessionStorage.setItem("toni_section_students_open", open ? "1" : "0");
+  }
+  if (sectionKey === "groups") {
+    sessionStorage.setItem("toni_section_groups_open", open ? "1" : "0");
+  }
 }
 
 function toniV19ToggleSection(panelId, sectionKey) {
@@ -4423,10 +4440,28 @@ function toniV19ToggleSection(panelId, sectionKey) {
     if (sectionKey === "assign" && typeof loadJourneyAssignmentTable === "function") {
       setTimeout(window.loadJourneyAssignmentTable, 100);
     }
+    if (sectionKey === "students" && typeof refreshStudentList === "function") {
+      setTimeout(refreshStudentList, 100);
+    }
+    if (sectionKey === "groups" && typeof refreshGroupView === "function") {
+      setTimeout(refreshGroupView, 100);
+    }
   }
 }
 
 function toniV19SetupCollapsibleJourneySections() {
+  toniV19MakeSectionCollapsible(
+    "student-panel",
+    "students",
+    "Klicke auf das Pluszeichen, um die Studentenverwaltung zu öffnen."
+  );
+
+  toniV19MakeSectionCollapsible(
+    "group-panel",
+    "groups",
+    "Klicke auf das Pluszeichen, um Lerngruppen zu verwalten."
+  );
+
   toniV19MakeSectionCollapsible(
     "journey-admin-panel",
     "manage",
@@ -7223,20 +7258,29 @@ function toniV50ActivityJourneyHtml(journey){
   const fillClass = pct >= 100 ? "p-green" : "p-blue";
   const subject = journey.subject || "Lernreise";
   const goal = journey.goal || journey.description || "Individuelle Lernreise mit Aufgaben, Praxisbezug und Reflexion.";
-  const next = toniV50NextTaskTitle(journey);
+
+  // Deckblatt-Hintergrundbild (optional) in eigener, leicht verschwommener Ebene,
+  // damit der Text darüber bei beliebigen Motiven gut lesbar bleibt. Ohne Bild: Fallback.
+  const coverImg = journey.cover_image || journey.cover_image_embedded || "";
+  const hasCover = !!coverImg;
+  const imgLayer = hasCover
+    ? `<div class="lr-cover-img-v110" style="background-image:url('${toniV50Escape(coverImg)}')"></div>`
+    : "";
 
   return `
-    <div class="projekt-item activity-journey-item-v50 ${active ? "active" : ""}" onclick="toniV50OpenActivityJourney('${toniV50Escape(journey.id)}')">
-      <div class="projekt-row">
-        <div class="projekt-name">
+    <div class="projekt-item activity-journey-item-v50 lr-cover-card-v110 ${hasCover ? "has-cover" : "no-cover"} ${active ? "active" : ""}" onclick="toniV50OpenActivityJourney('${toniV50Escape(journey.id)}')">
+      ${imgLayer}
+      <div class="lr-cover-titlebox-v110">
+        <div class="projekt-name lr-cover-title-v110">
           ⚡ ${toniV50Escape(journey.title || "Lernreise")}
           ${active ? '<span class="activity-journey-badge-v50">aktiv</span>' : ''}
         </div>
-        <div class="projekt-pct">${pct}%</div>
+        <div class="projekt-pct lr-cover-pct-v110">${pct}%</div>
       </div>
-      <div class="projekt-desc">${toniV50Escape(subject)} · ${toniV50Escape(goal)}</div>
-      <div class="projekt-track-wrap"><div class="projekt-fill ${fillClass}" style="width:${pct}%"></div></div>
-      <div class="projekt-next">Nächster Schritt: ${toniV50Escape(next)} →</div>
+      <div class="lr-cover-descbox-v110">
+        <div class="projekt-desc lr-cover-desc-v110"><span class="lr-cover-subject-v110">${toniV50Escape(subject)}</span> · ${toniV50Escape(goal)}</div>
+      </div>
+      <div class="projekt-track-wrap lr-cover-track-v110"><div class="projekt-fill ${fillClass}" style="width:${pct}%"></div></div>
     </div>
   `;
 }
@@ -8517,21 +8561,27 @@ window.addEventListener("resize", () => {
 
     window["TONI_COMPLETED_JOURNEY_V86_" + index] = item.template;
 
+    const coverImg = journey.cover_image || journey.cover_image_embedded || "";
+    const hasCover = !!coverImg;
+    const imgLayer = hasCover ? `<div class="lr-cover-img-v110" style="background-image:url('${esc(coverImg)}')"></div>` : "";
+
     return `
-      <div class="projekt-item activity-journey-item-v50 activity-completed-item-v83 activity-completed-item-v86"
+      <div class="projekt-item activity-journey-item-v50 activity-completed-item-v83 activity-completed-item-v86 lr-cover-card-v110 ${hasCover ? "has-cover" : "no-cover"}"
            role="button"
            tabindex="0"
            data-completed-index-v86="${index}"
            title="Lernreise öffnen">
-        <div class="projekt-row">
-          <div class="projekt-name">✅ ⚡ ${esc(title)}</div>
-          <div class="projekt-pct">100%</div>
+        ${imgLayer}
+        <div class="lr-cover-titlebox-v110">
+          <div class="projekt-name lr-cover-title-v110">✅ ⚡ ${esc(title)}</div>
+          <div class="projekt-pct lr-cover-pct-v110">100%</div>
         </div>
-        <div class="projekt-desc">${esc(subject)} · ${esc(goal)}</div>
-        <div class="projekt-track-wrap">
+        <div class="lr-cover-descbox-v110">
+          <div class="projekt-desc lr-cover-desc-v110"><span class="lr-cover-subject-v110">${esc(subject)}</span> · ${esc(goal)}</div>
+        </div>
+        <div class="projekt-track-wrap lr-cover-track-v110">
           <div class="projekt-fill p-green" style="width:100%"></div>
         </div>
-        <div class="activity-completed-open-hint-v86">Lernreise öffnen →</div>
       </div>
     `;
   }
