@@ -77,23 +77,25 @@ function memberBlock(m, size = 40) {
 // FARB-SYSTEM
 // ══════════════════════════════════════
 const MEMBER_PALETTES = [
-  { bg: '#E6F1FB', border: '#85B7EB', text: '#0C447C' },  // Blau
-  { bg: '#E1F5EE', border: '#5DCAA5', text: '#085041' },  // Teal
-  { bg: '#FAEEDA', border: '#EF9F27', text: '#633806' },  // Amber
-  { bg: '#EEEDFE', border: '#AFA9EC', text: '#3C3489' },  // Lila
-  { bg: '#FBEAF0', border: '#ED93B1', text: '#72243E' },  // Pink
-  { bg: '#FAECE7', border: '#F0997B', text: '#712B13' },  // Coral
-  { bg: '#EAF3DE', border: '#97C459', text: '#27500A' },  // Grün
-  { bg: '#F1EFE8', border: '#B4B2A9', text: '#444441' },  // Grau
+  { bg: '#E6F1FB', border: '#85B7EB', text: '#0C447C', bgGradient: 'linear-gradient(135deg,#EAF4FD 0%,#CFE6FB 55%,#AED4F7 100%)' },  // Blau
+  { bg: '#E1F5EE', border: '#5DCAA5', text: '#085041', bgGradient: 'linear-gradient(135deg,#E6F8F1 0%,#C6EEDD 55%,#A8E5CC 100%)' },  // Teal
+  { bg: '#FAEEDA', border: '#EF9F27', text: '#633806', bgGradient: 'linear-gradient(135deg,#FCF3E4 0%,#FAE3BC 55%,#F8D69C 100%)' },  // Amber
+  { bg: '#EEEDFE', border: '#AFA9EC', text: '#3C3489', bgGradient: 'linear-gradient(135deg,#F1F0FE 0%,#DEDBFA 55%,#CBC6F6 100%)' },  // Lila
+  { bg: '#FBEAF0', border: '#ED93B1', text: '#72243E', bgGradient: 'linear-gradient(135deg,#FCEFF4 0%,#F7D5E2 55%,#F3C0D3 100%)' },  // Pink
+  { bg: '#FAECE7', border: '#F0997B', text: '#712B13', bgGradient: 'linear-gradient(135deg,#FCF0EB 0%,#F8D8CC 55%,#F5C3B0 100%)' },  // Coral
+  { bg: '#EAF3DE', border: '#97C459', text: '#27500A', bgGradient: 'linear-gradient(135deg,#EFF7E5 0%,#DBEDC4 55%,#C8E5A8 100%)' },  // Grün
+  { bg: '#F1EFE8', border: '#B4B2A9', text: '#444441', bgGradient: 'linear-gradient(135deg,#F5F3EE 0%,#E6E4DB 55%,#D7D4C9 100%)' },  // Grau
 ];
 
 const PROJECT_PALETTES = [
-  { bg: '#E6F1FB', bar: '#378ADD', border: '#B5D4F4' },
-  { bg: '#E1F5EE', bar: '#1D9E75', border: '#9FE1CB' },
-  { bg: '#FAEEDA', bar: '#EF9F27', border: '#FAC775' },
-  { bg: '#EEEDFE', bar: '#7F77DD', border: '#CECBF6' },
-  { bg: '#FBEAF0', bar: '#D4537E', border: '#F4C0D1' },
-  { bg: '#FAECE7', bar: '#D85A30', border: '#F5C4B3' },
+  { bg: '#E6F1FB', bar: '#378ADD', border: '#B5D4F4', bgGradient: 'linear-gradient(135deg,#EAF4FD 0%,#D6E9FB 55%,#C5E0F7 100%)' },
+  { bg: '#E1F5EE', bar: '#1D9E75', border: '#9FE1CB', bgGradient: 'linear-gradient(135deg,#E6F8F1 0%,#CFF0E2 55%,#BCEAD6 100%)' },
+  { bg: '#FAEEDA', bar: '#EF9F27', border: '#FAC775', bgGradient: 'linear-gradient(135deg,#FCF3E4 0%,#FAE6C5 55%,#F8DBAC 100%)' },
+  { bg: '#EEEDFE', bar: '#7F77DD', border: '#CECBF6', bgGradient: 'linear-gradient(135deg,#F1F0FE 0%,#E0DEFB 55%,#D2CFF8 100%)' },
+  { bg: '#FBEAF0', bar: '#D4537E', border: '#F4C0D1', bgGradient: 'linear-gradient(135deg,#FCEFF4 0%,#F8DBE6 55%,#F5CAD9 100%)' },
+  { bg: '#FAECE7', bar: '#D85A30', border: '#F5C4B3', bgGradient: 'linear-gradient(135deg,#FCF0EB 0%,#F8DDD2 55%,#F6CDBD 100%)' },
+  { bg: '#E8F6E9', bar: '#3FA65A', border: '#B6E2BC', bgGradient: 'linear-gradient(135deg,#EDF8EE 0%,#D8EFDB 55%,#C6E8CB 100%)' },
+  { bg: '#FEF6E0', bar: '#CFA70F', border: '#F1DE9A', bgGradient: 'linear-gradient(135deg,#FEF8E6 0%,#FBEEC2 55%,#F8E5A6 100%)' },
 ];
 
 function getMemberPalette(memberId) {
@@ -115,6 +117,23 @@ function getMemberPaletteInProject(memberId, projectId) {
 function getProjectPalette(projectId) {
   const idx = Math.abs((projectId||'').split('').reduce((a,c) => a + c.charCodeAt(0), 0)) % PROJECT_PALETTES.length;
   return PROJECT_PALETTES[idx];
+}
+
+// === Variante A: kräftige, dunkle Verläufe (weiße Schrift lesbar) ===
+// Deterministisch pro Projekt-ID -> gleiche Reihenfolge wie helle Palette.
+const PROJECT_GRADIENTS_DARK_V114 = [
+  { grad: 'linear-gradient(135deg,#1e3a8a 0%,#2563eb 55%,#1e293b 100%)', accent: '#1e3a8a', bar: '#60a5fa' }, // Royalblau
+  { grad: 'linear-gradient(135deg,#0f766e 0%,#14b8a6 55%,#134e4a 100%)', accent: '#0f766e', bar: '#5eead4' }, // Teal
+  { grad: 'linear-gradient(135deg,#b45309 0%,#f59e0b 55%,#78350f 100%)', accent: '#b45309', bar: '#fcd34d' }, // Bernstein
+  { grad: 'linear-gradient(135deg,#3730a3 0%,#6366f1 55%,#1e1b4b 100%)', accent: '#3730a3', bar: '#a5b4fc' }, // Indigo
+  { grad: 'linear-gradient(135deg,#9d174d 0%,#db2777 55%,#500724 100%)', accent: '#9d174d', bar: '#f9a8d4' }, // Magenta
+  { grad: 'linear-gradient(135deg,#7c2d12 0%,#ea580c 55%,#431407 100%)', accent: '#7c2d12', bar: '#fdba74' }, // Orange-Rost
+  { grad: 'linear-gradient(135deg,#047857 0%,#10b981 55%,#064e3b 100%)', accent: '#047857', bar: '#6ee7b7' }, // Smaragd
+  { grad: 'linear-gradient(135deg,#374151 0%,#4b5563 55%,#111827 100%)', accent: '#374151', bar: '#cbd5e1' }  // Anthrazit
+];
+function getProjectGradientDarkV114(projectId) {
+  const idx = Math.abs((projectId||'').split('').reduce((a,c) => a + c.charCodeAt(0), 0)) % PROJECT_GRADIENTS_DARK_V114.length;
+  return PROJECT_GRADIENTS_DARK_V114[idx];
 }
 
 async function getToken() {
@@ -217,33 +236,37 @@ function renderProjectsDashboard() {
 
   wrap.innerHTML = projects.map(p => {
     const pct = p.task_total > 0 ? Math.round((p.task_done / p.task_total) * 100) : 0;
-    const pal = getProjectPalette(p.id);
+    const g = getProjectGradientDarkV114(p.id);
     const members = (p.members || []).slice(0, 5);
-    const extra = (p.member_count||0) > 5 ? `<span style="font-size:11px;color:${pal.text};opacity:.7;margin-left:4px;align-self:center">+${p.member_count-5}</span>` : '';
+    const extra = (p.member_count||0) > 5 ? `<span style="font-size:11px;color:#fff;opacity:.85;margin-left:4px;align-self:center">+${p.member_count-5}</span>` : '';
     const avatars = members.map(m => memberBlock(m, 32)).join('');
 
     const badges = [
-      p.is_official ? `<span style="font-size:10px;background:rgba(255,255,255,.6);color:${pal.text};padding:1px 6px;border-radius:10px;border:0.5px solid ${pal.border}">Offiziell</span>` : '',
-      p.has_blocker ? `<span style="font-size:10px;background:rgba(255,255,255,.6);color:#854F0B;padding:1px 6px;border-radius:10px;border:0.5px solid #FAC775">⚠ Blocker</span>` : '',
-      p.type==='group' ? `<span style="font-size:10px;background:rgba(255,255,255,.6);color:${pal.text};padding:1px 6px;border-radius:10px;border:0.5px solid ${pal.border}">Gruppe</span>` : '',
+      p.is_official ? `<span style="font-size:10px;background:rgba(255,255,255,.85);color:#475569;padding:1px 6px;border-radius:10px">Offiziell</span>` : '',
+      p.has_blocker ? `<span style="font-size:10px;background:rgba(255,255,255,.85);color:#854F0B;padding:1px 6px;border-radius:10px;border:0.5px solid #FAC775">⚠ Blocker</span>` : '',
+      p.type==='group' ? `<span style="font-size:10px;background:rgba(255,255,255,.85);color:#475569;padding:1px 6px;border-radius:10px">Gruppe</span>` : '',
     ].filter(Boolean).join(' ');
 
     const overdue = p.deadline && isOverdue(p.deadline) && p.status !== 'completed';
     const deadlineHtml = p.deadline
-      ? `<span style="font-size:11px;color:${overdue?'#A32D2D':pal.text};opacity:${overdue?1:.8}">📅 ${formatDate(p.deadline)}${overdue?' · überfällig':''}</span>`
+      ? `<span style="font-size:11px;color:#fff;opacity:${overdue?1:.85};font-weight:${overdue?600:400}">📅 ${formatDate(p.deadline)}${overdue?' · überfällig':''}</span>`
       : '';
 
-    return `<div data-project-id="${p.id}" onclick="openProjectModal('${p.id}')" style="cursor:pointer;background:${pal.bg};border:0.5px solid ${pal.border};border-radius:10px;padding:10px 12px;margin-bottom:8px;transition:opacity .15s"
-      onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
-      <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;margin-bottom:3px">
-        <div style="font-size:14px;font-weight:500;color:${pal.text};line-height:1.3">${escapeHtml(p.title)}</div>
-        <div style="font-size:13px;font-weight:500;color:${pal.bar};white-space:nowrap;flex-shrink:0">${pct}%</div>
+    // Variante A: kräftiger Verlauf, Titel/Beschreibung in heller Glas-Box,
+    // Avatare/Deadline in weißer Schrift direkt auf dem Verlauf.
+    return `<div data-project-id="${p.id}" onclick="openProjectModal('${p.id}')" class="toni-proj-card-v114" style="cursor:pointer;background:${g.grad};border:none;border-radius:14px;padding:12px;margin-bottom:10px;box-shadow:0 4px 14px rgba(15,23,42,.14);transition:transform .14s ease, box-shadow .14s ease"
+      onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 22px rgba(15,23,42,.22)'" onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 4px 14px rgba(15,23,42,.14)'">
+      <div style="background:rgba(255,255,255,.92);border-radius:11px;padding:10px 13px;backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
+          <div style="font-size:14px;font-weight:700;color:#0f172a;line-height:1.3">${escapeHtml(p.title)}</div>
+          <div style="font-size:14px;font-weight:800;color:${g.accent};white-space:nowrap;flex-shrink:0">${pct}%</div>
+        </div>
+        ${p.description ? `<div style="font-size:12px;color:#475569;margin-top:3px;line-height:1.4">${escapeHtml(p.description)}</div>` : ''}
       </div>
-      ${p.description ? `<div style="font-size:12px;color:${pal.text};opacity:.75;margin-bottom:5px;line-height:1.4">${escapeHtml(p.description)}</div>` : ''}
-      <div style="height:4px;background:rgba(255,255,255,.5);border-radius:2px;margin:5px 0">
-        <div style="height:4px;width:${pct}%;background:${pal.bar};border-radius:2px;transition:width .3s"></div>
+      <div style="height:5px;background:rgba(255,255,255,.4);border-radius:3px;margin:10px 0">
+        <div style="height:5px;width:${pct}%;background:${g.bar};border-radius:3px;transition:width .3s"></div>
       </div>
-      <div style="display:flex;align-items:flex-start;gap:6px;margin-top:6px;flex-wrap:wrap">
+      <div class="toni-proj-members-v114" style="display:flex;align-items:flex-start;gap:6px;margin-top:6px;flex-wrap:wrap">
         <div style="display:flex;gap:6px;overflow-x:auto;max-width:100%;padding-bottom:2px">${avatars}${extra}</div>
         <div style="display:flex;align-items:center;gap:6px;width:100%;margin-top:2px">
           ${deadlineHtml}
@@ -501,9 +524,7 @@ function renderWeeklyPlan() {
     let badge = '';
     if (it.note === 'Blockiert') badge = `<span style="font-size:10px;background:#FAECE7;color:#993C1D;padding:1px 6px;border-radius:8px;margin-left:4px">Blockiert</span>`;
     else if (it.note === 'überfällig') badge = `<span style="font-size:10px;background:#FAECE7;color:#993C1D;padding:1px 6px;border-radius:8px;margin-left:4px">⚠ überfällig</span>`;
-    // Eigene Aufgaben: hellblauer Hintergrund, damit sie sich klar abheben
-    const bg = it.source === 'personal' ? 'background:#E6F1FB;' : '';
-    // Eigene Aufgaben: kleines Löschsymbol
+    // Variante A: weiße Karte, dicker DOPPELTER farbiger Balken links (Quelle).
     const del = it.source === 'personal' && it.personalId
       ? `<span onclick="event.stopPropagation();deletePersonalTask('${it.personalId}')" title="Löschen" style="margin-left:auto;color:var(--color-text-tertiary);cursor:pointer;font-size:12px"><i class="ti ti-x"></i></span>`
       : '';
@@ -514,7 +535,7 @@ function renderWeeklyPlan() {
     const dueHtml = (it.source === 'personal' && it.dueDate)
       ? `<div style="font-size:11px;color:${it.overdue?'#993C1D':'var(--color-text-tertiary)'};margin-top:2px"><i class="ti ti-calendar" style="font-size:11px;vertical-align:-1px"></i> ${typeof formatDate==='function'?formatDate(it.dueDate):it.dueDate}${it.overdue?' · überfällig':''}</div>`
       : '';
-    return `<div class="k-card${done?' done-c':''}" ${click} style="${bg}border-left:3px solid ${c.border};${done?'opacity:.55':''}">
+    return `<div class="k-card${done?' done-c':''}" ${click} style="background:#ffffff;border-left:7px double ${c.border};${done?'opacity:.55':''}">
       <div class="k-card-title" style="${done?'text-decoration:line-through;':''}">${escapeHtml(it.title)}${done?'':badge}</div>
       <div style="display:flex;align-items:center;gap:5px;font-size:11px;color:${c.text}">
         <i class="ti ${c.icon}" style="font-size:13px"></i><span style="opacity:.85">${escapeHtml(it.meta)}</span>${del}
@@ -524,9 +545,9 @@ function renderWeeklyPlan() {
   };
 
   const colDef = [
-    { key:'todo', title:'Offen',     dot:'#378ADD', headBg:'#E6F1FB', headText:'#185FA5', empty:{icon:'ti-inbox', text:'Nichts offen'} },
-    { key:'wip',  title:'In Arbeit', dot:'#EF9F27', headBg:'#FAEEDA', headText:'#854F0B', empty:{icon:'ti-coffee', text:'Nichts in Arbeit'} },
-    { key:'done', title:'Erledigt',  dot:'#1D9E75', headBg:'#E1F5EE', headText:'#0F6E56', empty:{icon:'ti-checks', text:'Noch nichts erledigt'} }
+    { key:'todo', title:'Offen',     dot:'#378ADD', headBg:'#E6F1FB', headText:'#185FA5', grad:'linear-gradient(135deg,#3b82f6,#2563eb)', empty:{icon:'ti-inbox', text:'Nichts offen'} },
+    { key:'wip',  title:'In Arbeit', dot:'#EF9F27', headBg:'#FAEEDA', headText:'#854F0B', grad:'linear-gradient(135deg,#f59e0b,#d97706)', empty:{icon:'ti-coffee', text:'Nichts in Arbeit'} },
+    { key:'done', title:'Erledigt',  dot:'#1D9E75', headBg:'#E1F5EE', headText:'#0F6E56', grad:'linear-gradient(135deg,#22c55e,#16a34a)', empty:{icon:'ti-checks', text:'Noch nichts erledigt'} }
   ];
 
   // Fortschrittsleiste: erledigt / gesamt (offen + in Arbeit + erledigt)
@@ -561,9 +582,9 @@ function renderWeeklyPlan() {
         : '';
       const count = (byCol[cd.key] || []).length;
       return `<div class="kanban-col col-${cd.key==='wip'?'wip':cd.key==='done'?'done':'todo'}">
-        <div class="k-header" style="display:flex;align-items:center;justify-content:space-between">
-          <span class="k-title" style="display:flex;align-items:center;gap:6px;color:${cd.headText}"><span style="width:8px;height:8px;border-radius:50%;background:${cd.dot};display:inline-block"></span>${cd.title}</span>
-          <span class="k-badge" style="background:${cd.headBg};color:${cd.headText}">${count}</span>
+        <div class="k-header" style="display:flex;align-items:center;justify-content:space-between;background:${cd.grad};border-radius:10px;padding:9px 12px;box-shadow:0 2px 6px rgba(15,23,42,.10)">
+          <span class="k-title" style="display:flex;align-items:center;gap:6px;color:#fff;font-weight:800;text-transform:uppercase;letter-spacing:.04em">${cd.title}</span>
+          <span class="k-badge" style="background:rgba(255,255,255,.25);color:#fff;font-weight:800">${count}</span>
         </div>
         <div>${cards}</div>
         ${extraNote}
@@ -727,15 +748,21 @@ function openProjectModal(projectId) {
   window.TONI_ACTIVE_PROJECT_ID = projectId;
 
   const pct = p.task_total > 0 ? Math.round((p.task_done / p.task_total) * 100) : 0;
-  const barColor = pct >= 80 ? '#639922' : pct >= 40 ? '#EF9F27' : '#378ADD';
+
+  // Kopf trägt denselben dunklen Verlauf wie die Projektkachel.
+  const headerGrad = (typeof getProjectGradientDarkV114 === 'function')
+    ? getProjectGradientDarkV114(p.id).grad
+    : 'linear-gradient(135deg,#3730a3,#6366f1)';
+  const headerEl = document.querySelector('#project-modal .lr-modal-header');
+  if (headerEl) headerEl.style.background = headerGrad;
 
   document.getElementById('project-modal-title').textContent = p.title;
 
-  // Header mit Fortschritt + Mitglieder
+  // Header mit Mitgliedern (Glas-Box, dunkle Schrift). Kein Fortschrittsbalken mehr (nur in der Kachel).
   const members = p.members || [];
   const avatarsHtml = members.map(m => memberBlock(m, 40)).join('');
-  const inviteCode = p.invite_code ? `<span style="font-size:11px;background:var(--color-background-secondary);padding:2px 8px;border-radius:8px;font-family:monospace;cursor:pointer" onclick="copyInviteCode('${p.invite_code}')" title="Kopieren">🔗 ${p.invite_code}</span>` : '';
-  const deadlineHtml = p.deadline ? `<span style="font-size:12px;color:${isOverdue(p.deadline)?'#A32D2D':'var(--color-text-secondary)'}">📅 ${formatDate(p.deadline)}</span>` : '';
+  const inviteCode = p.invite_code ? `<span style="font-size:11px;background:rgba(0,0,0,.06);padding:2px 8px;border-radius:8px;font-family:monospace;cursor:pointer;color:#334155" onclick="copyInviteCode('${p.invite_code}')" title="Kopieren">🔗 ${p.invite_code}</span>` : '';
+  const deadlineHtml = p.deadline ? `<span style="font-size:12px;color:${isOverdue(p.deadline)?'#A32D2D':'#475569'}">📅 ${formatDate(p.deadline)}</span>` : '';
 
   // V2/Regel 7: Projektmanager (Ersteller) statt Solo/Gruppe-Unterscheidung.
   const managerProfile = members.find(m => m.id === p.created_by);
@@ -745,19 +772,13 @@ function openProjectModal(projectId) {
 
   document.getElementById('project-modal-sub').innerHTML = `
     <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-top:4px">
-      <span style="font-size:12px;color:var(--color-text-secondary)">👤 Projektmanager: <strong>${escapeHtml(managerName)}</strong></span>
+      <span style="font-size:12px;color:#475569">👤 Projektmanager: <strong style="color:#1e293b">${escapeHtml(managerName)}</strong></span>
       ${deadlineHtml}
       ${inviteCode}
     </div>
     <div style="display:flex;gap:10px;margin-top:10px;overflow-x:auto;padding-bottom:4px">${avatarsHtml}</div>
-    <div style="margin-top:8px">
-      <div style="display:flex;justify-content:space-between;font-size:12px;color:var(--color-text-secondary);margin-bottom:3px">
-        <span>${p.task_done||0} von ${p.task_total||0} Aufgaben erledigt</span>
-        <span style="color:${barColor};font-weight:500">${pct}%</span>
-      </div>
-      <div style="height:5px;background:var(--color-border-tertiary);border-radius:3px">
-        <div style="height:5px;width:${pct}%;background:${barColor};border-radius:3px;transition:width .4s"></div>
-      </div>
+    <div style="margin-top:8px;font-size:12px;color:#475569">
+      ${p.task_done||0} von ${p.task_total||0} Aufgaben erledigt · <strong style="color:#1e293b">${pct}%</strong>
     </div>`;
 
   loadProjectTasks(projectId);
@@ -864,10 +885,10 @@ function renderProjectKanban(tasks) {
     String(b.updated_at || b.created_at || '').localeCompare(String(a.updated_at || a.created_at || '')));
 
   const colConfig = {
-    todo:        { label: 'Offen',     color: '#378ADD', bg: '#E6F1FB' },
-    in_progress: { label: 'In Arbeit', color: '#EF9F27', bg: '#FAEEDA' },
-    review:      { label: 'Review',    color: '#7F77DD', bg: '#EEEDFE' },
-    done:        { label: 'Erledigt',  color: '#639922', bg: '#EAF3DE' },
+    todo:        { label: 'Offen',     color: '#378ADD', bg: '#E6F1FB', grad: 'linear-gradient(135deg,#3b82f6,#2563eb)' },
+    in_progress: { label: 'In Arbeit', color: '#EF9F27', bg: '#FAEEDA', grad: 'linear-gradient(135deg,#f59e0b,#d97706)' },
+    review:      { label: 'Review',    color: '#7F77DD', bg: '#EEEDFE', grad: 'linear-gradient(135deg,#8b5cf6,#7c3aed)' },
+    done:        { label: 'Erledigt',  color: '#639922', bg: '#EAF3DE', grad: 'linear-gradient(135deg,#22c55e,#16a34a)' },
   };
 
   const wrap = document.getElementById('project-kanban');
@@ -876,10 +897,9 @@ function renderProjectKanban(tasks) {
   wrap.innerHTML = Object.entries(cols).map(([col, colTasks]) => {
     const cfg = colConfig[col];
     return `<div style="flex:1;min-width:150px;max-width:260px">
-      <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;padding:4px 8px;background:${cfg.bg};border-radius:8px">
-        <span style="width:8px;height:8px;border-radius:50%;background:${cfg.color};display:inline-block;flex-shrink:0"></span>
-        <span style="font-size:11px;font-weight:500;color:${cfg.color};text-transform:uppercase;letter-spacing:.06em;flex:1">${cfg.label}</span>
-        <span style="font-size:11px;font-weight:500;color:${cfg.color}">${colTasks.length}</span>
+      <div style="display:flex;align-items:center;gap:6px;margin-bottom:10px;padding:8px 11px;background:${cfg.grad};border-radius:10px;box-shadow:0 2px 6px rgba(15,23,42,.10)">
+        <span style="font-size:11px;font-weight:800;color:#fff;text-transform:uppercase;letter-spacing:.06em;flex:1">${cfg.label}</span>
+        <span style="font-size:11px;font-weight:800;color:#fff;background:rgba(255,255,255,.25);min-width:20px;height:20px;border-radius:10px;display:inline-flex;align-items:center;justify-content:center;padding:0 6px">${colTasks.length}</span>
       </div>
       <div id="pkol-${col}" style="min-height:80px">
         ${colTasks.map(t => renderTaskCard(t, col)).join('')}
@@ -937,7 +957,7 @@ function renderTaskCard(task, col) {
 
   const dueColor = task.due_date && isOverdue(task.due_date) && col !== 'done' ? '#A32D2D' : pal.text;
   const dueHtml = task.due_date
-    ? `<div style="font-size:11px;color:${dueColor};margin-top:3px;opacity:.8">${isOverdue(task.due_date)&&col!=='done'?'⚠ ':''}${formatDate(task.due_date)}</div>`
+    ? `<div style="font-size:11px;color:${dueColor};margin-top:3px;opacity:.85">${isOverdue(task.due_date)&&col!=='done'?'⚠ ':''}${formatDate(task.due_date)}</div>`
     : '';
   const blockerHtml = task.blocker
     ? `<div style="font-size:11px;color:#993C1D;background:rgba(255,255,255,.6);padding:3px 7px;border-radius:6px;margin-top:5px;line-height:1.3;border:0.5px solid #F0997B">⚠️ ${escapeHtml(task.blocker)}</div>`
@@ -945,7 +965,7 @@ function renderTaskCard(task, col) {
   const doneStyle = col === 'done' ? 'text-decoration:line-through;opacity:.6' : '';
 
   const assigneeHtml = profile
-    ? `<div style="display:flex;align-items:center;gap:6px;margin-top:5px">${avatarHtml(profile,22)}<div style="display:flex;flex-direction:column;line-height:1.15"><span style="font-size:11px;font-weight:500;color:${pal.text}">${escapeHtml(memberPrimaryName(profile))}</span><span style="font-size:10px;color:${pal.text};opacity:.7">${escapeHtml(memberSubLabel(profile))}</span></div></div>`
+    ? `<div style="display:flex;align-items:center;gap:6px;margin-top:5px">${avatarHtml(profile,22)}<div style="display:flex;flex-direction:column;line-height:1.15"><span style="font-size:11px;font-weight:600;color:${pal.text}">${escapeHtml(memberPrimaryName(profile))}</span><span style="font-size:10px;color:${pal.text};opacity:.7">${escapeHtml(memberSubLabel(profile))}</span></div></div>`
     : '';
 
   // ── Status-Steuerung ──────────────────────────────
@@ -957,15 +977,15 @@ function renderTaskCard(task, col) {
   const resetEnabled = canChange && !!prevCol;          // todo -> kein Zurueck
 
   const fwdBtn = `<button ${fwdEnabled ? `onclick="event.stopPropagation();moveProjectTask('${task.id}','${nextCol}')"` : 'disabled'}
-      style="flex:1;font-size:11px;padding:4px 9px;border:0.5px solid ${pal.border};border-radius:10px;font-weight:500;
-      background:${fwdEnabled ? 'rgba(255,255,255,.7)' : 'transparent'};color:${pal.text};
+      style="flex:1;font-size:11px;padding:4px 9px;border:0.5px solid ${pal.border};border-radius:10px;font-weight:600;
+      background:${fwdEnabled ? 'rgba(255,255,255,.65)' : 'transparent'};color:${pal.text};
       cursor:${fwdEnabled ? 'pointer' : 'default'};opacity:${fwdEnabled ? '1' : '.4'}">
       ${fwdLabel}${nextCol ? ' →' : ''}
     </button>`;
 
   const resetBtn = `<button ${resetEnabled ? `onclick="event.stopPropagation();moveProjectTask('${task.id}','${prevCol}')"` : 'disabled'}
       title="Zurücksetzen"
-      style="font-size:11px;padding:4px 9px;border:0.5px solid ${pal.border};border-radius:10px;font-weight:500;
+      style="font-size:11px;padding:4px 9px;border:0.5px solid ${pal.border};border-radius:10px;font-weight:600;
       background:transparent;color:${pal.text};
       cursor:${resetEnabled ? 'pointer' : 'default'};opacity:${resetEnabled ? '.8' : '.3'}">
       ↺
@@ -973,16 +993,17 @@ function renderTaskCard(task, col) {
 
   // Blockierte Aufgaben: roter Rand + Warnsymbol oben rechts
   const isBlocked = !!task.blocker;
+  const cardBg = pal.bgGradient || pal.bg;
   const cardBorder = isBlocked ? '2px solid #D8472B' : `0.5px solid ${pal.border}`;
   const blockerBadge = isBlocked
     ? `<span style="position:absolute;top:6px;right:8px;font-size:13px" title="${escapeHtml(task.blocker)}">⛔</span>`
     : '';
 
-  return `<div style="position:relative;background:${pal.bg};border:${cardBorder};border-radius:8px;padding:9px 10px;margin-bottom:6px;cursor:pointer;transition:opacity .15s"
+  return `<div style="position:relative;background:${cardBg};border:${cardBorder};border-radius:10px;padding:10px 11px;margin-bottom:6px;cursor:pointer;box-shadow:0 1px 4px rgba(15,23,42,.06);transition:box-shadow .15s, transform .15s"
     onclick="openTaskDetail('${task.id}')"
-    onmouseover="this.style.opacity='.85'" onmouseout="this.style.opacity='1'">
+    onmouseover="this.style.boxShadow='0 3px 10px rgba(15,23,42,.12)';this.style.transform='translateY(-1px)'" onmouseout="this.style.boxShadow='0 1px 4px rgba(15,23,42,.06)';this.style.transform='translateY(0)'">
     ${blockerBadge}
-    <div style="font-size:13px;font-weight:500;color:${pal.text};line-height:1.3;${doneStyle};${isBlocked?'padding-right:18px':''}">${escapeHtml(task.title)}</div>
+    <div style="font-size:13px;font-weight:600;color:${pal.text};line-height:1.3;${doneStyle};${isBlocked?'padding-right:18px':''}">${escapeHtml(task.title)}</div>
     ${assigneeHtml}${dueHtml}${blockerHtml}${taskFileBadgesHtml(task.id)}
     <div style="display:flex;align-items:center;gap:6px;margin-top:7px">
       ${fwdBtn}${resetBtn}

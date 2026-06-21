@@ -2324,7 +2324,7 @@ async function startOnboardingVerification(){
 
 function resendOnboardingVerification(){ startOnboardingVerification(); }
 
-window.applyRoleUI=function(){if(typeof toniGroupsOriginalApplyRoleUI==="function")toniGroupsOriginalApplyRoleUI();const panel=document.getElementById("group-panel");if(panel)panel.classList.toggle("visible",canManageGroups());const sp=document.getElementById("student-panel");if(sp)sp.classList.toggle("visible",canManageGroups());const hideForStaff=canManageGroups();const myJourneys=document.getElementById("dashboard-my-journeys-card");if(myJourneys)myJourneys.style.display=hideForStaff?"none":"";const weeklyPlan=document.getElementById("dashboard-weekly-plan-card");if(weeklyPlan)weeklyPlan.style.display=hideForStaff?"none":"";if(canManageGroups()){setTimeout(loadTutorGroups,100);setTimeout(refreshStudentList,150);if(typeof toniV19SetupCollapsibleJourneySections==="function")setTimeout(toniV19SetupCollapsibleJourneySections,200);}};
+window.applyRoleUI=function(){if(typeof toniGroupsOriginalApplyRoleUI==="function")toniGroupsOriginalApplyRoleUI();const panel=document.getElementById("group-panel");if(panel)panel.classList.toggle("visible",canManageGroups());const sp=document.getElementById("student-panel");if(sp)sp.classList.toggle("visible",canManageGroups());const hideForStaff=canManageGroups();const myJourneys=document.getElementById("dashboard-my-journeys-card");if(myJourneys)myJourneys.style.display=hideForStaff?"none":"";const weeklyPlan=document.getElementById("dashboard-weekly-plan-card");if(weeklyPlan)weeklyPlan.style.display=hideForStaff?"none":"";const bottomGrid=document.getElementById("dashboard-bottom-grid");if(bottomGrid)bottomGrid.classList.toggle("toni-staff-projects-fullwidth",hideForStaff);if(canManageGroups()){setTimeout(loadTutorGroups,100);setTimeout(refreshStudentList,150);if(typeof toniV19SetupCollapsibleJourneySections==="function")setTimeout(toniV19SetupCollapsibleJourneySections,200);if(typeof toniV19SetupCollapsibleProjectsSection==="function")setTimeout(toniV19SetupCollapsibleProjectsSection,200);}};
 
 const toniGroupsOriginalHandleAuthSession=window.handleAuthSession;
 window.handleAuthSession=async function(session){if(typeof toniGroupsOriginalHandleAuthSession==="function")await toniGroupsOriginalHandleAuthSession(session);setTimeout(handleJoinLinkAfterLogin,300);};
@@ -2510,6 +2510,35 @@ function getJourneyOwnerIdV16(){
          localStorage.getItem("toni_profile_id") ||
          null;
 }
+
+/* =========================================================
+   TONI – V113: Farbverlauf für Lernreise-Kacheln
+   Ersetzt Cover-Bilder durch performante CSS-Verläufe.
+   Deterministisch aus Titel+ID -> gleiche Reise = gleiche Farbe.
+   Kuratierte, moderne, dunkel gehaltene Töne (weiße Schrift lesbar).
+   ========================================================= */
+window.TONI_COVER_GRADIENTS_V113 = [
+  "linear-gradient(135deg,#6d28d9 0%,#9333ea 55%,#4c1d95 100%)", // Violett
+  "linear-gradient(135deg,#1e3a8a 0%,#2563eb 55%,#1e293b 100%)", // Royalblau
+  "linear-gradient(135deg,#047857 0%,#10b981 55%,#064e3b 100%)", // Smaragd
+  "linear-gradient(135deg,#9d174d 0%,#db2777 55%,#500724 100%)", // Magenta
+  "linear-gradient(135deg,#b45309 0%,#f59e0b 55%,#78350f 100%)", // Bernstein
+  "linear-gradient(135deg,#0f766e 0%,#14b8a6 55%,#134e4a 100%)", // Teal
+  "linear-gradient(135deg,#be123c 0%,#f43f5e 55%,#4c0519 100%)", // Rosé-Rot
+  "linear-gradient(135deg,#3730a3 0%,#6366f1 55%,#1e1b4b 100%)", // Indigo
+  "linear-gradient(135deg,#155e75 0%,#0891b2 55%,#083344 100%)", // Cyan-Petrol
+  "linear-gradient(135deg,#7c2d12 0%,#ea580c 55%,#431407 100%)", // Orange-Rost
+  "linear-gradient(135deg,#581c87 0%,#a21caf 55%,#3b0764 100%)", // Purpur-Pink
+  "linear-gradient(135deg,#374151 0%,#4b5563 55%,#111827 100%)"  // Anthrazit
+];
+function toniCoverGradientV113(seed){
+  const s = String(seed || "Lernreise");
+  let h = 0;
+  for(let i=0;i<s.length;i++){ h = ((h<<5)-h + s.charCodeAt(i)) | 0; }
+  const idx = Math.abs(h) % window.TONI_COVER_GRADIENTS_V113.length;
+  return window.TONI_COVER_GRADIENTS_V113[idx];
+}
+window.toniCoverGradientV113 = toniCoverGradientV113;
 
 function escapeToniV16(value){
   if(typeof escapeHtml === "function") return escapeHtml(value);
@@ -2797,17 +2826,10 @@ function renderAdminJourneyListV16(rows){
     const tasks = (j.steps || []).reduce((sum, s) => sum + ((s.tasks || []).length), 0);
     const src = row._source === "local" ? "local" : "remote";
     const statusLabel = src === "local" ? "lokal" : "gespeichert";
-    // Variante A: Deckblatt als Hintergrund. Ohne Bild -> neutraler Fallback.
-    // Das Bild liegt in einer eigenen, leicht verschwommenen Ebene, damit der
-    // Text darüber bei beliebigen Motiven gut lesbar bleibt.
-    const coverImg = j.cover_image || j.cover_image_embedded || "";
-    const hasCover = !!coverImg;
-    const imgLayer = hasCover
-      ? `<div class="journey-tile-cover-img-v112" style="background-image:url('${escapeToniV16(coverImg)}')"></div>`
-      : "";
+    // V113: Farbverlauf statt Cover-Bild (performant, deterministisch aus Titel+ID).
+    const gradient = toniCoverGradientV113((j.title || "") + "|" + (row.id || j.id || ""));
     return `
-      <div class="journey-tile journey-tile-cover-v112 ${hasCover ? "has-cover" : "no-cover"}">
-        ${imgLayer}
+      <div class="journey-tile journey-tile-cover-v112 has-cover" style="background:${gradient}">
         <button class="journey-tile-open journey-tile-cover-open-v112" title="Öffnen" aria-label="Öffnen" onclick="openAdminJourney('${row.id}')">→</button>
         <div class="journey-tile-cover-body-v112">
           <div class="journey-tile-title journey-tile-cover-title-v112">${escapeToniV16(j.title)}</div>
@@ -4354,7 +4376,8 @@ window.TONI_SECTION_OPEN_STATE = {
   manage: sessionStorage.getItem("toni_section_manage_open") === "1",
   assign: sessionStorage.getItem("toni_section_assign_open") === "1",
   students: sessionStorage.getItem("toni_section_students_open") === "1",
-  groups: sessionStorage.getItem("toni_section_groups_open") === "1"
+  groups: sessionStorage.getItem("toni_section_groups_open") === "1",
+  projects: sessionStorage.getItem("toni_section_projects_open") === "1"
 };
 
 function toniV19MakeSectionCollapsible(panelId, sectionKey, labelWhenClosed) {
@@ -4427,6 +4450,9 @@ function toniV19ApplySectionState(panelId, sectionKey) {
   if (sectionKey === "groups") {
     sessionStorage.setItem("toni_section_groups_open", open ? "1" : "0");
   }
+  if (sectionKey === "projects") {
+    sessionStorage.setItem("toni_section_projects_open", open ? "1" : "0");
+  }
 }
 
 function toniV19ToggleSection(panelId, sectionKey) {
@@ -4445,6 +4471,11 @@ function toniV19ToggleSection(panelId, sectionKey) {
     }
     if (sectionKey === "groups" && typeof refreshGroupView === "function") {
       setTimeout(refreshGroupView, 100);
+    }
+    if (sectionKey === "projects" && typeof window.loadProjects === "function") {
+      setTimeout(window.loadProjects, 100);
+    } else if (sectionKey === "projects" && typeof loadProjects === "function") {
+      setTimeout(loadProjects, 100);
     }
   }
 }
@@ -4474,6 +4505,16 @@ function toniV19SetupCollapsibleJourneySections() {
     "Klicke auf das Pluszeichen, um Lernreisen einzelnen Studenten zuzuordnen."
   );
 }
+
+// Projekte-Panel (nur Tutor/Admin) aufklappbar machen.
+function toniV19SetupCollapsibleProjectsSection() {
+  toniV19MakeSectionCollapsible(
+    "dashboard-projects-card",
+    "projects",
+    "Klicke auf das Pluszeichen, um die aktiven Projekte anzuzeigen."
+  );
+}
+window.toniV19SetupCollapsibleProjectsSection = toniV19SetupCollapsibleProjectsSection;
 
 // Bestehende Anzeige-Funktionen erweitern: Panel darf sichtbar sein, Inhalt bleibt eingeklappt.
 const TONI_V19_ORIGINAL_SHOW_JOURNEY_ADMIN = window.showJourneyAdminPanelIfAllowedV16;
@@ -7255,21 +7296,14 @@ async function toniV50GetAllActivityJourneys(){
 function toniV50ActivityJourneyHtml(journey){
   const pct = toniV50Progress(journey);
   const active = typeof STATE !== "undefined" && String(STATE.activeJourneyId) === String(journey.id);
-  const fillClass = pct >= 100 ? "p-green" : "p-blue";
   const subject = journey.subject || "Lernreise";
   const goal = journey.goal || journey.description || "Individuelle Lernreise mit Aufgaben, Praxisbezug und Reflexion.";
 
-  // Deckblatt-Hintergrundbild (optional) in eigener, leicht verschwommener Ebene,
-  // damit der Text darüber bei beliebigen Motiven gut lesbar bleibt. Ohne Bild: Fallback.
-  const coverImg = journey.cover_image || journey.cover_image_embedded || "";
-  const hasCover = !!coverImg;
-  const imgLayer = hasCover
-    ? `<div class="lr-cover-img-v110" style="background-image:url('${toniV50Escape(coverImg)}')"></div>`
-    : "";
+  // V113: Farbverlauf statt Cover-Bild (performant, deterministisch aus Titel+ID).
+  const gradient = toniCoverGradientV113((journey.title || "") + "|" + (journey.id || ""));
 
   return `
-    <div class="projekt-item activity-journey-item-v50 lr-cover-card-v110 ${hasCover ? "has-cover" : "no-cover"} ${active ? "active" : ""}" onclick="toniV50OpenActivityJourney('${toniV50Escape(journey.id)}')">
-      ${imgLayer}
+    <div class="projekt-item activity-journey-item-v50 lr-cover-card-v110 has-cover ${active ? "active" : ""}" style="background:${gradient}" onclick="toniV50OpenActivityJourney('${toniV50Escape(journey.id)}')">
       <div class="lr-cover-titlebox-v110">
         <div class="projekt-name lr-cover-title-v110">
           ⚡ ${toniV50Escape(journey.title || "Lernreise")}
@@ -7280,7 +7314,6 @@ function toniV50ActivityJourneyHtml(journey){
       <div class="lr-cover-descbox-v110">
         <div class="projekt-desc lr-cover-desc-v110"><span class="lr-cover-subject-v110">${toniV50Escape(subject)}</span> · ${toniV50Escape(goal)}</div>
       </div>
-      <div class="projekt-track-wrap lr-cover-track-v110"><div class="projekt-fill ${fillClass}" style="width:${pct}%"></div></div>
     </div>
   `;
 }
@@ -8561,26 +8594,22 @@ window.addEventListener("resize", () => {
 
     window["TONI_COMPLETED_JOURNEY_V86_" + index] = item.template;
 
-    const coverImg = journey.cover_image || journey.cover_image_embedded || "";
-    const hasCover = !!coverImg;
-    const imgLayer = hasCover ? `<div class="lr-cover-img-v110" style="background-image:url('${esc(coverImg)}')"></div>` : "";
+    // V113: Farbverlauf statt Cover-Bild (performant, deterministisch aus Titel+ID).
+    const gradient = toniCoverGradientV113((title || "") + "|" + (journey.id || ""));
 
     return `
-      <div class="projekt-item activity-journey-item-v50 activity-completed-item-v83 activity-completed-item-v86 lr-cover-card-v110 ${hasCover ? "has-cover" : "no-cover"}"
+      <div class="projekt-item activity-journey-item-v50 activity-completed-item-v83 activity-completed-item-v86 lr-cover-card-v110 has-cover"
            role="button"
            tabindex="0"
            data-completed-index-v86="${index}"
+           style="background:${gradient}"
            title="Lernreise öffnen">
-        ${imgLayer}
         <div class="lr-cover-titlebox-v110">
           <div class="projekt-name lr-cover-title-v110">✅ ⚡ ${esc(title)}</div>
           <div class="projekt-pct lr-cover-pct-v110">100%</div>
         </div>
         <div class="lr-cover-descbox-v110">
           <div class="projekt-desc lr-cover-desc-v110"><span class="lr-cover-subject-v110">${esc(subject)}</span> · ${esc(goal)}</div>
-        </div>
-        <div class="projekt-track-wrap lr-cover-track-v110">
-          <div class="projekt-fill p-green" style="width:100%"></div>
         </div>
       </div>
     `;
