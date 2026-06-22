@@ -276,16 +276,21 @@ body { font-family:'Inter',sans-serif; background:#f8fafc; font-size:13px; color
 .dot { width:5px; height:5px; background:#94a3b8; border-radius:50%; animation:blink 1.2s infinite; }
 .dot:nth-child(2){animation-delay:.2s} .dot:nth-child(3){animation-delay:.4s}
 
-.chat-actions { padding:8px 10px; border-top:1px solid var(--slate-100); display:flex; flex-direction:column; gap:4px; flex-shrink:0; }
-.act-btn { display:flex; align-items:center; gap:7px; padding:7px 11px; border-radius:8px; border:1px solid var(--border); background:var(--slate-100); font-size:11px; font-weight:500; color:var(--slate-700); cursor:pointer; transition:all .15s; text-align:left; width:100%; font-family:inherit; }
-.act-btn:hover { background:#e8edf3; } .act-btn:disabled { opacity:.5; cursor:not-allowed; }
-.act-btn.primary { background:var(--blue); color:#fff; border-color:var(--blue); }
-.act-btn.primary:hover:not(:disabled) { background:var(--blue-dark); }
-
-.chat-quote { margin:0 10px 7px; background:#fffbeb; border:1px solid #fde68a; border-radius:9px; padding:8px 10px; flex-shrink:0; }
-.q-title  { font-size:11px; font-weight:600; color:#92400e; margin-bottom:2px; }
-.q-text   { font-size:11px; color:var(--slate-700); font-style:italic; line-height:1.5; }
-.q-author { font-size:10px; color:#94a3b8; margin-top:2px; }
+/* V122: Aktionen als farbiges Icon-Raster — primäre Aktion voll oben,
+   restliche vier als 2x2-Raster mit getönten Kacheln. */
+.chat-actions { padding:10px; border-top:1px solid var(--slate-100); display:flex; flex-direction:column; gap:8px; flex-shrink:0; }
+.act-grid { display:grid; grid-template-columns:1fr 1fr; gap:8px; }
+.act-btn { display:flex; flex-direction:column; align-items:center; gap:7px; padding:14px 10px; border-radius:10px; border:none; background:var(--slate-100); font-size:12px; font-weight:500; color:var(--slate-700); cursor:pointer; transition:all .15s; text-align:center; width:100%; font-family:inherit; }
+.act-btn:hover { filter:brightness(.97); } .act-btn:disabled { opacity:.5; cursor:not-allowed; }
+.act-ico { width:34px; height:34px; border-radius:10px; display:flex; align-items:center; justify-content:center; color:#fff; font-size:17px; flex-shrink:0; }
+/* Farbpaare aus der Kachel-Palette (TONI_COVER_GRADIENTS_V113) */
+.act-btn.c-task  { background:var(--blue); color:#fff; flex-direction:row; gap:9px; padding:13px; font-size:13px; }
+.act-btn.c-proj  { background:#E1F5EE; color:#0F6E56; } .act-ico.c-proj  { background:#1D9E75; }
+.act-btn.c-collab{ background:#EEEDFE; color:#3C3489; } .act-ico.c-collab{ background:#7F77DD; }
+.act-btn.c-goal  { background:#FAECE7; color:#993C1D; } .act-ico.c-goal  { background:#D85A30; }
+.act-btn.c-refl  { background:#FBEAF0; color:#993556; } .act-ico.c-refl  { background:#D4537E; }
+.act-btn.primary { background:var(--blue); color:#fff; flex-direction:row; gap:9px; padding:13px; font-size:13px; }
+.act-btn.primary:hover:not(:disabled) { background:var(--blue-dark); filter:none; }
 
 .chat-input-wrap { padding:8px 10px; border-top:1px solid var(--slate-100); display:flex; gap:6px; align-items:center; flex-shrink:0; }
 .chat-input { flex:1; border:1px solid var(--border); border-radius:8px; padding:7px 10px; font-size:12px; font-family:inherit; outline:none; color:var(--slate-700); transition:border .15s; }
@@ -5552,6 +5557,20 @@ body.role-student .v83-student-journey-top .lernreise-wrap{
   padding-bottom:4px !important;
 }
 
+/* V121: Für Tutor/Admin (und Superadmin) auf dem Dashboard ausblenden, da sie
+   keinen eigenen Lernfortschritt haben: den persönlichen TONI-Hinweis-Kasten
+   und die persönliche Lernreise-Stationsleiste ("Du bist hier" Start…Ziel).
+   Greift über die vom System gesetzte body-Rollenklasse, unabhängig davon, wie
+   oft die Leiste neu gebaut wird. */
+body.role-tutor #dashboard-toni-hint-card,
+body.role-admin #dashboard-toni-hint-card,
+body.role-superadmin #dashboard-toni-hint-card,
+body.role-tutor #dashboard-my-journey-card,
+body.role-admin #dashboard-my-journey-card,
+body.role-superadmin #dashboard-my-journey-card{
+  display:none !important;
+}
+
 /* Abschnitt abgeschlossene Lernreisen */
 .activity-completed-panel-v83{
   margin-top:12px;
@@ -8784,7 +8803,7 @@ input.youtube-force-invalid-v105{
   <div class="left-panel">
 
     <!-- Lernreise -->
-    <div class="card">
+    <div class="card" id="dashboard-my-journey-card">
       <div class="card-header">
         <span class="card-title">Deine Lernreise – Elektrotechnik Grundlagen</span>
         <span class="card-link" onclick="openLearningJourney()">Lernreise öffnen</span>
@@ -8913,7 +8932,7 @@ input.youtube-force-invalid-v105{
         </div>
 
         <!-- TONI-Hinweis -->
-        <div class="card">
+        <div class="card" id="dashboard-toni-hint-card">
           <div class="card-header">
             <span class="card-title">TONI-Hinweis</span>
           </div>
@@ -9432,14 +9451,12 @@ input.youtube-force-invalid-v105{
     <div class="chat-msgs" id="chat-msgs-desktop"></div>
     <div class="chat-actions">
       <button class="act-btn primary" onclick="agentAction('task_agent','Nächste sinnvolle Aufgabe','desktop')"><span>▶</span> Nächste sinnvolle Aufgabe</button>
-      <button class="act-btn" onclick="agentAction('project_agent','Projektstatus zusammenfassen','desktop')"><span>📊</span> Projektstatus zusammenfassen</button>
-      <button class="act-btn" onclick="agentAction('collab_agent','Gruppenaufgaben verteilen','desktop')"><span>👥</span> Gruppenaufgaben verteilen</button>
-      <button class="act-btn" onclick="agentAction('goal_agent','Lernreise prüfen','desktop')"><span>🎯</span> Lernreise prüfen</button>
-      <button class="act-btn" onclick="agentAction('reflection_agent','Reflexion starten','desktop')"><span>💭</span> Reflexion starten</button>
-    </div>
-    <div class="chat-quote">
-      <div class="q-title">Spruch des Tages 🌟</div>
-      <div class="q-text">„Transparenz macht Lernen planbar – Verbindlichkeit macht Projekte erfolgreich."</div>
+      <div class="act-grid">
+        <button class="act-btn c-proj" onclick="agentAction('project_agent','Projektstatus zusammenfassen','desktop')"><span class="act-ico c-proj">📊</span> Projektstatus zusammenfassen</button>
+        <button class="act-btn c-collab" onclick="agentAction('collab_agent','Gruppenaufgaben verteilen','desktop')"><span class="act-ico c-collab">👥</span> Gruppenaufgaben verteilen</button>
+        <button class="act-btn c-goal" onclick="agentAction('goal_agent','Lernreise prüfen','desktop')"><span class="act-ico c-goal">🎯</span> Lernreise prüfen</button>
+        <button class="act-btn c-refl" onclick="agentAction('reflection_agent','Reflexion starten','desktop')"><span class="act-ico c-refl">💭</span> Reflexion starten</button>
+      </div>
     </div>
     <div class="chat-input-wrap">
       <input id="chat-in-desktop" class="chat-input" type="text" placeholder="Nachricht an TONI..." onkeydown="if(event.key==='Enter')sendChat('desktop')"/>
@@ -9472,14 +9489,12 @@ input.youtube-force-invalid-v105{
   <div class="chat-msgs" id="chat-msgs-mobile"></div>
   <div class="chat-actions">
     <button class="act-btn primary" onclick="agentAction('task_agent','Nächste sinnvolle Aufgabe','mobile')"><span>▶</span> Nächste sinnvolle Aufgabe</button>
-    <button class="act-btn" onclick="agentAction('project_agent','Projektstatus zusammenfassen','mobile')"><span>📊</span> Projektstatus zusammenfassen</button>
-    <button class="act-btn" onclick="agentAction('collab_agent','Gruppenaufgaben verteilen','mobile')"><span>👥</span> Gruppenaufgaben verteilen</button>
-    <button class="act-btn" onclick="agentAction('goal_agent','Lernreise prüfen','mobile')"><span>🎯</span> Lernreise prüfen</button>
-    <button class="act-btn" onclick="agentAction('reflection_agent','Reflexion starten','mobile')"><span>💭</span> Reflexion starten</button>
-  </div>
-  <div class="chat-quote">
-    <div class="q-title">Spruch des Tages 🌟</div>
-    <div class="q-text">„Transparenz macht Lernen planbar – Verbindlichkeit macht Projekte erfolgreich."</div>
+    <div class="act-grid">
+      <button class="act-btn c-proj" onclick="agentAction('project_agent','Projektstatus zusammenfassen','mobile')"><span class="act-ico c-proj">📊</span> Projektstatus zusammenfassen</button>
+      <button class="act-btn c-collab" onclick="agentAction('collab_agent','Gruppenaufgaben verteilen','mobile')"><span class="act-ico c-collab">👥</span> Gruppenaufgaben verteilen</button>
+      <button class="act-btn c-goal" onclick="agentAction('goal_agent','Lernreise prüfen','mobile')"><span class="act-ico c-goal">🎯</span> Lernreise prüfen</button>
+      <button class="act-btn c-refl" onclick="agentAction('reflection_agent','Reflexion starten','mobile')"><span class="act-ico c-refl">💭</span> Reflexion starten</button>
+    </div>
   </div>
   <div class="chat-input-wrap">
     <input id="chat-in-mobile" class="chat-input" type="text" placeholder="Nachricht an TONI..." onkeydown="if(event.key==='Enter')sendChat('mobile')"/>
@@ -9712,18 +9727,17 @@ input.youtube-force-invalid-v105{
 
 <script src="/chat.js?v=12"></script>
 
-<script src="/journey.js?v=194"></script>
+<script src="/journey.js?v=193"></script>
 <script src="/journey/theme/journey_theme.js?v=4"></script>
 <script src="/journey/theme/journey_theme_space.js?v=9"></script>
 <script src="/journey/theme/journey_theme_football.js?v=2"></script>
 <script src="/journey/theme/journey_theme_jungle.js?v=3"></script>
 <script src="/journey/theme/journey_theme_haus.js?v=3"></script>
 <script src="/journey/theme/journey_theme_salon.js?v=5"></script>
-<script src="/journey/theme/journey_theme_friseur.js?v=7"></script>
+<script src="/journey/theme/journey_theme_friseur.js?v=6"></script>
 <script src="/journey/theme/journey_theme_london.js?v=3"></script>
 <script src="/journey/theme/journey_theme_afrika.js?v=9"></script>
-<script src="/journey/theme/journey_theme_western.js?v=7"></script>
-<script src="/journey/theme/journey_theme_zweirad.js?v=1"></script>
+<script src="/journey/theme/journey_theme_western.js?v=6"></script>
 <script src="/journey/theme/journey_theme_picker.js?v=3"></script>
 <script src="/journey_editor_v111.js?v=60"></script>
 <script src="/admin.js"></script>
@@ -9740,7 +9754,7 @@ input.youtube-force-invalid-v105{
 
 
 
-<script src="/auth.js?v=42"></script>
+<script src="/auth.js?v=41"></script>
 
 
 
@@ -10690,6 +10704,6 @@ input.youtube-force-invalid-v105{
   </div>
 </div>
 
-<script src="/projects.js?v=65"></script>
+<script src="/projects.js?v=64"></script>
 </body>
 </html>
