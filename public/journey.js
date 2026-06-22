@@ -6,7 +6,7 @@
 // Build-Stempel: im Browser per `window.TONI_JOURNEY_BUILD` abfragbar.
 // Wenn dieser Wert NICHT "v86-assignments-progress-group" ist, lädt der
 // Browser eine veraltete Datei (Cache/Deploy), nicht diese Version.
-window.TONI_JOURNEY_BUILD = "v173-duplizieren-insert-pattern";
+window.TONI_JOURNEY_BUILD = "v174-perf-lite-load";
 
 /* Lernreisen V1: ergänzt das bestehende Dashboard, ohne das Design zu ersetzen. */
 const DEFAULT_LEARNING_JOURNEYS = [{
@@ -4719,7 +4719,70 @@ function startQrScanLoopV20(){const video=document.getElementById("journey-qr-vi
 async function assignJourneyFromManualCode(){const raw=document.getElementById("manual-journey-code")?.value.trim();if(!raw){setScanStatusV20("Bitte gib einen Code ein.","err");return;}try{setScanStatusV20("Code wird geprüft …");await assignJourneyFromCodeV20(raw);setScanStatusV20("✅ Lernreise wurde hinzugefügt.","ok");setTimeout(closeJourneyScanModal,800);}catch(error){setScanStatusV20("Code konnte nicht zugeordnet werden:<br>"+toniV20Escape(error.message),"err");}}
 async function getCurrentStudentProfileV20(){let profile=window.TONI_AUTH_PROFILE;if(profile?.id&&profile?.email)return profile;try{const token=typeof getAuthAccessToken==="function"?await getAuthAccessToken():null;if(!token)throw new Error("Bitte melde dich zuerst als Student an.");const userResponse=await fetch(`${window.SUPABASE_URL}/auth/v1/user`,{headers:{"apikey":window.SUPABASE_ANON_KEY,"Authorization":"Bearer "+token}});if(!userResponse.ok)throw new Error("Nutzer konnte nicht geladen werden.");const user=await userResponse.json();const rows=await supabaseRequest(`profiles?id=eq.${user.id}&select=id,email,display_name,class_name,first_name,last_name,role&limit=1`);profile=rows?.[0]||{id:user.id,email:user.email,role:"student",display_name:user.email};window.TONI_AUTH_PROFILE=profile;window.TONI_ACTIVE_PROFILE_ID=profile.id;localStorage.setItem("toni_profile_id",profile.id);localStorage.setItem("toni_role",profile.role||"student");return profile;}catch(error){throw new Error("Bitte melde dich zuerst vollständig an. "+error.message);}}
 async function assignJourneyFromCodeV20(rawCode){const journeyId=parseJourneyQrPayloadV20(rawCode);const profile=await getCurrentStudentProfileV20();if(!profile?.id||!profile?.email)throw new Error("Dein Profil konnte nicht eindeutig ermittelt werden.");if(typeof supabaseRequest!=="function"){const rows=getLocalAssignmentsV18?getLocalAssignmentsV18():[];const exists=rows.some(a=>String(a.learning_journey_template_id)===String(journeyId)&&String(a.student_email).toLowerCase()===String(profile.email).toLowerCase());if(!exists){rows.unshift({id:"assign-"+Date.now(),learning_journey_template_id:journeyId,student_profile_id:profile.id,student_email:profile.email,student_display_name:profile.display_name||profile.email,student_class_name:profile.class_name||"",status:"assigned",created_at:new Date().toISOString(),updated_at:new Date().toISOString()});setLocalAssignmentsV18?.(rows);}appendMsg?.("toni","✅ Lernreise wurde hinzugefügt.",typeof time==="function"?time():"","desktop");return;}const payload={learning_journey_template_id:journeyId,student_profile_id:profile.id,student_email:String(profile.email).toLowerCase(),student_first_name:profile.first_name||"",student_last_name:profile.last_name||"",student_display_name:profile.display_name||profile.email,student_class_name:profile.class_name||"",assigned_by_profile_id:null,status:"assigned",updated_at:new Date().toISOString()};try{await supabaseRequest("learning_journey_assignments?on_conflict=learning_journey_template_id,student_email",{method:"POST",headers:{"Prefer":"resolution=merge-duplicates,return=representation"},body:JSON.stringify([payload])});}catch(error){if(String(error.message||"").includes("duplicate")||String(error.message||"").includes("23505")){}else{throw error;}}appendMsg?.("toni","✅ Lernreise wurde deinem Profil zugeordnet.",typeof time==="function"?time():"","desktop");}
-async function loadAssignedJourneysForStudentV20(){const profile=await getCurrentStudentProfileV20();if(typeof supabaseRequest!=="function"){const assignments=(getLocalAssignmentsV18?getLocalAssignmentsV18():[]).filter(a=>String(a.student_email).toLowerCase()===String(profile.email).toLowerCase());const journeys=typeof getLocalJourneysV16==="function"?getLocalJourneysV16():[];const out=assignments.map(a=>{const j=journeys.find(x=>String(x.id)===String(a.learning_journey_template_id));return {assignment:a,journey_template:j};}).filter(x=>x.journey_template);return (typeof toniApplyFreshMergeToState==="function")?(toniApplyFreshMergeToState(out),out):out;}const rows=await supabaseRequest(`learning_journey_assignments?select=*,learning_journey_templates(*)&or=(student_profile_id.eq.${encodeURIComponent(profile.id)},student_email.eq.${encodeURIComponent(String(profile.email).toLowerCase())})&order=created_at.desc`);const out=(rows||[]).map(r=>({assignment:r,journey_template:r.learning_journey_templates})).filter(x=>x.journey_template);return (typeof toniApplyFreshMergeToState==="function")?(toniApplyFreshMergeToState(out),out):out;}
+// Performance (V120): opts.lite=true lädt für die Dashboard-Kacheln NUR Metadaten
+// (Titel, Fach, Ziel, Stationszahl, Cover-Pfad) statt der kompletten journey_json
+// mit eingebetteten Bildern. Im Lite-Modus wird ein minimales journey_json mit
+// platzhalter-steps (passende Länge) rekonstruiert, damit die Kachel-Render-Logik
+// (liest steps.length) unverändert funktioniert. Lite-Daten werden NICHT in den
+// STATE gemergt, damit eine bereits geladene volle Reise nicht überschrieben wird.
+// Die volle journey_json wird beim Starten via loadFullJourneyTemplateV120() geholt.
+async function loadAssignedJourneysForStudentV20(opts){
+  const lite=!!(opts&&opts.lite);
+  const profile=await getCurrentStudentProfileV20();
+  if(typeof supabaseRequest!=="function"){
+    const assignments=(getLocalAssignmentsV18?getLocalAssignmentsV18():[]).filter(a=>String(a.student_email).toLowerCase()===String(profile.email).toLowerCase());
+    const journeys=typeof getLocalJourneysV16==="function"?getLocalJourneysV16():[];
+    const out=assignments.map(a=>{const j=journeys.find(x=>String(x.id)===String(a.learning_journey_template_id));return {assignment:a,journey_template:j};}).filter(x=>x.journey_template);
+    return (typeof toniApplyFreshMergeToState==="function")?(toniApplyFreshMergeToState(out),out):out;
+  }
+
+  // Query-Bauer: liefert die Assignment-Zeilen mit eingebettetem Template.
+  const buildQuery=(select)=>`learning_journey_assignments?select=*,${select}&or=(student_profile_id.eq.${encodeURIComponent(profile.id)},student_email.eq.${encodeURIComponent(String(profile.email).toLowerCase())})&order=created_at.desc`;
+  const FULL_SELECT="learning_journey_templates(*)";
+  // Lite selektiert nur belegte, schlanke Spalten + station_count (kommt via sql_01).
+  const LITE_SELECT="learning_journey_templates(id,title,subject,goal,description,updated_at,owner_profile_id,station_count)";
+
+  let rows, usedLite=lite;
+  if(lite){
+    try{
+      rows=await supabaseRequest(buildQuery(LITE_SELECT));
+    }catch(e){
+      // ROBUSTHEIT: Falls die lite-Query scheitert (z.B. Spalte station_count
+      // existiert noch nicht, weil sql_01 noch nicht deployt wurde), automatisch
+      // auf die volle Query zurückfallen. Dann läuft die App normal weiter –
+      // nur ohne den Performance-Gewinn, statt mit einem Totalausfall der Liste.
+      console.warn("TONI V120: lite-Query fehlgeschlagen, Fallback auf volle Query.",e&&e.message);
+      usedLite=false;
+      rows=await supabaseRequest(buildQuery(FULL_SELECT));
+    }
+  }else{
+    rows=await supabaseRequest(buildQuery(FULL_SELECT));
+  }
+
+  const out=(rows||[]).map(r=>({assignment:r,journey_template:r.learning_journey_templates})).filter(x=>x.journey_template);
+
+  if(usedLite){
+    // Minimales journey_json rekonstruieren (nur fürs Kachel-Rendering).
+    out.forEach(o=>{const t=o.journey_template;if(t&&!t.journey_json){const n=Math.max(0,parseInt(t.station_count,10)||0);
+      // Lite: leeres steps-Array, damit toniV40ApplyProgressToJourney auf die
+      // steps aus progress_json zurückfällt (echter Fortschritt). station_count
+      // wird separat als Anzeigewert mitgeführt.
+      t.journey_json={title:t.title,subject:t.subject,goal:t.goal,steps:[]};t.__lite=true;t.__station_count=n;}});
+    return out; // bewusst KEIN State-Merge im Lite-Modus
+  }
+  return (typeof toniApplyFreshMergeToState==="function")?(toniApplyFreshMergeToState(out),out):out;
+}
+
+// Performance (V120): Lädt EIN vollständiges Lernreisen-Template (inkl. journey_json)
+// per ID nach. Wird beim Starten einer Reise genutzt, deren Kachel nur "lite"
+// (ohne journey_json) geladen wurde.
+async function loadFullJourneyTemplateV120(templateId){
+  if(typeof supabaseRequest!=="function"||!templateId)return null;
+  try{
+    const rows=await supabaseRequest(`learning_journey_templates?id=eq.${encodeURIComponent(templateId)}&select=*&limit=1`);
+    return (rows&&rows[0])||null;
+  }catch(e){console.warn("TONI V120: Volles Template konnte nicht geladen werden:",e);return null;}
+}
 async function openJourneySwitchModal(){const modal=document.getElementById("journey-switch-modal");const list=document.getElementById("journey-switch-list");modal?.classList.add("open");if(list)list.innerHTML=`<div class="assignment-empty">Lernreisen werden geladen …</div>`;try{const rows=await loadAssignedJourneysForStudentV20();if(!rows.length){list.innerHTML=`<div class="assignment-empty">Dir ist noch keine Lernreise zugeordnet. Nutze „Lernreise hinzufügen“, um einen QR-Code zu scannen.</div>`;return;}list.innerHTML=rows.map((row,index)=>{const t=row.journey_template||{};const j=t.journey_json||{};const title=t.title||j.title||"Lernreise";const subject=t.subject||j.subject||"Ohne Fach";const goal=t.goal||j.goal||"";const steps=(j.steps||[]).length;window["TONI_SWITCH_JOURNEY_"+index]=t;return `<div class="switch-item"><div><div class="switch-title">${toniV20Escape(title)}</div><div class="switch-meta">${toniV20Escape(subject)} · ${steps} Station(en)<br>${goal?"Ziel: "+toniV20Escape(goal):""}</div></div><button class="switch-start-btn" onclick="startAssignedJourneyV20(${index})">Starten</button></div>`;}).join("");}catch(error){console.error("Lernreisen wechseln:",error);list.innerHTML=`<div class="assignment-empty">⚠️ Lernreisen konnten nicht geladen werden:<br>${toniV20Escape(error.message)}</div>`;}}
 function closeJourneySwitchModal(){document.getElementById("journey-switch-modal")?.classList.remove("open");}
 function normalizeTemplateToJourneyV20(template){const j=template.journey_json||{};return {id:template.id||j.id,title:template.title||j.title||"Lernreise",subject:template.subject||j.subject||"",goal:template.goal||j.goal||"",description:template.description||j.description||"",cover_image:j.cover_image||template.cover_image||"",cover_image_name:j.cover_image_name||template.cover_image_name||"",cover_image_path:j.cover_image_path||template.cover_image_path||"",cover_image_embedded:j.cover_image_embedded||template.cover_image_embedded||"",theme:j.theme||template.theme||"classic",steps:j.steps||[]};}
@@ -5911,7 +5974,7 @@ function toniV40ApplyProgressToJourney(journey, progressJson){
     description: journey.description || savedJourney.description || ""
   };
 
-  if(Array.isArray(merged.steps)){
+  if(Array.isArray(merged.steps) && merged.steps.length){
     merged.steps = merged.steps.map(step => ({
       ...step,
       tasks: (step.tasks || []).map(task => {
@@ -5926,6 +5989,8 @@ function toniV40ApplyProgressToJourney(journey, progressJson){
       })
     }));
   }else if(Array.isArray(savedJourney.steps)){
+    // V120: lite-Reise (leeres steps-Array) ODER fehlende steps -> Stationen
+    // samt Fortschritt aus dem gespeicherten progress_json übernehmen.
     merged.steps = savedJourney.steps;
   }
 
@@ -7183,7 +7248,8 @@ async function toniV50LoadStudentAssignedJourneys(){
   if(typeof loadAssignedJourneysForStudentV20 !== "function") return [];
 
   try{
-    const rows = await loadAssignedJourneysForStudentV20();
+    // Performance (V120): Kacheln brauchen nur Metadaten -> lite-Modus (kein journey_json).
+    const rows = await loadAssignedJourneysForStudentV20({lite:true});
     const journeys = rows
       .map(row => row.journey_template || row.learning_journey_templates || row)
       .filter(Boolean)
@@ -7372,10 +7438,38 @@ async function toniV50RenderAllJourneysInActivities(){
 }
 
 window.toniV50OpenActivityJourney = async function(journeyId){
-  const journey = (window.TONI_V50_ACTIVITY_CACHE || []).find(j => String(j.id) === String(journeyId));
+  let journey = (window.TONI_V50_ACTIVITY_CACHE || []).find(j => String(j.id) === String(journeyId));
   if(!journey) return;
 
   try{
+    // Performance (V120): Kacheln werden "lite" (ohne journey_json) geladen. Beim
+    // Öffnen die vollständige Reise per ID nachladen, falls keine echten Stationen da
+    // sind. So bleibt das Dashboard schlank, ohne dass die geöffnete Reise leer ist.
+    const needsFull = !Array.isArray(journey.steps) || journey.steps.length === 0
+                      || journey.__lite === true;
+    if(needsFull && typeof loadFullJourneyTemplateV120 === "function"){
+      const fullTpl = await loadFullJourneyTemplateV120(journey.id);
+      if(fullTpl){
+        let fullJourney = null;
+        if(typeof toniV50NormalizeTemplate === "function")      fullJourney = toniV50NormalizeTemplate(fullTpl);
+        else if(typeof normalizeTemplateToJourneyV20 === "function") fullJourney = normalizeTemplateToJourneyV20(fullTpl);
+        if(fullJourney && Array.isArray(fullJourney.steps) && fullJourney.steps.length){
+          // Echte Stationen aus der vollen Reise übernehmen, aber die
+          // Anzeigefelder der Kachel als verlässliche Quelle behalten: leere
+          // Werte aus dem vollen Template dürfen Titel/Fach/Ziel NICHT
+          // überschreiben.
+          journey = {
+            ...fullJourney,
+            ...journey,                 // Kachel-Werte gewinnen, ...
+            steps: fullJourney.steps,   // ... außer den echten Stationen.
+            title:   journey.title   || fullJourney.title   || "",
+            subject: journey.subject || fullJourney.subject || "",
+            goal:    journey.goal    || fullJourney.goal    || ""
+          };
+        }
+      }
+    }
+
     if(typeof ensureLearningState === "function") ensureLearningState();
 
     if(typeof STATE !== "undefined"){

@@ -31,10 +31,12 @@ function avatarHtml(member, size=28) {
   const textColors = ['#0C447C','#085041','#633806','#3C3489','#712B13','#72243E'];
   const ci = Math.abs((member.id||'').charCodeAt(0)||0) % colors.length;
   const initials = ((member.first_name||'')[0]||(member.display_name||'?')[0]).toUpperCase();
-  // V31: Profilbilder liegen als Base64 in avatar_data_url; avatar_url als Fallback.
-  const img = member.avatar_data_url || member.avatar_url;
+  // V31: Profilbilder lagen als Base64 in avatar_data_url. Performance-Fix (V120):
+  // Storage-URL (avatar_url) bevorzugen – cachebar und parallel ladbar. Das
+  // schwere Base64 (avatar_data_url) nur noch als Fallback, falls keine URL da ist.
+  const img = member.avatar_url || member.avatar_data_url;
   if (img) {
-    return `<img src="${img}" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;border:2px solid var(--color-background-primary)" title="${escapeHtml(member.first_name||member.display_name||'')}">`;
+    return `<img src="${img}" loading="lazy" decoding="async" width="${size}" height="${size}" style="width:${size}px;height:${size}px;border-radius:50%;object-fit:cover;border:2px solid var(--color-background-primary)" title="${escapeHtml(member.first_name||member.display_name||'')}">`;
   }
   return `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${colors[ci]};color:${textColors[ci]};display:flex;align-items:center;justify-content:center;font-size:${Math.round(size*0.4)}px;font-weight:500;border:2px solid var(--color-background-primary);flex-shrink:0" title="${escapeHtml(member.first_name||member.display_name||'')}">${initials}</div>`;
 }

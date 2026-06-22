@@ -5278,7 +5278,7 @@ function toniV31CaptureAvatarPhoto(){
       throw new Error("Die Kamera ist noch nicht bereit.");
     }
 
-    const size = 160; // V110.2: Profilbild auf Anzeigegroesse verkleinert (vorher 420).
+    const size = 96; // V120 (Performance): 96px reicht für 32-40px-Anzeige; vorher 160.
     const vw = video.videoWidth;
     const vh = video.videoHeight;
     const side = Math.min(vw, vh);
@@ -5291,7 +5291,7 @@ function toniV31CaptureAvatarPhoto(){
     const ctx = canvas.getContext("2d");
     ctx.drawImage(video, sx, sy, side, side, 0, 0, size, size);
 
-    window.TONI_V31_AVATAR_DATA_URL = canvas.toDataURL("image/jpeg", 0.75);
+    window.TONI_V31_AVATAR_DATA_URL = canvas.toDataURL("image/jpeg", 0.7); // V120: 0.75 -> 0.7
 
     const preview = document.getElementById("avatar-preview-v31");
     const img = document.getElementById("avatar-preview-img-v31");
