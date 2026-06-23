@@ -1,7 +1,7 @@
 /* ============================================================
  * TONI – Lernreisen-Theme: "Fußball / Weg zum Pokal"
  * Datei: journey_theme_football.js
- * Build: theme-football-v2-preview
+ * Build: theme-football-v3-pro
  *
  * Schwester-Theme zu "Weltall". Stellt die Stationen einer Lernreise als
  * Spielstationen auf einem vertikalen Fußballplatz dar (Anstoß unten,
@@ -88,12 +88,13 @@
     return "current";
   }
 
-  /* ---- AUTO-LAYOUT (identisch zum Weltall: Pass-Linie statt Flugbahn) ---- */
+  /* ---- AUTO-LAYOUT (Pass-Linie) ---- */
   const VW = 1000;
-  const MARGIN_X = 290;
-  const STEP_GAP = 215;
-  const PAD_TOP = 175;
-  const PAD_BOTTOM = 165;
+  const FIELD_INSET = 90;        // Abstand der Außenlinie zum Bildschirmrand (vorher 20) -> schmaleres Feld, mehr Rand
+  const MARGIN_X = 235;          // seitlicher Ausschlag der Stationen (etwas reduziert wg. schmalerem Feld)
+  const STEP_GAP = 320;          // vertikaler Abstand der Stationen (vergrößert, da Trikots ~2x so groß)
+  const PAD_TOP = 235;
+  const PAD_BOTTOM = 225;
 
   function computeLayout(n) {
     const vh = PAD_TOP + PAD_BOTTOM + Math.max(1, n - 1) * STEP_GAP;
@@ -104,8 +105,8 @@
       const x = VW / 2 + phase * MARGIN_X;
       pts.push({ x: Math.round(x), y: Math.round(y) });
     }
-    const start = { x: VW / 2, y: vh - 40 };
-    const goal = { x: VW / 2, y: PAD_TOP - 50 };
+    const start = { x: VW / 2, y: vh - 55 };
+    const goal = { x: VW / 2, y: PAD_TOP - 70 };
     return { vw: VW, vh: vh, pts: pts, start: start, goal: goal };
   }
 
@@ -140,12 +141,65 @@
     }
   };
 
+  /* ---- KONFETTI: erscheint, sobald eine Station NEU abgeschlossen wurde ----
+   * Wir merken uns die zuletzt gesehenen "done"-Stati. Wird beim erneuten
+   * Render eine Station done, die es vorher nicht war, regnet Konfetti. */
+  let _prevDone = null;            // Set der zuvor abgeschlossenen Indizes
+  function triggerConfettiIfNewlyDone(states) {
+    const nowDone = states
+      .map(function (s, i) { return s === "done" ? i : -1; })
+      .filter(function (i) { return i >= 0; });
+    const nowSet = {};
+    nowDone.forEach(function (i) { nowSet[i] = true; });
+
+    let newly = false;
+    if (_prevDone !== null) {
+      for (let i = 0; i < nowDone.length; i++) {
+        if (!_prevDone[nowDone[i]]) { newly = true; break; }
+      }
+    }
+    _prevDone = nowSet;
+    if (newly) {
+      // kurz warten, bis das neue HTML im DOM ist
+      setTimeout(rainConfetti, 60);
+    }
+  }
+
+  function rainConfetti() {
+    const root = document.querySelector(".toni-fb");
+    if (!root) return;
+    // evtl. alte Konfetti-Schicht entfernen (Ghost-Cleanup)
+    const old = root.querySelector(".toni-fb__confetti-burst");
+    if (old) old.remove();
+
+    const cols = [ACCENT, LIGHT, "#4DA6FF", "#3DDC97", "#fff", "#FF7A3C"];
+    const layer = document.createElement("div");
+    layer.className = "toni-fb__confetti-burst";
+    let pieces = "";
+    for (let i = 0; i < 70; i++) {
+      const left = (Math.random() * 100).toFixed(1);
+      const delay = (Math.random() * 0.6).toFixed(2);
+      const dur = (2.6 + Math.random() * 1.8).toFixed(2);
+      const col = cols[i % cols.length];
+      const w = (6 + Math.random() * 6).toFixed(0);
+      const h = (9 + Math.random() * 8).toFixed(0);
+      const rot = (Math.random() * 360).toFixed(0);
+      pieces += `<i style="left:${left}%;width:${w}px;height:${h}px;background:${col};` +
+                `animation-delay:${delay}s;animation-duration:${dur}s;` +
+                `transform:rotate(${rot}deg)"></i>`;
+    }
+    layer.innerHTML = pieces;
+    root.appendChild(layer);
+    // nach der Animation aufräumen
+    setTimeout(function () { if (layer && layer.parentNode) layer.remove(); }, 5200);
+  }
+
   /* ---- CSS ---- */
   function injectStyles() {
     if (document.getElementById("toni-theme-football-css")) return;
     const css = `
 /* ===== Spielfeld ===== */
-.toni-fb{position:relative;width:100%;min-height:100%;border-radius:16px;overflow:visible;
+.toni-fb{position:relative;width:100%;min-height:100%;border-radius:16px;overflow:hidden;
   background:
     repeating-linear-gradient(180deg,#1B7A3E 0,#1B7A3E 60px,#15692F 60px,#15692F 120px);}
 .toni-fb__lines{position:absolute;inset:0;z-index:1;pointer-events:none;}
@@ -154,6 +208,28 @@
 .toni-fb__pitch{position:relative;z-index:2;width:100%;display:block;}
 .toni-fb__pitch svg{display:block;width:100%;height:auto;}
 
+/* ===== Tribünen links & rechts (je 4 Reihen Zuschauer) ===== */
+.toni-fb__stand{position:absolute;top:0;bottom:0;width:84px;z-index:1;pointer-events:none;
+  display:flex;flex-direction:column;
+  background:linear-gradient(90deg,#0c2c1a,#0e3a1f);}
+.toni-fb__stand.left{left:0;
+  background:linear-gradient(90deg,#0b2616,#0e3a22);
+  box-shadow:inset -10px 0 22px rgba(0,0,0,.45);}
+.toni-fb__stand.right{right:0;
+  background:linear-gradient(270deg,#0b2616,#0e3a22);
+  box-shadow:inset 10px 0 22px rgba(0,0,0,.45);}
+/* Sitzreihen-Struktur */
+.toni-fb__stand::before{content:"";position:absolute;inset:0;
+  background:repeating-linear-gradient(180deg,rgba(255,255,255,.05) 0 2px,transparent 2px 26px);}
+.toni-fb__stand-rows{position:relative;display:flex;flex-direction:column;justify-content:center;
+  gap:14px;height:100%;padding:0 6px;}
+.toni-fb__stand-row{display:flex;justify-content:space-around;gap:3px;}
+.toni-fb__fan{width:11px;height:11px;border-radius:50% 50% 45% 45%;flex:0 0 auto;
+  box-shadow:0 1px 1px rgba(0,0,0,.4);}
+/* dezente La-Ola-Welle */
+@keyframes toniFanBob{0%,100%{transform:translateY(0);}50%{transform:translateY(-3px);}}
+.toni-fb__fan{animation:toniFanBob 2.4s ease-in-out infinite;}
+
 /* Flutlicht-Schimmer (langsame Wanderung) */
 .toni-fb__floodlight{position:absolute;left:50%;top:0;width:80%;height:60%;z-index:1;
   transform:translateX(-50%);pointer-events:none;
@@ -161,112 +237,109 @@
   animation:toniFloodlight 12s ease-in-out infinite alternate;}
 @keyframes toniFloodlight{from{opacity:.4;transform:translateX(-58%);}to{opacity:.85;transform:translateX(-42%);}}
 
-/* ===== Spieler (Station) ===== */
+/* ===== Spieler (Station) – ~doppelt so groß ===== */
 .toni-fb__player{position:absolute;transform:translate(-50%,-50%);cursor:pointer;z-index:5;
   width:0;display:flex;flex-direction:column;align-items:center;text-align:center;}
 .toni-fb__player:focus-visible{outline:none;}
-.toni-fb__player:focus-visible .toni-fb__orb{outline:3px solid ${LIGHT};outline-offset:4px;}
-.toni-fb__label{position:absolute;top:54px;width:176px;left:50%;transform:translateX(-50%);
+.toni-fb__player:focus-visible .toni-fb__orb{outline:3px solid ${LIGHT};outline-offset:5px;}
+.toni-fb__label{position:absolute;top:96px;width:230px;left:50%;transform:translateX(-50%);
   display:flex;flex-direction:column;align-items:center;pointer-events:none;}
-.toni-fb__pname{margin-top:2px;font-size:13px;font-weight:650;color:#fff;line-height:1.25;
-  text-shadow:0 1px 4px rgba(0,0,0,.8),0 0 8px rgba(0,0,0,.5);
-  background:rgba(8,40,20,.4);padding:2px 8px;border-radius:8px;max-width:100%;word-wrap:break-word;}
-.toni-fb__orb{width:80px;height:80px;border-radius:50%;position:relative;display:grid;place-items:center;
+.toni-fb__pname{margin-top:2px;font-size:16px;font-weight:750;color:#fff;line-height:1.25;
+  text-shadow:0 1px 4px rgba(0,0,0,.85),0 0 8px rgba(0,0,0,.6);
+  background:rgba(8,40,20,.55);padding:4px 12px;border-radius:10px;max-width:100%;word-wrap:break-word;}
+.toni-fb__orb{width:150px;height:150px;border-radius:50%;position:relative;display:grid;place-items:center;
   background:radial-gradient(circle at 32% 28%,#3a4a3f,#1c2a22);
-  box-shadow:0 0 0 3px rgba(255,255,255,.12),0 6px 20px rgba(0,0,0,.45);color:#fff;
+  box-shadow:0 0 0 5px rgba(255,255,255,.14),0 10px 30px rgba(0,0,0,.5);color:#fff;
   transition:transform .18s ease, box-shadow .18s ease;}
 .toni-fb__player:hover .toni-fb__orb{transform:scale(1.05);}
 .toni-fb__player.done .toni-fb__orb{background:radial-gradient(circle at 32% 28%,#2E8B57,#176235);}
 .toni-fb__player.current .toni-fb__orb{background:radial-gradient(circle at 32% 28%,#2f6b4a,#16402f);
-  box-shadow:0 0 0 4px rgba(255,210,74,.3),0 0 28px rgba(255,210,74,.5);}
+  box-shadow:0 0 0 6px rgba(255,210,74,.32),0 0 40px rgba(255,210,74,.55);}
 .toni-fb__player.locked{opacity:.4;cursor:default;}
-.toni-fb__player.expanded .toni-fb__orb{box-shadow:0 0 0 4px rgba(226,52,43,.4),0 0 32px rgba(226,52,43,.5);}
-.toni-fb__ico{width:34px;height:34px;display:block;}
-/* pulsierender Ball am aktuellen Spieler */
-.toni-fb__ballpulse{position:absolute;bottom:-6px;left:50%;transform:translateX(-50%);width:22px;height:22px;
-  border-radius:50%;background:#fff;box-shadow:0 0 0 2px #16402f,0 2px 6px rgba(0,0,0,.5);
-  animation:toniBallPulse 1.6s ease-in-out infinite;}
-.toni-fb__ballpulse::before{content:"";position:absolute;inset:4px;border-radius:50%;
-  background:conic-gradient(#000 0 12%,transparent 12% 88%,#000 88%);opacity:.5;}
-@keyframes toniBallPulse{0%,100%{transform:translateX(-50%) scale(1);}50%{transform:translateX(-50%) scale(1.18);}}
-.toni-fb__tick{position:absolute;right:-2px;top:-2px;width:22px;height:22px;border-radius:50%;
-  background:#3DDC97;color:#0b3b22;display:grid;place-items:center;}
-.toni-fb__tick svg{width:14px;height:14px;}
-.toni-fb__dots{margin-top:6px;display:flex;gap:3px;justify-content:center;flex-wrap:wrap;transition:opacity .18s;}
-.toni-fb__dots span{width:7px;height:7px;border-radius:50%;display:inline-block;}
+.toni-fb__player.expanded .toni-fb__orb{box-shadow:0 0 0 6px rgba(226,52,43,.42),0 0 44px rgba(226,52,43,.55);}
+.toni-fb__ico{width:62px;height:62px;display:block;}
+/* großer Fußball an der aktuellen Station – seitlich-unten platziert, überlappt das Label nicht */
+.toni-fb__ballpulse{position:absolute;bottom:-34px;left:auto;right:-30px;transform:none;
+  width:72px;height:72px;border-radius:50%;
+  background:radial-gradient(circle at 36% 30%,#ffffff,#e9eef0 64%,#cfd6d8);
+  box-shadow:0 0 0 3px #16402f,0 6px 16px rgba(0,0,0,.55);
+  animation:toniBallPulse 1.6s ease-in-out infinite;z-index:7;
+  background-repeat:no-repeat;}
+/* Fußball-Pentagon-Muster */
+.toni-fb__ballpulse::before{content:"";position:absolute;left:50%;top:50%;
+  width:26px;height:26px;transform:translate(-50%,-50%);
+  background:#15301f;
+  clip-path:polygon(50% 0,100% 38%,82% 100%,18% 100%,0 38%);}
+.toni-fb__ballpulse::after{content:"";position:absolute;inset:0;border-radius:50%;
+  background:
+    radial-gradient(circle at 50% -8%,#15301f 0 7px,transparent 8px),
+    radial-gradient(circle at 92% 36%,#15301f 0 6px,transparent 7px),
+    radial-gradient(circle at 8% 36%,#15301f 0 6px,transparent 7px),
+    radial-gradient(circle at 26% 96%,#15301f 0 6px,transparent 7px),
+    radial-gradient(circle at 74% 96%,#15301f 0 6px,transparent 7px);}
+@keyframes toniBallPulse{0%,100%{transform:scale(1) rotate(0);}
+  50%{transform:scale(1.1) rotate(8deg);}}
+.toni-fb__tick{position:absolute;right:2px;top:2px;width:36px;height:36px;border-radius:50%;
+  background:#3DDC97;color:#0b3b22;display:grid;place-items:center;
+  box-shadow:0 2px 8px rgba(0,0,0,.4);}
+.toni-fb__tick svg{width:22px;height:22px;}
+.toni-fb__dots{margin-top:10px;display:flex;gap:5px;justify-content:center;flex-wrap:wrap;transition:opacity .18s;}
+.toni-fb__dots span{width:10px;height:10px;border-radius:50%;display:inline-block;}
 .toni-fb__player.expanded .toni-fb__dots{opacity:0;}
 
-/* ===== Mitspieler (Aufgaben) als Trikots ===== */
+/* ===== Mitspieler (Aufgaben) als Trikots – größer ===== */
 .toni-fb__squad{position:absolute;left:50%;top:50%;width:0;height:0;z-index:4;pointer-events:none;}
 .toni-fb__ring{position:absolute;left:50%;top:50%;border-radius:50%;
-  border:1px dashed rgba(255,255,255,.4);transform:translate(-50%,-50%);
+  border:1.5px dashed rgba(255,255,255,.45);transform:translate(-50%,-50%);
   opacity:0;transition:opacity .25s ease;}
 .toni-fb__player.expanded .toni-fb__ring{opacity:1;}
-.toni-fb__mate{position:absolute;left:50%;top:50%;width:46px;height:50px;
+.toni-fb__mate{position:absolute;left:50%;top:50%;width:64px;height:70px;
   transform:translate(-50%,-50%) scale(.2);opacity:0;pointer-events:none;cursor:pointer;
   transition:transform .26s cubic-bezier(.34,1.4,.5,1),opacity .2s ease;}
 .toni-fb__player.expanded .toni-fb__mate{opacity:1;pointer-events:auto;}
 /* Trikot-Form */
 .toni-fb__shirt{position:absolute;inset:0;display:grid;place-items:center;
-  filter:drop-shadow(0 3px 6px rgba(0,0,0,.45));}
+  filter:drop-shadow(0 3px 6px rgba(0,0,0,.5));}
 .toni-fb__shirt svg{width:100%;height:100%;}
 .toni-fb__num{position:absolute;left:50%;top:54%;transform:translate(-50%,-50%);
-  font-size:15px;font-weight:800;color:#fff;text-shadow:0 1px 2px rgba(0,0,0,.6);}
+  font-size:21px;font-weight:850;color:#fff;text-shadow:0 1px 3px rgba(0,0,0,.7);}
 .toni-fb__typeico{position:absolute;left:50%;top:24%;transform:translate(-50%,-50%);
-  width:14px;height:14px;color:#fff;opacity:.92;}
+  width:20px;height:20px;color:#fff;opacity:.92;}
 .toni-fb__mate:hover{transform:translate(var(--mx),var(--my)) scale(1.16) !important;z-index:9;}
 .toni-fb__mate:focus-visible{outline:3px solid #fff;outline-offset:2px;}
-.toni-fb__mlabel{position:absolute;top:52px;left:50%;transform:translateX(-50%);white-space:nowrap;
-  font-size:11px;font-weight:600;color:#fff;background:rgba(8,40,20,.9);padding:2px 7px;border-radius:7px;
-  opacity:0;pointer-events:none;transition:opacity .15s ease;box-shadow:0 2px 8px rgba(0,0,0,.4);}
+.toni-fb__mlabel{position:absolute;top:72px;left:50%;transform:translateX(-50%);white-space:nowrap;
+  font-size:12.5px;font-weight:650;color:#fff;background:rgba(8,40,20,.92);padding:3px 9px;border-radius:8px;
+  opacity:0;pointer-events:none;transition:opacity .15s ease;box-shadow:0 2px 8px rgba(0,0,0,.45);}
 .toni-fb__mate:hover .toni-fb__mlabel,.toni-fb__mate:focus-visible .toni-fb__mlabel{opacity:1;}
-.toni-fb__matetick{position:absolute;right:-2px;bottom:8px;width:16px;height:16px;border-radius:50%;
-  background:#3DDC97;color:#0b3b22;display:grid;place-items:center;border:1.5px solid #15692F;}
-.toni-fb__matetick svg{width:10px;height:10px;}
+.toni-fb__matetick{position:absolute;right:-2px;bottom:10px;width:22px;height:22px;border-radius:50%;
+  background:#3DDC97;color:#0b3b22;display:grid;place-items:center;border:2px solid #15692F;}
+.toni-fb__matetick svg{width:14px;height:14px;}
 .toni-fb__mate.locked{opacity:.4;cursor:default;filter:grayscale(.6);}
 
 /* ===== Ziel: Tor + Pokal ===== */
 .toni-fb__goaltext{position:absolute;transform:translate(-50%,-50%);z-index:4;text-align:center;
   color:${LIGHT};font-size:13px;font-weight:800;text-shadow:0 1px 6px rgba(0,0,0,.7);}
 
-/* ===== Eckfahnen ===== */
-.toni-fb__flag{position:absolute;width:26px;height:34px;z-index:3;pointer-events:none;}
-.toni-fb__flag.tl{top:8px;left:8px;}.toni-fb__flag.tr{top:8px;right:8px;}
-.toni-fb__flag.bl{bottom:8px;left:8px;}.toni-fb__flag.br{bottom:8px;right:8px;}
+/* ===== Eckfahnen – 4x so groß ===== */
+.toni-fb__flag{position:absolute;width:104px;height:136px;z-index:3;pointer-events:none;}
+.toni-fb__flag.tl{top:18px;left:18px;}.toni-fb__flag.tr{top:18px;right:18px;}
+.toni-fb__flag.bl{bottom:18px;left:18px;}.toni-fb__flag.br{bottom:18px;right:18px;}
+.toni-fb__flag.tr .cloth,.toni-fb__flag.br .cloth{transform-origin:right center;}
 .toni-fb__flag .cloth{transform-origin:left center;animation:toniFlagWave 2.2s ease-in-out infinite;}
 @keyframes toniFlagWave{0%,100%{transform:skewX(0) scaleX(1);}50%{transform:skewX(-12deg) scaleX(.9);}}
 
-/* ===== Rollender Ball + TONI im Trikot ===== */
-.toni-fb__roller{position:absolute;top:24%;left:-50px;z-index:6;width:30px;height:30px;opacity:0;
-  pointer-events:none;animation:toniBallRoll 22s linear infinite;}
-.toni-fb__roller svg{width:100%;height:100%;animation:toniBallSpin 1s linear infinite;}
-@keyframes toniBallSpin{from{transform:rotate(0)}to{transform:rotate(360deg)}}
-@keyframes toniBallRoll{0%{opacity:0;transform:translate(0,0);}4%{opacity:1;}46%{opacity:1;}
-  52%{opacity:0;transform:translate(112vw,40vh);}100%{opacity:0;transform:translate(112vw,40vh);}}
-.toni-fb__toni{position:absolute;top:58%;right:-90px;z-index:6;width:62px;height:62px;opacity:0;
-  pointer-events:none;animation:toniDribble 30s linear infinite;animation-delay:9s;}
-.toni-fb__toni .tn-shirt{position:absolute;left:50%;bottom:0;transform:translateX(-50%);width:54px;height:34px;}
-.toni-fb__toni .tn-head{position:absolute;left:50%;top:0;transform:translateX(-50%);width:34px;height:34px;
-  border-radius:50%;overflow:hidden;background:#0C1024;border:2px solid ${LIGHT};
-  box-shadow:0 0 8px rgba(255,210,74,.5);}
-.toni-fb__toni .tn-head img{width:100%;height:100%;object-fit:cover;display:block;}
-.toni-fb__toni .tn-ball{position:absolute;left:-6px;bottom:-2px;width:16px;height:16px;border-radius:50%;
-  background:#fff;box-shadow:0 0 0 1.5px #16402f;animation:toniBallSpin 1s linear infinite;}
-@keyframes toniDribble{0%{opacity:0;transform:translate(0,0);}5%{opacity:1;}48%{opacity:1;}
-  55%{opacity:0;transform:translate(-122vw,-26vh);}100%{opacity:0;transform:translate(-122vw,-26vh);}}
-
-/* ===== Konfetti am Ziel (nur wenn Reise abgeschlossen) ===== */
-.toni-fb__confetti{position:absolute;left:50%;top:4%;width:60%;height:20%;z-index:3;transform:translateX(-50%);
-  pointer-events:none;}
-.toni-fb__confetti i{position:absolute;width:8px;height:12px;opacity:0;border-radius:1px;
-  animation:toniConfetti 3.4s linear infinite;}
-@keyframes toniConfetti{0%{opacity:0;transform:translateY(-10px) rotate(0);}10%{opacity:1;}
-  100%{opacity:0;transform:translateY(160px) rotate(420deg);}}
+/* ===== Konfetti-Regen bei NEU erreichter Station ===== */
+.toni-fb__confetti-burst{position:absolute;inset:0;z-index:30;pointer-events:none;overflow:hidden;}
+.toni-fb__confetti-burst i{position:absolute;top:-24px;width:9px;height:14px;border-radius:1px;
+  opacity:0;animation:toniFbConfetti linear forwards;}
+@keyframes toniFbConfetti{
+  0%{opacity:0;transform:translateY(-20px) rotate(0);}
+  8%{opacity:1;}
+  100%{opacity:0;transform:translateY(105vh) rotate(680deg);}}
 
 @media (prefers-reduced-motion: reduce){
-  .toni-fb__floodlight,.toni-fb__ballpulse,.toni-fb__flag .cloth,
-  .toni-fb__roller,.toni-fb__toni,.toni-fb__roller svg,.toni-fb__toni .tn-ball{animation:none;}
-  .toni-fb__roller,.toni-fb__toni,.toni-fb__confetti{display:none;}
+  .toni-fb__floodlight,.toni-fb__ballpulse,.toni-fb__flag .cloth{animation:none;}
+  .toni-fb__confetti-burst{display:none;}
 }
 
 /* ============================================================
@@ -315,11 +388,35 @@ body.toni-football-fullscreen #lr-modal.toni-theme-active-football #lr-right-col
 body.toni-football-fullscreen #lr-modal.toni-theme-active-football .lr-progress-big{display:none !important;}
 body.toni-football-fullscreen #lr-modal.toni-theme-active-football .lr-cover-screen-v89{display:none !important;}
 
-/* Schließen-/Journal-Button lesbar auf dem Rasen */
-body.toni-football-fullscreen #lr-modal.toni-theme-active-football .lr-close-btn{
-  background:rgba(8,40,20,.92) !important;color:#fff !important;border:1px solid ${LIGHT} !important;}
-body.toni-football-fullscreen #lr-modal.toni-theme-active-football .lr-close-btn:hover{
+/* Kopfbereich transparent über dem Rasen, Titel weiß, Buttons hell */
+body.toni-football-fullscreen #lr-modal.toni-theme-active-football .lr-modal-header{
+  position:absolute !important;top:0 !important;left:0 !important;right:0 !important;
+  z-index:30 !important;background:transparent !important;border:none !important;
+  box-shadow:none !important;padding:14px 20px !important;
+  display:flex !important;align-items:center !important;justify-content:space-between !important;
+  pointer-events:none !important;}
+body.toni-football-fullscreen #lr-modal.toni-theme-active-football .lr-modal-title,
+body.toni-football-fullscreen #lr-modal.toni-theme-active-football #lr-modal-title{
+  color:#fff !important;background:transparent !important;border:none !important;box-shadow:none !important;
+  text-shadow:0 2px 10px rgba(0,0,0,.85),0 0 16px rgba(0,0,0,.6) !important;pointer-events:auto !important;}
+body.toni-football-fullscreen #lr-modal.toni-theme-active-football .lr-modal-actions{
+  pointer-events:auto !important;display:flex !important;gap:8px !important;width:auto !important;}
+body.toni-football-fullscreen #lr-modal.toni-theme-active-football .lr-modal-actions button,
+body.toni-football-fullscreen #lr-modal.toni-theme-active-football .lr-close-btn,
+body.toni-football-fullscreen #lr-modal.toni-theme-active-football .lr-journal-btn{
+  background:rgba(8,40,20,.9) !important;color:#fff !important;
+  border:1px solid ${LIGHT} !important;box-shadow:0 2px 12px rgba(0,0,0,.45) !important;
+  backdrop-filter:blur(5px);}
+body.toni-football-fullscreen #lr-modal.toni-theme-active-football .lr-modal-actions button *,
+body.toni-football-fullscreen #lr-modal.toni-theme-active-football .lr-close-btn *,
+body.toni-football-fullscreen #lr-modal.toni-theme-active-football .lr-journal-btn *{
+  color:#fff !important;fill:#fff !important;}
+body.toni-football-fullscreen #lr-modal.toni-theme-active-football .lr-close-btn:hover,
+body.toni-football-fullscreen #lr-modal.toni-theme-active-football .lr-journal-btn:hover{
   background:rgba(20,60,34,.95) !important;}
+/* etwas Platz oben, damit erste Station nicht unter dem Header klebt */
+body.toni-football-fullscreen #lr-modal.toni-theme-active-football .toni-fb{
+  padding-top:58px !important;}
 
 /* z-index: Task-Modal über das Vollbild-Feld */
 body.toni-football-fullscreen #lr-task-modal.lr-modal-backdrop,
@@ -369,8 +466,45 @@ body.toni-football-fullscreen #lr-task-modal .lr-iconbtn-done,
 body.toni-football-fullscreen #lr-task-modal .lr-secondary-btn,
 body.toni-football-fullscreen #lr-task-modal .lr-success-btn{
   background:linear-gradient(180deg,#1a6b3f,#0e3f24) !important;
-  border:1px solid ${LIGHT} !important;color:#FFF3CC !important;}
-body.toni-football-fullscreen #lr-task-modal .lr-success-btn{border-color:#3DDC97 !important;color:#BFF3DD !important;}
+  border:1px solid ${LIGHT} !important;color:#FFF3CC !important;
+  font-weight:750 !important;}
+/* "Erledigt"-Button als FUSSBALL: weißer Ball mit Pentagon-Muster */
+body.toni-football-fullscreen #lr-task-modal .lr-success-btn,
+body.toni-football-fullscreen #lr-task-modal button.lr-iconbtn-done,
+body.toni-football-fullscreen #lr-task-modal button[onclick*="markTaskDone"],
+body.toni-football-fullscreen #lr-task-modal button[onclick*="Erledigt"]{
+  position:relative !important;
+  background:radial-gradient(circle at 38% 32%,#ffffff,#eef2f3 62%,#d3dadc) !important;
+  color:#0e3f24 !important;border:2px solid #16402f !important;
+  border-radius:14px !important;font-weight:850 !important;
+  text-shadow:0 1px 0 rgba(255,255,255,.6) !important;
+  box-shadow:0 4px 14px rgba(0,0,0,.35),inset 0 1px 0 rgba(255,255,255,.8) !important;
+  overflow:hidden !important;}
+/* Pentagon-Tupfen-Muster dezent im Button-Hintergrund */
+body.toni-football-fullscreen #lr-task-modal .lr-success-btn::before,
+body.toni-football-fullscreen #lr-task-modal button.lr-iconbtn-done::before,
+body.toni-football-fullscreen #lr-task-modal button[onclick*="markTaskDone"]::before{
+  content:"" !important;position:absolute !important;inset:0 !important;pointer-events:none !important;
+  background:
+    radial-gradient(circle at 14% 30%,#16402f 0 7px,transparent 8px),
+    radial-gradient(circle at 86% 30%,#16402f 0 7px,transparent 8px),
+    radial-gradient(circle at 50% 96%,#16402f 0 8px,transparent 9px);
+  opacity:.14 !important;}
+body.toni-football-fullscreen #lr-task-modal .lr-success-btn *,
+body.toni-football-fullscreen #lr-task-modal button.lr-iconbtn-done *{
+  color:#0e3f24 !important;position:relative;z-index:1;}
+body.toni-football-fullscreen #lr-task-modal .lr-success-btn:hover{
+  filter:brightness(1.04);transform:translateY(-1px);}
+
+/* Aufgaben-Text und Notizfeld klar lesbar (höherer Kontrast als im Screenshot) */
+body.toni-football-fullscreen #lr-task-modal #lr-task-content{
+  background:rgba(7,34,18,.78) !important;border:1px solid rgba(255,255,255,.28) !important;
+  color:#F2FBF5 !important;}
+body.toni-football-fullscreen #lr-task-modal textarea,
+body.toni-football-fullscreen #lr-task-modal input.toni-auf-input,
+body.toni-football-fullscreen #lr-task-modal #lr-answer{
+  background:rgba(6,28,15,.85) !important;color:#F4FCF7 !important;
+  border:1.5px solid #2a6e48 !important;border-radius:10px !important;}
 `;
     const el = document.createElement("style");
     el.id = "toni-theme-football-css";
@@ -423,33 +557,64 @@ body.toni-football-fullscreen #lr-task-modal .lr-success-btn{border-color:#3DDC9
     const walkedPts = [L.start].concat(L.pts.slice(0, Math.max(0, walkedUpto + 1)));
     const walkedD = walkedUpto >= 0 ? spline(walkedPts) : "";
 
-    // Spielfeld-Linien als SVG (Mittelkreis, Mittellinie, Strafräume, Pass-Linie, Tor)
+    // Spielfeld-Linien als SVG (Mittelkreis, Mittellinie, Strafräume, Pass-Linie, Tore mit Netz)
     const cx = L.vw / 2;
+    const FX = FIELD_INSET;                 // linker/rechter Linien-Abstand
+    const fieldW = L.vw - FX * 2;
+    const boxW = 360, boxH = 150;           // Strafraum
+    const goalW = 150, goalNetH = 56;       // sichtbares Tor mit Netz
+    function netLines(gx, gy, w, h, up) {
+      // Netz-Gitter innerhalb des Tors. up=true: Netz nach oben (oberes Tor), sonst nach unten.
+      const dir = up ? -1 : 1;
+      let d = "";
+      const cols = 8, rows = 4;
+      for (let c = 0; c <= cols; c++) {
+        const x = gx - w / 2 + (w / cols) * c;
+        d += `M ${x} ${gy} L ${x} ${gy + dir * h} `;
+      }
+      for (let r = 0; r <= rows; r++) {
+        const yy = gy + dir * (h / rows) * r;
+        d += `M ${gx - w / 2} ${yy} L ${gx + w / 2} ${yy} `;
+      }
+      return d;
+    }
     const svg =
       `<svg viewBox="0 0 ${L.vw} ${L.vh}" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">` +
         `<defs><linearGradient id="toniPass" x1="0" y1="1" x2="0" y2="0">` +
           `<stop offset="0" stop-color="${ACCENT}"/><stop offset="1" stop-color="${LIGHT}"/>` +
         `</linearGradient></defs>` +
-        // Außenlinie
-        `<rect x="20" y="20" width="${L.vw - 40}" height="${L.vh - 40}" fill="none" ` +
-          `stroke="rgba(255,255,255,.55)" stroke-width="3"/>` +
+        // Außenlinie (schmaler -> größerer Rand)
+        `<rect x="${FX}" y="40" width="${fieldW}" height="${L.vh - 80}" fill="none" ` +
+          `stroke="rgba(255,255,255,.6)" stroke-width="3"/>` +
         // Mittellinie + Mittelkreis
-        `<line x1="20" y1="${L.vh / 2}" x2="${L.vw - 20}" y2="${L.vh / 2}" ` +
-          `stroke="rgba(255,255,255,.5)" stroke-width="3"/>` +
-        `<circle cx="${cx}" cy="${L.vh / 2}" r="70" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="3"/>` +
-        `<circle cx="${cx}" cy="${L.vh / 2}" r="6" fill="rgba(255,255,255,.6)"/>` +
-        // Strafraum oben (Tor) und unten
-        `<rect x="${cx - 150}" y="20" width="300" height="110" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="3"/>` +
-        `<rect x="${cx - 150}" y="${L.vh - 130}" width="300" height="110" fill="none" stroke="rgba(255,255,255,.5)" stroke-width="3"/>` +
+        `<line x1="${FX}" y1="${L.vh / 2}" x2="${L.vw - FX}" y2="${L.vh / 2}" ` +
+          `stroke="rgba(255,255,255,.55)" stroke-width="3"/>` +
+        `<circle cx="${cx}" cy="${L.vh / 2}" r="78" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="3"/>` +
+        `<circle cx="${cx}" cy="${L.vh / 2}" r="7" fill="rgba(255,255,255,.65)"/>` +
+        // Strafraum oben + unten
+        `<rect x="${cx - boxW / 2}" y="40" width="${boxW}" height="${boxH}" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="3"/>` +
+        `<rect x="${cx - boxW / 2}" y="${L.vh - 40 - boxH}" width="${boxW}" height="${boxH}" fill="none" stroke="rgba(255,255,255,.55)" stroke-width="3"/>` +
         // Pass-Linie
         `<path d="${fullD}" fill="none" stroke="rgba(255,255,255,.6)" stroke-width="3.5" ` +
-          `stroke-linecap="round" stroke-dasharray="2 13"/>` +
-        (walkedD ? `<path d="${walkedD}" fill="none" stroke="url(#toniPass)" stroke-width="5" stroke-linecap="round"/>` : "") +
-        // Tor + Pokal
+          `stroke-linecap="round" stroke-dasharray="2 14"/>` +
+        (walkedD ? `<path d="${walkedD}" fill="none" stroke="url(#toniPass)" stroke-width="6" stroke-linecap="round"/>` : "") +
+        // ===== OBERES TOR (Ziel) mit Netz =====
+        `<g>` +
+          `<path d="${netLines(cx, 40, goalW, goalNetH, true)}" stroke="rgba(255,255,255,.45)" stroke-width="1"/>` +
+          `<rect x="${cx - goalW / 2}" y="${40 - goalNetH}" width="${goalW}" height="${goalNetH}" fill="rgba(255,255,255,.06)"/>` +
+          `<path d="M ${cx - goalW / 2} 40 L ${cx - goalW / 2} ${40 - goalNetH} L ${cx + goalW / 2} ${40 - goalNetH} L ${cx + goalW / 2} 40" ` +
+            `fill="none" stroke="#fff" stroke-width="4"/>` +
+        `</g>` +
+        // ===== UNTERES TOR (Anstoß) mit Netz =====
+        `<g>` +
+          `<path d="${netLines(cx, L.vh - 40, goalW, goalNetH, false)}" stroke="rgba(255,255,255,.45)" stroke-width="1"/>` +
+          `<rect x="${cx - goalW / 2}" y="${L.vh - 40}" width="${goalW}" height="${goalNetH}" fill="rgba(255,255,255,.06)"/>` +
+          `<path d="M ${cx - goalW / 2} ${L.vh - 40} L ${cx - goalW / 2} ${L.vh - 40 + goalNetH} L ${cx + goalW / 2} ${L.vh - 40 + goalNetH} L ${cx + goalW / 2} ${L.vh - 40}" ` +
+            `fill="none" stroke="#fff" stroke-width="4"/>` +
+        `</g>` +
+        // Pokal im oberen Tor
         `<g transform="translate(${L.goal.x},${L.goal.y})">` +
-          `<rect x="-46" y="-30" width="92" height="40" fill="none" stroke="#fff" stroke-width="3"/>` +
-          `<path d="M-46 -30 h92 M-46 -30 v40 M46 -30 v40" stroke="#fff" stroke-width="1" opacity=".5"/>` +
-          `<path d="M-8 12 h16 l-2 10 h-12 z M-12 12 h24 M-6 22 h12 v4 h-12 z" fill="${LIGHT}" stroke="#C9920F" stroke-width="1"/>` +
+          `<path d="M-10 6 h20 l-2.5 12 h-15 z M-15 6 h30 M-7 18 h14 v5 h-14 z" fill="${LIGHT}" stroke="#C9920F" stroke-width="1.2"/>` +
         `</g>` +
       `</svg>`;
 
@@ -530,45 +695,47 @@ body.toni-football-fullscreen #lr-task-modal .lr-success-btn{border-color:#3DDC9
     }
 
     const goalLeft = (L.goal.x / L.vw * 100).toFixed(2);
-    const goalTop = ((L.goal.y - 64) / L.vh * 100).toFixed(2);
-    const goalText = `<div class="toni-fb__goaltext" style="left:${goalLeft}%;top:${goalTop}%">⚽ Tor &amp; Pokal</div>`;
+    const goalTop = ((L.goal.y - 90) / L.vh * 100).toFixed(2);
+    const goalText = `<div class="toni-fb__goaltext" style="left:${goalLeft}%;top:${goalTop}%">🏆 Tor &amp; Pokal</div>`;
 
-    // Eckfahnen
+    // Eckfahnen (4x so groß) – Tuchrichtung je Ecke
     function flag(pos) {
-      return `<div class="toni-fb__flag ${pos}"><svg viewBox="0 0 26 34">` +
-        `<line x1="3" y1="2" x2="3" y2="34" stroke="#fff" stroke-width="2"/>` +
-        `<path class="cloth" d="M3 3 L22 8 L3 14 Z" fill="${ACCENT}"/></svg></div>`;
+      const right = (pos === "tr" || pos === "br");
+      const cloth = right
+        ? `<path class="cloth" d="M23 12 L4 32 L23 56 Z" fill="${ACCENT}"/>`
+        : `<path class="cloth" d="M12 12 L88 32 L12 56 Z" fill="${ACCENT}"/>`;
+      const pole = right
+        ? `<line x1="23" y1="8" x2="23" y2="136" stroke="#fff" stroke-width="6"/>`
+        : `<line x1="12" y1="8" x2="12" y2="136" stroke="#fff" stroke-width="6"/>`;
+      return `<div class="toni-fb__flag ${pos}"><svg viewBox="0 0 104 136">` +
+        pole + cloth + `</svg></div>`;
     }
 
-    // Konfetti nur bei abgeschlossener Reise
-    let confettiHTML = "";
-    if (allDone) {
-      const cols = [ACCENT, LIGHT, "#4DA6FF", "#3DDC97", "#fff"];
-      let pieces = "";
-      for (let i = 0; i < 26; i++) {
-        pieces += `<i style="left:${(Math.random() * 100).toFixed(1)}%;` +
-                  `background:${cols[i % cols.length]};` +
-                  `animation-delay:${(Math.random() * 3).toFixed(2)}s"></i>`;
+    // Tribünen links & rechts (4 Reihen Zuschauer)
+    function stand(side) {
+      const fanCols = ["#E2342B", "#4DA6FF", "#FFD24A", "#3DDC97", "#FF7A3C", "#C66BFF", "#fff", "#ff9eb5"];
+      let rows = "";
+      const ROWS = 4, PER = 5;
+      for (let r = 0; r < ROWS; r++) {
+        let fans = "";
+        for (let c = 0; c < PER; c++) {
+          const col = fanCols[(r * PER + c + (side === "right" ? 3 : 0)) % fanCols.length];
+          const delay = (((r + c) % 6) * 0.4).toFixed(2);
+          fans += `<span class="toni-fb__fan" style="background:${col};animation-delay:${delay}s"></span>`;
+        }
+        rows += `<div class="toni-fb__stand-row">${fans}</div>`;
       }
-      confettiHTML = `<div class="toni-fb__confetti">${pieces}</div>`;
+      return `<div class="toni-fb__stand ${side}"><div class="toni-fb__stand-rows">${rows}</div></div>`;
     }
 
-    // TONI im Trikot (Logo) + rollender Ball
-    const toniShip =
-      `<div class="toni-fb__toni">` +
-        `<span class="tn-shirt"><svg viewBox="0 0 54 34" fill="${ACCENT}">` +
-          `<path d="M16 2 L27 7 L38 2 L52 9 L46 17 L46 32 L8 32 L8 17 L2 9 Z" ` +
-            `stroke="rgba(255,255,255,.8)" stroke-width="1.5"/></svg></span>` +
-        `<span class="tn-head"><img src="/assets/toni-logo-face.png" alt="TONI"></span>` +
-        `<span class="tn-ball"></span>` +
-      `</div>`;
-    const roller = `<div class="toni-fb__roller">${ICON.ball}</div>`;
+    // Konfetti auslösen, falls seit letztem Render eine Station NEU abgeschlossen wurde
+    triggerConfettiIfNewlyDone(states);
 
     return `<div class="toni-fb">` +
              `<div class="toni-fb__crowd"></div>` +
+             stand("left") + stand("right") +
              `<div class="toni-fb__floodlight"></div>` +
              flag("tl") + flag("tr") + flag("bl") + flag("br") +
-             roller + toniShip + confettiHTML +
              `<div class="toni-fb__pitch">${svg}${playersHTML}${goalText}</div>` +
            `</div>`;
   }
@@ -599,5 +766,5 @@ body.toni-football-fullscreen #lr-task-modal .lr-success-btn{border-color:#3DDC9
     }
   });
 
-  console.info("[TONI-Theme:football] Fußball-Theme registriert (theme-football-v2-preview).");
+  console.info("[TONI-Theme:football] Fußball-Theme registriert (theme-football-v3-pro – Pro-Design).");
 })();
