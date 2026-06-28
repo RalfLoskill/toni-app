@@ -4,6 +4,9 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>TONI · Kosten & Marge pro Institution</title>
+<!-- Lädt window.SUPABASE_URL / window.SUPABASE_ANON_KEY aus den Vercel-ENV
+     (dev in Preview, prod in Production) – analog zur Haupt-App. -->
+<script src="/api/config"></script>
 <style>
   :root{
     --blue:#1763C6; --blue-dark:#0F47A1; --blue-50:#EAF1FB; --blue-100:#D9E8FB;
@@ -417,15 +420,17 @@
   }
   recompute();
 
-  // KPI-Kacheln aus T befüllen
+  // KPI-Kacheln aus T befüllen (null-sicher: fehlende Elemente überspringen)
+  function setText(id, val){ const el=document.getElementById(id); if(el) el.textContent=val; }
+  function setHtml(id, val){ const el=document.getElementById(id); if(el) el.innerHTML=val; }
   function fillKpis(){
-    document.getElementById("kpi-cost").textContent  = eur(T.totalCost);
-    document.getElementById("kpi-price").textContent = eur(T.price);
-    document.getElementById("kpi-netmargin").textContent = eur(T.netMargin);
-    document.getElementById("kpi-netpct").innerHTML = T.netPct + "&nbsp;%";
-    document.getElementById("kpi-storage").textContent = T.storageGB.toLocaleString("de-DE");
+    setText("kpi-cost",  eur(T.totalCost));
+    setText("kpi-price", eur(T.price));
+    setText("kpi-netmargin", eur(T.netMargin));
+    setHtml("kpi-netpct", T.netPct + "&nbsp;%");
+    setText("kpi-storage", T.storageGB.toLocaleString("de-DE"));
     // Fixkosten-Block
-    const fc = document.getElementById("fixed-list"); fc.innerHTML="";
+    const fc = document.getElementById("fixed-list"); if(fc){ fc.innerHTML="";
     FIXED.forEach(f=>{
       const row = document.createElement("div");
       row.className="lr";
@@ -434,17 +439,18 @@
         <span class="v">${eur(f.amount)} €</span>`;
       fc.appendChild(row);
     });
-    document.getElementById("fixed-total").textContent = eur(fixedTotalC) + " €";
-    document.getElementById("bridge-fixed").textContent = eur(fixedTotalC) + " €";
-    document.getElementById("gross-margin").textContent = "+" + eur(T.grossMargin) + " €";
-    document.getElementById("net-margin").textContent = (T.netMargin<0?"":"+") + eur(T.netMargin) + " €";
+    }
+    setText("fixed-total", eur(fixedTotalC) + " €");
+    setText("bridge-fixed", eur(fixedTotalC) + " €");
+    setText("gross-margin", "+" + eur(T.grossMargin) + " €");
+    setText("net-margin", (T.netMargin<0?"":"+") + eur(T.netMargin) + " €");
     // Footer
-    document.getElementById("foot-journeys").textContent = T.journeys;
-    document.getElementById("foot-storage").textContent = T.storageGB.toLocaleString("de-DE") + " GB";
-    document.getElementById("foot-ai").textContent = eur(T.ai) + " €";
-    document.getElementById("foot-instcost").textContent = eur(T.instCost) + " €";
-    document.getElementById("foot-price").textContent = eur(T.price) + " €";
-    document.getElementById("foot-margin").textContent = "+" + eur(T.grossMargin) + " €";
+    setText("foot-journeys", T.journeys);
+    setText("foot-storage", T.storageGB.toLocaleString("de-DE") + " GB");
+    setText("foot-ai", eur(T.ai) + " €");
+    setText("foot-instcost", eur(T.instCost) + " €");
+    setText("foot-price", eur(T.price) + " €");
+    setText("foot-margin", "+" + eur(T.grossMargin) + " €");
   }
 
   function marginClass(d){
@@ -547,8 +553,12 @@
   document.addEventListener("keydown",e=>{ if(e.key==="Escape") closeDrawer(); });
 
   // ── Konfiguration: Supabase-Projektwerte (anon key ist öffentlich, ok) ──
-  const SUPABASE_URL  = "";   // z.B. "https://xxxx.supabase.co"
-  const SUPABASE_ANON = "";   // dein anon public key (kein Service-Key!)
+  // Werte aus /api/config (Vercel-ENV) bevorzugen → automatisch dev in Preview,
+  // prod in Production. Fallback auf feste Werte nur, falls /api/config fehlt.
+  const SUPABASE_URL  = (window.SUPABASE_URL && window.SUPABASE_URL.trim())
+    || "https://rmwowznwjsyaypauszyl.supabase.co";
+  const SUPABASE_ANON = (window.SUPABASE_ANON_KEY && window.SUPABASE_ANON_KEY.trim())
+    || "sb_publishable_TwtNbRE9GQaAjLLH8k7_4g_ujJefMzo";
 
   // Mappt das RPC-JSON auf das interne Datenformat
   function mapRpc(json){
@@ -650,9 +660,14 @@
 
   // Beim Laden: prüfen, ob schon eine gültige Sitzung besteht (dann Login überspringen)
   async function boot(){
-    renderAll();  // Demo im Hintergrund vorbereiten (noch verborgen)
+    // WICHTIG: Login-Handler ZUERST registrieren, damit der Button auch dann
+    // funktioniert, wenn das Demo-Rendern unten fehlschlägt.
     document.getElementById("login-btn").addEventListener("click", doLogin);
     document.getElementById("login-pass").addEventListener("keydown", e=>{ if(e.key==="Enter") doLogin(); });
+    document.getElementById("login-email").addEventListener("keydown", e=>{ if(e.key==="Enter") doLogin(); });
+
+    try{ renderAll(); }catch(e){ console.warn("Demo-Render übersprungen:", e.message); }
+
     if(!SUPABASE_URL || !SUPABASE_ANON){
       document.getElementById("login-config-hint").style.display = "";
       return;  // Login-Gate bleibt sichtbar; ohne Config kein Zugang

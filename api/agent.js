@@ -6,6 +6,69 @@
 // Sendet:   { message, ui_updates }
 // ================================================================
 
+// ── KI-Kosten-Logging (per fetch gegen Supabase-REST, kein npm nötig) ──
+// Nutzt dieselben ENV wie create-user.js: SUPABASE_URL, SUPABASE_SERVICE_ROLE_KEY
+const AI_PRICING = {
+  'claude-sonnet-4-6':         { in: 3.00 / 1e6, out: 15.00 / 1e6 },
+  'claude-haiku-4-5-20251001': { in: 1.00 / 1e6, out:  5.00 / 1e6 },
+};
+
+// Schreibt eine Logzeile in ai_usage_log. Schlägt nie hart fehl, damit das
+// Logging den eigentlichen Request niemals kaputtmacht.
+async function logAiUsage({ profileId, agent, model, usage, journeyId }) {
+  try {
+    const SUPABASE_URL = process.env.SUPABASE_URL;
+    const SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+    if (!SUPABASE_URL || !SERVICE_ROLE_KEY || !usage) return;
+
+    const p = AI_PRICING[model] || { in: 0, out: 0 };
+    const inTok  = usage.input_tokens  || 0;
+    const outTok = usage.output_tokens || 0;
+    const cost_usd = Number((inTok * p.in + outTok * p.out).toFixed(5));
+
+    // Institution aus der Profil-ID auflösen (REST-GET)
+    let institution_id = null;
+    if (profileId) {
+      const r = await fetch(
+        `${SUPABASE_URL}/rest/v1/profiles?id=eq.${profileId}&select=institution_id&limit=1`,
+        { headers: { apikey: SERVICE_ROLE_KEY, Authorization: `Bearer ${SERVICE_ROLE_KEY}` } }
+      );
+      if (r.ok) { const rows = await r.json(); institution_id = rows?.[0]?.institution_id ?? null; }
+    }
+
+    // Logzeile schreiben (REST-POST)
+    const insResp = await fetch(`${SUPABASE_URL}/rest/v1/ai_usage_log`, {
+      method: 'POST',
+      headers: {
+        apikey: SERVICE_ROLE_KEY,
+        Authorization: `Bearer ${SERVICE_ROLE_KEY}`,
+        'Content-Type': 'application/json',
+        Prefer: 'return=minimal'
+      },
+      body: JSON.stringify({
+        institution_id,
+        profile_id: profileId || null,
+        agent,
+        model,
+        input_tokens: inTok,
+        output_tokens: outTok,
+        cost_usd,
+        journey_id: journeyId || null
+      })
+    });
+    if (!insResp.ok) {
+      const errText = await insResp.text().catch(() => '');
+      console.error('ai_usage_log INSERT abgelehnt:', insResp.status, errText.slice(0, 400));
+    } else {
+      console.log('ai_usage_log INSERT ok:', agent, cost_usd);
+    }
+  } catch (e) {
+    console.error('ai_usage_log Fehler (ignoriert):', e && e.message,
+      '| cause:', (e && e.cause && (e.cause.code || e.cause.message)) || 'keine',
+      '| url:', process.env.SUPABASE_URL || '(SUPABASE_URL fehlt)');
+  }
+}
+
 export default async function handler(req, res) {
 
   // Nur POST erlaubt
@@ -23,6 +86,7 @@ export default async function handler(req, res) {
   }
 
   const { agentType, context } = req.body || {};
+  const profileId = (req.body && req.body.profileId) || null;
 
   // ================================================================
   // SCHRITT 1: Outline-Generator (journey_outline)
@@ -68,6 +132,8 @@ KEINE Aufgaben, keine Inhalte, keine Bilder – nur diese Outline. Halte dich ku
         return res.status(502).json({ error: 'KI-Dienst nicht erreichbar.' });
       }
       const data = await aiResp.json();
+      // KI-Kosten protokollieren (await, damit der Insert vor dem Function-Ende fertig ist)
+      await logAiUsage({ profileId, agent: 'journey_outline', model: (process.env.TONI_AI_OUTLINE_MODEL || 'claude-sonnet-4-6'), usage: data.usage });
       let text = (data.content || []).map(b => (b && b.type === 'text' ? b.text : '')).join('').trim();
       text = text.replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
       const f = text.indexOf('{'), l = text.lastIndexOf('}');
@@ -247,6 +313,8 @@ Inhalt: didaktisch sinnvoll, fachlich korrekt, Deutsch, altersgerecht. Pro Stati
         }
 
         const data = await aiResp.json();
+        // KI-Kosten protokollieren (await, damit der Insert vor dem Function-Ende fertig ist)
+        await logAiUsage({ profileId, agent: 'journey_builder', model: (process.env.TONI_AI_JOURNEY_MODEL || 'claude-sonnet-4-6'), usage: data.usage });
         lastText = (data.content || []).map(b => (b && b.type === 'text' ? b.text : '')).join('').trim();
         lastStop = data.stop_reason || '(unbekannt)';
         const parsed = extractAndParse(lastText);
