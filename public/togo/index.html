@@ -1,0 +1,535 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<meta name="theme-color" content="#0071e3" />
+<link rel="manifest" href="manifest.json" />
+<title>TONI-ToGo</title>
+<style>
+  :root{
+    --blue:#0071e3; --blue-dark:#0059b3;
+    --ink:#1d1d1f; --muted:#6e6e73; --hair:#e5e5ea;
+    --bg:#f5f5f7; --card:#ffffff; --ok:#0f6e56;
+    --radius:18px;
+    --safe-t:env(safe-area-inset-top,0px);
+    --safe-b:env(safe-area-inset-bottom,0px);
+  }
+  *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+  html,body{margin:0;padding:0}
+  body{
+    font-family:-apple-system,BlinkMacSystemFont,"Inter","Helvetica Neue",Helvetica,Arial,sans-serif;
+    background:var(--bg); color:var(--ink);
+    -webkit-font-smoothing:antialiased; line-height:1.5;
+  }
+  button{font-family:inherit; cursor:pointer}
+  .wrap{max-width:760px; margin:0 auto; min-height:100vh}
+
+  /* Kopfzeile */
+  header{
+    position:sticky; top:0; z-index:20;
+    background:rgba(255,255,255,.82); backdrop-filter:saturate(180%) blur(18px);
+    border-bottom:.5px solid var(--hair);
+    padding:calc(10px + var(--safe-t)) 16px 10px;
+    display:flex; align-items:center; gap:10px;
+  }
+  .logo{
+    width:32px; height:32px; border-radius:9px; background:var(--blue);
+    color:#fff; font-weight:600; font-size:15px;
+    display:flex; align-items:center; justify-content:center; flex:0 0 auto;
+  }
+  .brand b{font-weight:600; font-size:17px}
+  .brand b i{font-style:normal; color:var(--blue)}
+  .brand span{display:block; font-size:11px; color:var(--muted); margin-top:-2px}
+  .net{margin-left:auto; font-size:11px; color:var(--muted); display:flex; align-items:center; gap:4px}
+  .net .dot{width:7px; height:7px; border-radius:50%; background:var(--ok)}
+  .net.off .dot{background:var(--muted)}
+
+  main{padding:16px 16px calc(28px + var(--safe-b))}
+  .count{font-size:13px; color:var(--muted); margin:4px 2px 14px}
+
+  /* Kachelraster */
+  .grid{display:grid; grid-template-columns:repeat(2,1fr); gap:12px}
+  @media(max-width:380px){.grid{grid-template-columns:1fr}}
+  .tile{
+    background:var(--card); border:.5px solid var(--hair); border-radius:var(--radius);
+    overflow:hidden; text-align:left; padding:0; display:flex; flex-direction:column;
+    transition:transform .12s ease;
+  }
+  .tile:active{transform:scale(.98)}
+  .tile .cap{
+    height:84px; display:flex; align-items:center; justify-content:center;
+    position:relative; font-size:30px;
+  }
+  .tile .badge{
+    position:absolute; top:7px; right:7px; background:rgba(255,255,255,.85);
+    border-radius:7px; font-size:10px; padding:2px 7px;
+  }
+  .tile .body{padding:10px 11px 12px}
+  .tile h3{margin:0; font-size:13.5px; font-weight:600; line-height:1.25}
+  .tile .sub{font-size:11px; color:var(--muted); margin-top:3px}
+  .tile .meta{font-size:11px; color:var(--muted); margin-top:8px; display:flex; gap:10px}
+  .bar{height:4px; background:var(--bg); border-radius:4px; margin-top:9px; overflow:hidden}
+  .bar i{display:block; height:100%; background:var(--blue); width:0}
+  .bar.full i{background:var(--ok)}
+
+  .add{
+    border:1.5px dashed #c8c8cd; background:transparent; color:var(--muted);
+    border-radius:var(--radius); min-height:138px;
+    display:flex; flex-direction:column; align-items:center; justify-content:center; gap:8px;
+  }
+  .add svg{width:26px; height:26px}
+  .add span{font-size:12px; font-weight:500}
+
+  /* Leerzustand */
+  .empty{
+    text-align:center; padding:48px 24px; color:var(--muted);
+  }
+  .empty svg{width:46px; height:46px; opacity:.5; margin-bottom:14px}
+  .empty h2{font-size:17px; color:var(--ink); margin:0 0 6px; font-weight:600}
+  .empty p{font-size:14px; margin:0 0 20px}
+  .btn{
+    appearance:none; border:none; background:var(--blue); color:#fff;
+    font-size:15px; font-weight:500; padding:12px 22px; border-radius:12px;
+  }
+  .btn.ghost{background:transparent; color:var(--blue); border:.5px solid var(--blue)}
+
+  /* Reise-Viewer (Vollbild) */
+  .viewer{position:fixed; inset:0; background:var(--bg); z-index:50; display:none; flex-direction:column}
+  .viewer.open{display:flex}
+  .vhead{
+    background:rgba(255,255,255,.82); backdrop-filter:blur(18px);
+    border-bottom:.5px solid var(--hair); padding:calc(10px + var(--safe-t)) 14px 10px;
+    display:flex; align-items:center; gap:10px; position:sticky; top:0;
+  }
+  .vhead .back{background:none; border:none; color:var(--blue); font-size:15px; display:flex; align-items:center; gap:3px; padding:4px 2px}
+  .vhead .back svg{width:18px; height:18px}
+  .vhead .vtitle{font-size:15px; font-weight:600; flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap}
+  .vbody{flex:1; overflow-y:auto; -webkit-overflow-scrolling:touch; padding:16px 16px calc(28px + var(--safe-b))}
+  .vbody{max-width:760px; margin:0 auto; width:100%}
+
+  .station{background:var(--card); border:.5px solid var(--hair); border-radius:var(--radius); margin-bottom:14px; overflow:hidden}
+  .station>summary{
+    list-style:none; cursor:pointer; padding:14px 16px; display:flex; align-items:center; gap:12px;
+  }
+  .station>summary::-webkit-details-marker{display:none}
+  .stnum{
+    width:30px; height:30px; border-radius:9px; background:#eef4ff; color:var(--blue);
+    font-weight:600; font-size:14px; display:flex; align-items:center; justify-content:center; flex:0 0 auto;
+  }
+  .station[data-done="1"] .stnum{background:#e1f5ee; color:var(--ok)}
+  .sthead h3{margin:0; font-size:15px; font-weight:600}
+  .sthead .stsub{font-size:12px; color:var(--muted); margin-top:1px}
+  .chev{margin-left:auto; color:var(--muted); transition:transform .2s}
+  .station[open] .chev{transform:rotate(90deg)}
+  .chev svg{width:18px; height:18px}
+  .tasks{padding:0 16px 14px; border-top:.5px solid var(--hair)}
+
+  .task{border-bottom:.5px solid var(--hair); padding:14px 0}
+  .task:last-child{border-bottom:none}
+  .task .tt{display:flex; align-items:center; gap:9px; margin-bottom:8px}
+  .ttype{
+    font-size:10.5px; font-weight:600; padding:2px 8px; border-radius:6px;
+    background:#eef4ff; color:var(--blue); letter-spacing:.02em;
+  }
+  .ttype.q{background:#f3eaff; color:#6b3fbf}
+  .ttype.v{background:#eafaf3; color:var(--ok)}
+  .ttype.a{background:#fff3e6; color:#b3640a}
+  .ttype.r{background:#fdeef3; color:#a3355c}
+  .task h4{margin:0; font-size:14px; font-weight:600; flex:1}
+  .done-toggle{
+    margin-left:auto; width:24px; height:24px; border-radius:50%; border:1.5px solid var(--hair);
+    background:none; display:flex; align-items:center; justify-content:center; flex:0 0 auto; color:transparent;
+  }
+  .done-toggle.on{background:var(--ok); border-color:var(--ok); color:#fff}
+  .done-toggle svg{width:14px; height:14px}
+  .task .content{font-size:14px; color:#333; white-space:pre-wrap; word-break:break-word}
+  .task .content img{max-width:100%; height:auto; border-radius:10px; margin:8px 0}
+  .videoframe{position:relative; padding-top:56.25%; border-radius:12px; overflow:hidden; margin-top:8px; background:#000}
+  .videoframe iframe{position:absolute; inset:0; width:100%; height:100%; border:0}
+  .vnote{font-size:11px; color:var(--muted); margin-top:6px; display:flex; align-items:center; gap:5px}
+
+  /* Quiz */
+  .quiz .qq{margin:12px 0 6px; font-size:14px; font-weight:500}
+  .opt{
+    display:block; width:100%; text-align:left; background:var(--card);
+    border:.5px solid var(--hair); border-radius:10px; padding:10px 12px; font-size:13.5px; margin:6px 0;
+    color:var(--ink);
+  }
+  .opt.correct{background:#e1f5ee; border-color:#9fe1cb; color:#0b4f3c}
+  .opt.wrong{background:#fdecec; border-color:#f3b5b5; color:#7a1f1f}
+  .expl{font-size:12.5px; color:var(--muted); margin:6px 2px 2px; padding-left:2px}
+
+  /* Reflexion */
+  .reflexion textarea{
+    width:100%; min-height:84px; border:.5px solid var(--hair); border-radius:10px;
+    padding:10px 12px; font-size:13.5px; font-family:inherit; resize:vertical; color:var(--ink);
+  }
+  .helpers{display:flex; flex-wrap:wrap; gap:6px; margin:8px 0}
+  .helpers span{font-size:11.5px; background:var(--bg); color:var(--muted); padding:3px 9px; border-radius:7px}
+
+  /* Solution-Aufklappen */
+  .sol{margin-top:8px}
+  .sol summary{font-size:12.5px; color:var(--blue); cursor:pointer; list-style:none}
+  .sol summary::-webkit-details-marker{display:none}
+  .sol .solbody{font-size:13.5px; color:#333; white-space:pre-wrap; margin-top:6px; padding:10px 12px; background:var(--bg); border-radius:10px}
+
+  /* Lade-/Fehler-Overlay */
+  .sheet{position:fixed; inset:0; background:rgba(0,0,0,.4); z-index:80; display:none; align-items:center; justify-content:center; padding:24px}
+  .sheet.open{display:flex}
+  .sheet .box{background:#fff; border-radius:16px; padding:24px; max-width:340px; width:100%; text-align:center}
+  .sheet .box h3{margin:0 0 8px; font-size:16px}
+  .sheet .box p{margin:0 0 16px; font-size:13.5px; color:var(--muted)}
+  .spin{width:34px; height:34px; border:3px solid var(--hair); border-top-color:var(--blue); border-radius:50%; margin:0 auto 14px; animation:sp 0.8s linear infinite}
+  @keyframes sp{to{transform:rotate(360deg)}}
+
+  @media (prefers-reduced-motion: reduce){*{animation:none!important; transition:none!important}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div class="logo">T</div>
+    <div class="brand">
+      <b>TONI<i>·</i>ToGo</b>
+      <span>Offline-Bibliothek</span>
+    </div>
+    <div class="net" id="net"><span class="dot"></span><span id="netlabel">online</span></div>
+  </header>
+
+  <main>
+    <div class="count" id="count"></div>
+    <div id="library"></div>
+  </main>
+</div>
+
+<!-- Reise-Viewer -->
+<div class="viewer" id="viewer">
+  <div class="vhead">
+    <button class="back" id="vback" aria-label="Zurück zur Bibliothek">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M15 18l-6-6 6-6"/></svg>
+      Bibliothek
+    </button>
+    <div class="vtitle" id="vtitle"></div>
+  </div>
+  <div class="vbody" id="vbody"></div>
+</div>
+
+<!-- Overlay für Laden/Fehler -->
+<div class="sheet" id="sheet">
+  <div class="box" id="sheetbox"></div>
+</div>
+
+<script>
+const SUPABASE_URL = "https://rmwowznwjsyaypauszyl.supabase.co";
+const FN = SUPABASE_URL + "/functions/v1/togo-journey";
+
+/* ---------- IndexedDB ---------- */
+const DB_NAME = "toni-togo", DB_VER = 1;
+function openDB(){
+  return new Promise((res,rej)=>{
+    const r = indexedDB.open(DB_NAME, DB_VER);
+    r.onupgradeneeded = ()=>{
+      const db = r.result;
+      if(!db.objectStoreNames.contains("journeys")) db.createObjectStore("journeys",{keyPath:"id"});
+    };
+    r.onsuccess = ()=>res(r.result);
+    r.onerror = ()=>rej(r.error);
+  });
+}
+async function dbAll(){
+  const db = await openDB();
+  return new Promise((res,rej)=>{
+    const tx = db.transaction("journeys","readonly").objectStore("journeys").getAll();
+    tx.onsuccess=()=>res(tx.result||[]); tx.onerror=()=>rej(tx.error);
+  });
+}
+async function dbGet(id){
+  const db = await openDB();
+  return new Promise((res,rej)=>{
+    const tx = db.transaction("journeys","readonly").objectStore("journeys").get(id);
+    tx.onsuccess=()=>res(tx.result||null); tx.onerror=()=>rej(tx.error);
+  });
+}
+async function dbPut(rec){
+  const db = await openDB();
+  return new Promise((res,rej)=>{
+    const tx = db.transaction("journeys","readwrite").objectStore("journeys").put(rec);
+    tx.onsuccess=()=>res(); tx.onerror=()=>rej(tx.error);
+  });
+}
+
+/* ---------- Fortschritt (localStorage) ---------- */
+function progKey(id){return "toni-togo-prog-"+id}
+function getProg(id){ try{return JSON.parse(localStorage.getItem(progKey(id))||"{}")}catch(e){return {}} }
+function setTaskDone(id, taskKey, done){
+  const p = getProg(id); if(done) p[taskKey]=1; else delete p[taskKey];
+  localStorage.setItem(progKey(id), JSON.stringify(p));
+}
+
+/* ---------- Helfer ---------- */
+const esc = s => String(s==null?"":s).replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+function stepsOf(j){ const J=j.journey_json||j; return (J && Array.isArray(J.steps)) ? J.steps : []; }
+function tasksOf(st){ return Array.isArray(st.tasks)?st.tasks:[]; }
+function themeIcon(theme){
+  const t=(theme||"").toLowerCase();
+  if(t.includes("friseur")||t.includes("dauerwelle")) return "💇";
+  if(t.includes("metall")) return "⚙️";
+  if(t.includes("zweirad")||t.includes("motor")) return "🏍️";
+  if(t.includes("london")) return "🇬🇧";
+  if(t.includes("space")||t.includes("stern")) return "🚀";
+  if(t.includes("haus")||t.includes("wissen")) return "🏠";
+  return "📘";
+}
+function themeColor(theme){
+  const t=(theme||"").toLowerCase();
+  if(t.includes("friseur")||t.includes("dauerwelle")) return "#fbeaf0";
+  if(t.includes("metall")) return "#f1efe8";
+  if(t.includes("zweirad")) return "#e1f5ee";
+  if(t.includes("london")) return "#e6f1fb";
+  return "#eef4ff";
+}
+
+/* ---------- Bibliothek rendern ---------- */
+async function renderLibrary(){
+  const lib = document.getElementById("library");
+  const count = document.getElementById("count");
+  let items = [];
+  try{ items = await dbAll(); }catch(e){ items=[]; }
+
+  if(items.length===0){
+    count.textContent="";
+    lib.innerHTML = `
+      <div class="empty">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h7v7h-7z"/></svg>
+        <h2>Noch keine Lernreisen</h2>
+        <p>Scanne den QR-Code deiner Lehrkraft, um deine erste Lernreise zu laden.</p>
+        <button class="btn ghost" onclick="alert('Scanne den QR-Code mit der Handy-Kamera. Der Kamera-Scanner im Player folgt in Kürze.')">Wie funktioniert das?</button>
+      </div>`;
+    return;
+  }
+
+  count.textContent = items.length===1 ? "1 Lernreise verfügbar" : items.length+" Lernreisen verfügbar";
+  const tiles = items.map(it=>{
+    const j = it;
+    const title = j.title || (j.journey_json && j.journey_json.title) || "Lernreise";
+    const sub = j.subject || "";
+    const sc = j.station_count || stepsOf(j).length || 0;
+    const prog = getProg(j.id);
+    const total = stepsOf(j).reduce((n,st)=>n+tasksOf(st).length,0) || 1;
+    const done = Object.keys(prog).length;
+    const pct = Math.min(100, Math.round(done/total*100));
+    const full = pct>=100;
+    return `
+      <button class="tile" onclick="openJourney('${esc(j.id)}')">
+        <div class="cap" style="background:${themeColor(j.theme)}">
+          ${themeIcon(j.theme)}
+          <span class="badge">geladen</span>
+        </div>
+        <div class="body">
+          <h3>${esc(title)}</h3>
+          ${sub?`<div class="sub">${esc(sub)}</div>`:""}
+          <div class="meta"><span>${sc} Stationen</span><span>${pct}%</span></div>
+          <div class="bar ${full?'full':''}"><i style="width:${pct}%"></i></div>
+        </div>
+      </button>`;
+  }).join("");
+
+  const addTile = `
+    <button class="add" onclick="alert('Scanne den QR-Code deiner Lehrkraft mit der Handy-Kamera. Der eingebaute Scanner folgt in Kürze.')">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><path d="M14 14h3M21 14v3M14 21h3M21 18v3" stroke-linecap="round"/></svg>
+      <span>Lernreise scannen</span>
+    </button>`;
+
+  lib.innerHTML = `<div class="grid">${tiles}${addTile}</div>`;
+}
+
+/* ---------- Reise laden (Import per QR/URL) ---------- */
+function showSheet(html){ document.getElementById("sheetbox").innerHTML=html; document.getElementById("sheet").classList.add("open"); }
+function hideSheet(){ document.getElementById("sheet").classList.remove("open"); }
+
+async function importJourney(id){
+  showSheet(`<div class="spin"></div><h3>Lernreise wird geladen…</h3><p>Einmaliger Download. Danach offline verfügbar.</p>`);
+  try{
+    const res = await fetch(FN+"?id="+encodeURIComponent(id), {cache:"no-store"});
+    if(res.status===404){ showSheet(`<h3>Nicht verfügbar</h3><p>Diese Lernreise ist nicht freigegeben oder existiert nicht.</p><button class="btn" onclick="hideSheet()">OK</button>`); return; }
+    if(!res.ok){ throw new Error("HTTP "+res.status); }
+    const data = await res.json();
+    const j = data.journey || data;
+    if(!j || !j.id){ throw new Error("Ungültige Daten"); }
+    await dbPut(j);
+    hideSheet();
+    // URL säubern, damit Reload nicht erneut lädt
+    history.replaceState({}, "", location.pathname);
+    await renderLibrary();
+    openJourney(j.id);
+  }catch(e){
+    showSheet(`<h3>Download fehlgeschlagen</h3><p>Bist du online? Versuch es erneut. (${esc(e.message)})</p><button class="btn" onclick="hideSheet()">OK</button>`);
+  }
+}
+
+/* ---------- Reise-Viewer ---------- */
+function videoId(t){
+  return t.youtube_video_id || t.video_id || (t.youtube_url||t.video_url||"").split(/[?&/]/).filter(Boolean).pop() || "";
+}
+function renderTask(journeyId, stIdx, tIdx, t){
+  const type = t.type || "Lerninhalt";
+  const taskKey = stIdx+"."+tIdx;
+  const done = getProg(journeyId)[taskKey] ? "on":"";
+  const title = t.title || type;
+  let typeClass = ""; let label = type;
+  if(type==="Quiz"){typeClass="q";}
+  else if(type==="Video"){typeClass="v";}
+  else if(type==="Aufgabe"){typeClass="a";}
+  else if(type==="Reflexion"){typeClass="r";}
+
+  let inner = "";
+  const content = t.content || t.description || "";
+
+  if(type==="Quiz" && t.quiz_data && Array.isArray(t.quiz_data.questions)){
+    inner = `<div class="quiz">` + t.quiz_data.questions.map((q,qi)=>{
+      const opts = (q.options||[]).map((o,oi)=>
+        `<button class="opt" data-correct="${oi===q.correct_index?1:0}" onclick="answerQuiz(this)">${esc(o)}</button>`
+      ).join("");
+      const expl = q.explanation ? `<div class="expl" style="display:none">${esc(q.explanation)}</div>` : "";
+      return `<div class="qq">${esc(q.question||q.q||"")}</div>${opts}${expl}`;
+    }).join("") + `</div>`;
+  }
+  else if(type==="Video"){
+    const vid = videoId(t);
+    const note = content ? `<div class="content" style="margin-top:8px">${esc(content)}</div>` : "";
+    inner = vid
+      ? `<div class="videoframe"><iframe src="https://www.youtube-nocookie.com/embed/${esc(vid)}" allow="encrypted-media; picture-in-picture" allowfullscreen loading="lazy"></iframe></div>
+         <div class="vnote">⛅ Video wird gestreamt – benötigt Internet</div>${note}`
+      : `<div class="content">${esc(content)}</div>`;
+  }
+  else if(type==="Reflexion"){
+    const prompt = t.reflexion_prompt || content;
+    const helpers = Array.isArray(t.reflexion_helpers)&&t.reflexion_helpers.length
+      ? `<div class="helpers">${t.reflexion_helpers.map(h=>`<span>${esc(h)}</span>`).join("")}</div>` : "";
+    inner = `<div class="reflexion"><div class="content">${esc(prompt)}</div>${helpers}
+      <textarea placeholder="Deine Gedanken…" oninput="saveReflexion('${esc(journeyId)}','${taskKey}',this.value)">${esc(getReflexion(journeyId,taskKey))}</textarea></div>`;
+  }
+  else if(type==="Aufgabe"){
+    const sol = t.solution ? `<details class="sol"><summary>Musterlösung anzeigen</summary><div class="solbody">${esc(t.solution)}</div></details>` : "";
+    inner = `<div class="content">${renderContentHtml(content)}</div>${sol}`;
+  }
+  else { // Lerninhalt + Fallback
+    inner = `<div class="content">${renderContentHtml(content)}</div>`;
+  }
+
+  return `<div class="task">
+    <div class="tt">
+      <span class="ttype ${typeClass}">${esc(label)}</span>
+      <h4>${esc(title)}</h4>
+      <button class="done-toggle ${done}" onclick="toggleTaskDone(this,'${esc(journeyId)}','${taskKey}')" aria-label="Als erledigt markieren">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3"><path d="M5 13l4 4L19 7"/></svg>
+      </button>
+    </div>
+    ${inner}
+  </div>`;
+}
+
+// Bilder/HTML im Content: erlaubt eingebettete <img> (Base64) und Zeilenumbrüche.
+function renderContentHtml(s){
+  if(s==null) return "";
+  const str = String(s);
+  // Wenn schon HTML mit Bildern/Tags: durchlassen (Inhalt stammt aus eigener Plattform).
+  if(/<img|<br|<p|<b>|<strong|<ul|<li/i.test(str)) return str;
+  return esc(str);
+}
+
+function getReflexion(id,key){ try{return JSON.parse(localStorage.getItem("toni-togo-refl-"+id)||"{}")[key]||""}catch(e){return ""} }
+function saveReflexion(id,key,val){
+  let o={}; try{o=JSON.parse(localStorage.getItem("toni-togo-refl-"+id)||"{}")}catch(e){}
+  o[key]=val; localStorage.setItem("toni-togo-refl-"+id, JSON.stringify(o));
+}
+
+window.answerQuiz = function(btn){
+  const parent = btn.parentNode;
+  if(parent.querySelector(".opt.correct, .opt.wrong")) return; // schon beantwortet
+  const correct = btn.getAttribute("data-correct")==="1";
+  parent.querySelectorAll(".opt").forEach(o=>{
+    o.disabled=true;
+    if(o.getAttribute("data-correct")==="1") o.classList.add("correct");
+  });
+  if(!correct) btn.classList.add("wrong");
+  const expl = parent.querySelector(".expl");
+  if(expl) expl.style.display="block";
+};
+
+window.toggleTaskDone = function(btn, journeyId, taskKey){
+  const on = !btn.classList.contains("on");
+  btn.classList.toggle("on", on);
+  setTaskDone(journeyId, taskKey, on);
+  // Stations-Status aktualisieren
+  const station = btn.closest(".station");
+  if(station){
+    const toggles = station.querySelectorAll(".done-toggle");
+    const allOn = [...toggles].every(t=>t.classList.contains("on"));
+    station.setAttribute("data-done", allOn?"1":"0");
+  }
+};
+
+window.openJourney = async function(id){
+  const j = await dbGet(id);
+  if(!j){ return; }
+  const title = j.title || (j.journey_json&&j.journey_json.title) || "Lernreise";
+  document.getElementById("vtitle").textContent = title;
+  const steps = stepsOf(j);
+  const prog = getProg(id);
+
+  const html = steps.map((st,si)=>{
+    const tks = tasksOf(st);
+    const allDone = tks.length>0 && tks.every((_,ti)=>prog[si+"."+ti]);
+    const tasksHtml = tks.map((t,ti)=>renderTask(id,si,ti,t)).join("");
+    return `<details class="station" data-done="${allDone?1:0}" ${si===0?"open":""}>
+      <summary>
+        <div class="stnum">${si+1}</div>
+        <div class="sthead">
+          <h3>${esc(st.title||("Station "+(si+1)))}</h3>
+          ${st.subtitle?`<div class="stsub">${esc(st.subtitle)}</div>`:""}
+        </div>
+        <span class="chev"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></span>
+      </summary>
+      <div class="tasks">${tasksHtml || '<div class="content" style="padding:12px 0;color:var(--muted)">Keine Aufgaben in dieser Station.</div>'}</div>
+    </details>`;
+  }).join("");
+
+  document.getElementById("vbody").innerHTML = html || `<div class="empty"><p>Diese Lernreise enthält keine Stationen.</p></div>`;
+  document.getElementById("vbody").scrollTop = 0;
+  document.getElementById("viewer").classList.add("open");
+};
+
+document.getElementById("vback").onclick = ()=>{
+  document.getElementById("viewer").classList.remove("open");
+  renderLibrary();
+};
+
+/* ---------- Netzstatus ---------- */
+function updateNet(){
+  const n = document.getElementById("net");
+  const on = navigator.onLine;
+  n.classList.toggle("off", !on);
+  document.getElementById("netlabel").textContent = on ? "online" : "offline";
+}
+window.addEventListener("online", updateNet);
+window.addEventListener("offline", updateNet);
+
+/* ---------- Start ---------- */
+async function boot(){
+  updateNet();
+  // Service Worker registrieren
+  if("serviceWorker" in navigator){
+    try{ await navigator.serviceWorker.register("sw.js"); }catch(e){}
+  }
+  // QR/URL-Import?  ?j=<id>  oder  ?journey=<id>
+  const p = new URLSearchParams(location.search);
+  const jid = p.get("j") || p.get("journey");
+  await renderLibrary();
+  if(jid){ importJourney(jid); }
+}
+boot();
+</script>
+</body>
+</html>
