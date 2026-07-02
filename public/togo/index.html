@@ -8718,8 +8718,8 @@ body.togo-body{margin:0;background:#f5f5f7}
   -webkit-backdrop-filter:saturate(180%) blur(18px);backdrop-filter:saturate(180%) blur(18px);
   border-bottom:.5px solid #e5e5ea;padding:calc(10px + env(safe-area-inset-top,0)) 16px 10px;
   display:flex;align-items:center;gap:10px}
-.togo-logo{width:32px;height:32px;border-radius:9px;background:#0071e3;color:#fff;font-weight:600;
-  font-size:15px;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.togo-logo{width:34px;height:34px;display:flex;align-items:center;justify-content:center;flex:0 0 auto}
+.togo-logo img{width:34px;height:34px;object-fit:contain;display:block}
 .togo-brand b{font-weight:600;font-size:17px;color:#1d1d1f}
 .togo-brand b i{font-style:normal;color:#0071e3}
 .togo-brand span{display:block;font-size:11px;color:#6e6e73;margin-top:-2px}
@@ -8770,6 +8770,12 @@ body.togo-body{margin:0;background:#f5f5f7}
   border:1.5px dashed #c8c8cd !important;background:transparent !important;color:#6e6e73}
 .togo-add-icon svg{width:28px;height:28px}
 .togo-add span{font-size:12px;font-weight:500}
+/* ToGo: Add-Kachel auf Höhe der Gradient-Kacheln bringen */
+.togo-add-cover{min-height:240px !important;border:1.5px dashed #c8c8cd !important;background:transparent !important;color:#6e6e73 !important;box-shadow:none !important}
+.togo-add-cover:hover{background:#f5f7fa !important}
+/* ToGo: Fußzeile mit nur einem Aktions-Button – Löschen linksbündig */
+.togo-body .journey-tile-cover-actions-v112{display:flex;justify-content:flex-start}
+.togo-body .journey-tile-cover-actions-v112 .journey-tile-action.danger{flex:0 0 auto}
 /* Scan-Modal */
 .togo-scan{position:fixed;inset:0;background:rgba(0,0,0,.86);z-index:4000;display:none;
   flex-direction:column;padding:calc(16px + env(safe-area-inset-top,0)) 16px calc(16px + env(safe-area-inset-bottom,0))}
@@ -8800,7 +8806,7 @@ body.togo-body{margin:0;background:#f5f5f7}
 
 <!-- ToGo-Bibliothek -->
 <header class="togo-header">
-  <div class="togo-logo">T</div>
+  <div class="togo-logo"><img src="toni-logo-face.png" alt="TONI" width="34" height="34"></div>
   <div class="togo-brand"><b>TONI<i>·</i>ToGo</b><span>Offline-Bibliothek</span></div>
   <div class="togo-net" id="togo-net"><span class="d"></span><span id="togo-netlabel">online</span></div>
 </header>
@@ -9069,6 +9075,15 @@ window.TONIToGo = (function () {
       });
     });
   }
+  function dbDelete(id) {
+    return openDB().then(function (db) {
+      return new Promise(function (res, rej) {
+        const tx = db.transaction("journeys", "readwrite").objectStore("journeys").delete(id);
+        tx.onsuccess = function () { res(); };
+        tx.onerror = function () { rej(tx.error); };
+      });
+    });
+  }
 
   /* ---------- Fortschritt: pro Reise in localStorage ---------- */
   // Wir spiegeln task.status in localStorage, getrennt je Reise. Beim Öffnen
@@ -9269,25 +9284,36 @@ window.TONIToGo = (function () {
             if (t.required !== false) { total++; if (map[t.id] === "done") done++; }
           });
         });
-        const pct = total ? Math.round(done / total * 100) : 0;
-        const full = pct >= 100;
+        // Aufgaben zählen (alle Aufgaben der Reise, wie in der Plattform-Kachel).
+        let taskCount = 0;
+        steps.forEach(function (s) { taskCount += (s.tasks || []).length; });
+        // Lernziel-/Beschreibungstext wie in der Plattform: goal, sonst subject.
+        const goal = it.goal || jj.goal || subj || "";
+        // V113-Farbverlauf: exakt dieselbe deterministische Palette wie die Plattform.
+        const gradient = (typeof window.toniCoverGradientV113 === "function")
+          ? window.toniCoverGradientV113((title || "") + "|" + (it.id || ""))
+          : "linear-gradient(135deg,#1e3a8a 0%,#2563eb 55%,#1e293b 100%)";
+        const jid = esc(it.id);
         return (
-          '<button class="togo-tile" onclick="TONIToGo.open(\'' + esc(it.id) + '\')">' +
-            '<div class="togo-cap togo-cap-' + esc(theme) + '">' + themeIcon(theme) +
-              '<span class="togo-badge">geladen</span>' +
+          '<div class="journey-tile journey-tile-cover-v112 has-cover" style="background:' + gradient + '">' +
+            '<button class="journey-tile-open journey-tile-cover-open-v112" title="Öffnen" aria-label="Öffnen" onclick="TONIToGo.open(\'' + jid + '\')">→</button>' +
+            '<div class="journey-tile-cover-body-v112" onclick="TONIToGo.open(\'' + jid + '\')" style="cursor:pointer">' +
+              '<div class="journey-tile-title journey-tile-cover-title-v112">' + esc(title) + '</div>' +
+              '<div class="journey-tile-cover-desc-v112">' + esc(goal || "–") + '</div>' +
+              '<div class="journey-tile-chips journey-tile-cover-chips-v112">' +
+                '<span class="journey-tile-chip chip-stations">' + sc + ' Station(en)</span>' +
+                '<span class="journey-tile-chip chip-tasks">' + taskCount + ' Aufgabe(n)</span>' +
+              '</div>' +
             '</div>' +
-            '<div class="togo-tbody">' +
-              '<h3>' + esc(title) + '</h3>' +
-              (subj ? '<div class="togo-sub">' + esc(subj.split("·")[0].trim()) + '</div>' : '') +
-              '<div class="togo-meta"><span>' + sc + ' Stationen</span><span>' + pct + '%</span></div>' +
-              '<div class="togo-bar ' + (full ? 'full' : '') + '"><i style="width:' + pct + '%"></i></div>' +
+            '<div class="journey-tile-actions journey-tile-cover-actions-v112">' +
+              '<button class="journey-tile-action danger" onclick="TONIToGo.deleteJourney(\'' + jid + '\')" title="Lernreise löschen" aria-label="Lernreise löschen"><span>🗑️</span>Löschen</button>' +
             '</div>' +
-          '</button>'
+          '</div>'
         );
       }).join("");
 
       const addTile =
-        '<button class="togo-tile togo-add" onclick="TONIToGo.openScanner()">' +
+        '<button class="journey-tile journey-tile-add togo-add-cover" onclick="TONIToGo.openScanner()">' +
           '<div class="togo-add-icon">' +
             '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6">' +
               '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/>' +
@@ -9304,6 +9330,23 @@ window.TONIToGo = (function () {
   function open(id) {
     return dbGet(id).then(function (j) {
       if (j) return startJourney(j);
+    });
+  }
+
+  /* ---------- Lernreise aus dem Gerät entfernen ---------- */
+  // Löscht die Reise aus IndexedDB und den zugehörigen Fortschritt aus
+  // localStorage. Danach wird die Bibliothek neu aufgebaut. Kein Rückkanal
+  // zur Plattform – die Reise lässt sich jederzeit erneut scannen.
+  function deleteJourney(id) {
+    return dbGet(id).then(function (j) {
+      const title = (j && (j.title || (j.journey_json || {}).title)) || "diese Lernreise";
+      if (!window.confirm("„" + title + "“ von diesem Gerät löschen?\n\nDein Fortschritt geht dabei verloren. Du kannst die Lernreise später erneut scannen.")) {
+        return;
+      }
+      return dbDelete(id).then(function () {
+        try { localStorage.removeItem(progKey(id)); } catch (e) {}
+        return renderLibrary();
+      });
     });
   }
 
@@ -9450,6 +9493,7 @@ window.TONIToGo = (function () {
   return {
     boot: boot,
     open: open,
+    deleteJourney: deleteJourney,
     importJourney: importJourney,
     renderLibrary: renderLibrary,
     persistProgress: persistProgress,
