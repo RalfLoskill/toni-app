@@ -209,17 +209,22 @@
     </div>`;
   }
 
+  // Streifen-/Badge-Farbpalette der Stationen (rotierend, wie in der Vorlage)
+  const STATION_COLORS = ["#4f46e5","#2563eb","#10b981","#f97316","#e11d48","#7c3aed","#0891b2","#d97706"];
+
   function stationCardHtml(s, i){
     const open = ui.openStation===i;
     const tasks = s.tasks||[];
-    return `<div class="v111-station ${open?'open':''}" draggable="true"
+    const c = STATION_COLORS[i % STATION_COLORS.length];
+    return `<div class="v111-station ${open?'open':''}" draggable="true" style="--v111-sc:${c}"
         ondragstart="TONI_EDITOR_V111_UI.dragStart(${i})"
         ondragover="event.preventDefault()"
         ondrop="TONI_EDITOR_V111_UI.dropStation(${i})">
       <div class="v111-stationhead" onclick="TONI_EDITOR_V111_UI.toggle(${i})">
         <span class="v111-grip">⠿</span>
-        <span class="v111-stationtitle">${i+1} · ${E.esc(s.title||"Station")}</span>
-        ${!open?`<span class="v111-count">${tasks.length} Aufg.</span>`:""}
+        <span class="v111-stationnum" style="background:${c}">${i+1}</span>
+        <span class="v111-stationtitle">${E.esc(s.title||"Station")}${s.subtitle?`<span class="v111-stationsub">${tasks.length} Aufgaben · ${E.esc(s.subtitle)}</span>`:`<span class="v111-stationsub">${tasks.length} Aufgaben</span>`}</span>
+        ${!open?`<span class="v111-count">${tasks.length}</span>`:""}
         <span class="v111-chev">${open?'▾':'▸'}</span>
       </div>
       ${open?`<div class="v111-stationbody">
@@ -240,14 +245,15 @@
 
   function taskRowHtml(t, si, ti){
     const m = E.typeMeta(t.type);
-    return `<div class="v111-taskrow" draggable="true"
+    return `<div class="v111-taskrow" draggable="true" style="--v111-tc:${m.border};--v111-tt:${m.text}"
         ondragstart="event.stopPropagation();TONI_EDITOR_V111_UI.dragTask(${si},${ti})"
         ondragover="event.preventDefault();event.stopPropagation()"
         ondrop="event.stopPropagation();TONI_EDITOR_V111_UI.dropTask(${si},${ti})"
         onclick="TONI_EDITOR_V111_UI.openTask(${si},${ti})">
       <span class="v111-grip v111-grip-sm">⠿</span>
-      <span class="v111-taskname" style="color:${m.text}">${m.icon} ${E.esc(t.title||"Aufgabe")}</span>
-      <span class="v111-taskmeta">${t.required?'Pflicht':'optional'}</span>
+      <span class="v111-taskicon" style="background:${m.bg};border-color:${m.border}">${m.icon}</span>
+      <span class="v111-taskname" style="color:${m.text}">${E.esc(t.title||"Aufgabe")}</span>
+      <span class="v111-taskmeta ${t.required?'req':'opt'}">${t.required?'Pflicht':'optional'}</span>
     </div>`;
   }
 
@@ -803,108 +809,158 @@
     css.id="v111-styles";
     const S = "#toni-v111-editor";
     css.textContent = `
+      /* ============================================================
+         TONi Editor · Design „Prisma" – verspielt, farbig.
+         Gleiche v111-Klassen wie zuvor, nur neu eingefärbt. Alle
+         Selektoren behalten !important + #toni-v111-editor-Scope.
+         ============================================================ */
       ${S}{
-        --v111-t1:#1a1a18; --v111-t2:#5f5e5a; --v111-t3:#888780;
-        --v111-b1:rgba(0,0,0,.12); --v111-b2:rgba(0,0,0,.22);
-        --v111-bg1:#ffffff; --v111-bg2:#f7f6f2;
+        --v111-t1:#141a33; --v111-t2:#4a5170; --v111-t3:#8a91ad;
+        --v111-b1:rgba(90,70,160,.14); --v111-b2:rgba(90,70,160,.24);
+        --v111-bg1:#ffffff; --v111-bg2:#f4f2ff;
+        --v111-brand:linear-gradient(135deg,#6d28d9 0%,#4f46e5 45%,#2563eb 100%);
+        --v111-accent:#6d28d9; --v111-accent2:#4f46e5;
         color-scheme:light!important;
+        background:
+          radial-gradient(700px 320px at 8% -10%,#ece9ff 0,transparent 46%),
+          radial-gradient(620px 300px at 100% -6%,#fce7f6 0,transparent 44%),
+          transparent!important;
+        padding:2px!important;border-radius:20px!important;
       }
       ${S} input, ${S} textarea, ${S} select, ${S} button{ color-scheme:light!important; }
       ${S} *{box-sizing:border-box!important}
       ${S} .v111-single{display:block!important;width:100%!important}
-      ${S} .v111-coltitle{font-size:11px!important;font-weight:500!important;color:var(--v111-t3)!important;text-transform:uppercase!important;letter-spacing:.05em!important;margin:0 0 8px!important}
-      ${S} .v111-head{background:var(--v111-bg1)!important;border:0.5px solid var(--v111-b1)!important;border-radius:12px!important;padding:12px 14px!important;margin-bottom:8px!important}
-      ${S} .v111-headtitle{width:100%!important;border:none!important;background:none!important;padding:0!important;margin:0 0 4px!important;font-size:14px!important;font-weight:500!important;color:var(--v111-t1)!important;font-family:inherit!important;outline:none!important}
-      ${S} .v111-headgoal{width:100%!important;border:none!important;background:none!important;padding:0!important;margin:0!important;font-size:12px!important;color:var(--v111-t2)!important;font-family:inherit!important;outline:none!important}
-      ${S} .v111-station{background:var(--v111-bg1)!important;border:0.5px solid var(--v111-b1)!important;border-radius:12px!important;margin-bottom:8px!important;overflow:hidden!important}
-      ${S} .v111-station.open{border-color:#B5D4F4!important}
-      ${S} .v111-stationhead{display:flex!important;align-items:center!important;gap:8px!important;padding:11px 12px!important;cursor:pointer!important}
-      ${S} .v111-grip{color:var(--v111-t3)!important;cursor:grab!important;font-size:14px!important;line-height:1!important}
+      ${S} .v111-coltitle{font-size:11px!important;font-weight:800!important;color:var(--v111-accent)!important;text-transform:uppercase!important;letter-spacing:.12em!important;margin:0 0 10px!important}
+
+      /* ---- Titel-/Ziel-Kopf: Marken-Verlaufskarte ---- */
+      ${S} .v111-head{background:var(--v111-brand)!important;border:0!important;border-radius:18px!important;padding:16px 18px!important;margin-bottom:14px!important;box-shadow:0 14px 34px rgba(99,50,200,.28)!important;position:relative!important;overflow:hidden!important}
+      ${S} .v111-head:after{content:""!important;position:absolute!important;top:-30px!important;right:-20px!important;width:120px!important;height:120px!important;border-radius:50%!important;background:radial-gradient(circle,rgba(255,255,255,.28),transparent 70%)!important;pointer-events:none!important}
+      ${S} .v111-headtitle{width:100%!important;border:none!important;background:none!important;padding:0!important;margin:0 0 6px!important;font-size:20px!important;font-weight:800!important;letter-spacing:-.02em!important;color:#fff!important;font-family:inherit!important;outline:none!important;position:relative!important;z-index:1!important}
+      ${S} .v111-headtitle::placeholder{color:rgba(255,255,255,.72)!important}
+      ${S} .v111-headgoal{width:100%!important;border:none!important;background:none!important;padding:0!important;margin:0!important;font-size:13px!important;color:rgba(255,255,255,.9)!important;font-family:inherit!important;outline:none!important;position:relative!important;z-index:1!important}
+      ${S} .v111-headgoal::placeholder{color:rgba(255,255,255,.6)!important}
+
+      /* ---- Stationskarten ---- */
+      ${S} .v111-grip{color:var(--v111-t3)!important;cursor:grab!important;font-size:15px!important;line-height:1!important}
       ${S} .v111-grip-sm{font-size:12px!important}
-      ${S} .v111-stationtitle{flex:1!important;font-size:13px!important;font-weight:500!important;color:var(--v111-t1)!important}
-      ${S} .v111-count{font-size:11px!important;color:var(--v111-t3)!important}
-      ${S} .v111-chev{color:var(--v111-t3)!important;font-size:12px!important}
-      ${S} .v111-stationbody{padding:0 12px 12px!important}
-      ${S} .v111-inp{width:100%!important;box-sizing:border-box!important;padding:8px 10px!important;border:0.5px solid var(--v111-b2)!important;border-radius:8px!important;font-size:13px!important;background:var(--v111-bg1)!important;color:var(--v111-t1)!important;margin-bottom:6px!important;font-family:inherit!important;outline:none!important}
-      ${S} .v111-sub{font-size:12px!important}
-      ${S} .v111-ta{min-height:60px!important;resize:vertical!important;line-height:1.5!important}
-      ${S} .v111-tasks{margin:4px 0!important}
-      ${S} .v111-taskrow{display:flex!important;align-items:center!important;gap:7px!important;padding:7px 9px!important;border-radius:8px!important;cursor:pointer!important;background:var(--v111-bg2)!important;margin-bottom:4px!important}
-      ${S} .v111-taskname{flex:1!important;font-size:12px!important;font-weight:500!important}
-      ${S} .v111-taskmeta{font-size:11px!important;color:var(--v111-t3)!important}
-      ${S} .v111-addtask,${S} .v111-addstation{display:flex!important;align-items:center!important;justify-content:center!important;gap:5px!important;font-size:12px!important;color:#185FA5!important;border:0.5px dashed var(--v111-b2)!important;border-radius:8px!important;padding:9px!important;cursor:pointer!important;margin-top:4px!important;background:none!important}
-      ${S} .v111-stationactions{margin-top:8px!important;text-align:right!important}
-      ${S} .v111-sbtn{font-size:12px!important;color:var(--v111-t2)!important;background:none!important;border:0.5px solid var(--v111-b2)!important;border-radius:8px!important;padding:6px 11px!important;cursor:pointer!important;font-family:inherit!important}
-      ${S} .v111-pbtn{font-size:12px!important;color:#fff!important;background:#639922!important;border:none!important;border-radius:8px!important;padding:7px 13px!important;cursor:pointer!important;margin-left:6px!important;font-family:inherit!important}
-      ${S} .v111-preview{background:var(--v111-bg1)!important;border:0.5px solid var(--v111-b1)!important;border-radius:12px!important;padding:14px!important}
-      ${S} .v111-pvtitle{font-size:13px!important;font-weight:500!important;color:var(--v111-t1)!important;margin:0!important}
-      ${S} .v111-pvgoal{font-size:11px!important;color:var(--v111-t2)!important;margin:2px 0 10px!important}
-      ${S} .v111-route{display:flex!important;align-items:center!important;gap:3px!important;margin:10px 0 14px!important}
-      ${S} .v111-routedot{width:24px!important;height:24px!important;border-radius:50%!important;display:flex!important;align-items:center!important;justify-content:center!important;font-size:11px!important;flex-shrink:0!important;background:var(--v111-bg2)!important;color:var(--v111-t3)!important}
-      ${S} .v111-routedot.done{background:#639922!important;color:#fff!important}
-      ${S} .v111-routedot.current{background:#185FA5!important;color:#fff!important;width:28px!important;height:28px!important;font-size:12px!important;font-weight:500!important}
-      ${S} .v111-routedot.trophy{background:var(--v111-bg2)!important}
-      ${S} .v111-routeline{flex:1!important;height:2px!important;background:var(--v111-b1)!important;min-width:12px!important}
-      ${S} .v111-routeline.done{background:#639922!important}
-      ${S} .v111-pvstation{font-size:12px!important;font-weight:500!important;color:var(--v111-t1)!important;margin-bottom:6px!important}
-      ${S} .v111-pvtask{display:flex!important;flex-direction:column!important;background:var(--v111-bg2)!important;border-radius:8px!important;padding:9px 11px!important;margin-bottom:5px!important}
-      ${S} .v111-pvtask>span:first-child{font-size:12px!important;font-weight:500!important}
-      ${S} .v111-pvmeta{font-size:11px!important;color:var(--v111-t2)!important;margin-top:2px!important}
-      ${S} .v111-empty{font-size:12px!important;color:var(--v111-t3)!important;padding:10px!important;text-align:center!important}
-      ${S} .v111-panel{background:var(--v111-bg2)!important;border:0.5px solid var(--v111-b1)!important;border-radius:12px!important;padding:14px!important;margin-top:12px!important}
-      ${S} .v111-panelhead{font-size:14px!important;font-weight:500!important;color:var(--v111-t1)!important;margin-bottom:12px!important;padding-bottom:10px!important;border-bottom:0.5px solid var(--v111-b1)!important}
-      ${S} .v111-flabel{font-size:11px!important;color:var(--v111-t3)!important;margin-bottom:5px!important}
-      ${S} .v111-typerow{display:flex!important;gap:5px!important;flex-wrap:wrap!important;margin-bottom:10px!important}
-      ${S} .v111-typebtn{font-size:12px!important;padding:6px 11px!important;border-radius:8px!important;background:var(--v111-bg1)!important;border:0.5px solid var(--v111-b1)!important;color:var(--v111-t2)!important;cursor:pointer!important}
-      ${S} .v111-typebtn.active{border-width:2px!important}
-      ${S} .v111-hint{background:#FAEEDA!important;border-radius:8px!important;padding:9px 12px!important;font-size:12px!important;color:#633806!important;margin-bottom:10px!important}
-      ${S} .v111-panelfoot{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:10px!important;margin-top:4px!important}
-      ${S} .v111-toggle{display:flex!important;align-items:center!important;gap:7px!important;font-size:12px!important;color:var(--v111-t2)!important;cursor:pointer!important}
-      ${S} .v111-material{margin-bottom:10px!important}
+      ${S} .v111-station{background:var(--v111-bg1)!important;border:1px solid var(--v111-b1)!important;border-left:8px solid var(--v111-sc,var(--v111-accent))!important;border-radius:16px!important;margin-bottom:12px!important;overflow:hidden!important;box-shadow:0 6px 20px rgba(60,45,120,.08)!important;transition:box-shadow .18s ease,transform .18s ease!important}
+      ${S} .v111-station:hover{box-shadow:0 12px 30px rgba(60,45,120,.14)!important}
+      ${S} .v111-station.open{box-shadow:0 14px 34px rgba(60,45,120,.17)!important}
+      ${S} .v111-stationhead{display:flex!important;align-items:center!important;gap:12px!important;padding:14px 16px!important;cursor:pointer!important}
+      ${S} .v111-stationnum{flex-shrink:0!important;width:44px!important;height:44px!important;border-radius:14px!important;display:flex!important;align-items:center!important;justify-content:center!important;font-size:20px!important;font-weight:800!important;color:#fff!important;box-shadow:0 6px 16px rgba(80,50,160,.28)!important}
+      ${S} .v111-stationtitle{flex:1!important;display:flex!important;flex-direction:column!important;gap:2px!important;font-size:16px!important;font-weight:800!important;letter-spacing:-.01em!important;color:var(--v111-t1)!important}
+      ${S} .v111-stationsub{font-size:12px!important;font-weight:600!important;color:var(--v111-t3)!important;letter-spacing:0!important}
+      ${S} .v111-count{flex-shrink:0!important;width:30px!important;height:30px!important;border-radius:50%!important;display:flex!important;align-items:center!important;justify-content:center!important;font-size:12px!important;font-weight:800!important;color:var(--v111-accent)!important;background:#efeaff!important}
+      ${S} .v111-chev{color:var(--v111-accent)!important;font-size:12px!important;flex-shrink:0!important}
+      ${S} .v111-stationbody{padding:0 16px 14px!important}
+
+      /* ---- Eingaben ---- */
+      ${S} .v111-inp{width:100%!important;box-sizing:border-box!important;padding:11px 13px!important;border:1.5px solid var(--v111-b1)!important;border-radius:12px!important;font-size:13.5px!important;background:#fbfaff!important;color:var(--v111-t1)!important;margin-bottom:8px!important;font-family:inherit!important;outline:none!important;transition:border-color .14s,box-shadow .14s!important}
+      ${S} .v111-inp:focus{border-color:var(--v111-accent)!important;background:#fff!important;box-shadow:0 0 0 4px rgba(109,40,217,.13)!important}
+      ${S} .v111-sub{font-size:12.5px!important}
+      ${S} .v111-ta{min-height:64px!important;resize:vertical!important;line-height:1.55!important}
+      ${S} .v111-tasks{margin:6px 0!important}
+      ${S} .v111-taskrow{display:flex!important;align-items:center!important;gap:11px!important;padding:10px 12px!important;border-radius:14px!important;cursor:pointer!important;background:#fff!important;border-width:1.5px!important;border-style:solid!important;border-color:var(--v111-tc,var(--v111-b1))!important;margin-bottom:8px!important;transition:.14s!important;box-shadow:0 2px 8px rgba(60,45,120,.05)!important}
+      ${S} .v111-taskrow:hover{transform:translateX(2px)!important;box-shadow:0 8px 20px rgba(60,45,120,.12)!important}
+      ${S} .v111-taskicon{flex-shrink:0!important;width:40px!important;height:40px!important;border-radius:12px!important;display:flex!important;align-items:center!important;justify-content:center!important;font-size:20px!important;border-width:1.5px!important;border-style:solid!important;box-shadow:0 3px 8px rgba(60,45,120,.1)!important}
+      ${S} .v111-taskname{flex:1!important;font-size:14px!important;font-weight:700!important;letter-spacing:-.01em!important}
+      ${S} .v111-taskmeta{flex-shrink:0!important;font-size:11px!important;font-weight:700!important;border-radius:999px!important;padding:4px 11px!important}
+      ${S} .v111-taskmeta.req{color:#b3261e!important;background:#fde8e6!important}
+      ${S} .v111-taskmeta.opt{color:var(--v111-t3)!important;background:#eef1fb!important}
+      ${S} .v111-addtask,${S} .v111-addstation{display:flex!important;align-items:center!important;justify-content:center!important;gap:6px!important;font-size:12.5px!important;font-weight:750!important;color:var(--v111-accent)!important;border:1.5px dashed #c7b8f6!important;border-radius:12px!important;padding:11px!important;cursor:pointer!important;margin-top:6px!important;background:#faf8ff!important;transition:.14s!important}
+      ${S} .v111-addtask:hover,${S} .v111-addstation:hover{background:#f3eeff!important;border-color:var(--v111-accent)!important}
+      ${S} .v111-addstation{font-size:14px!important;padding:14px!important;box-shadow:0 6px 18px rgba(99,50,200,.08)!important}
+      ${S} .v111-stationactions{margin-top:9px!important;text-align:right!important}
+      ${S} .v111-sbtn{font-size:12px!important;font-weight:650!important;color:#b3261e!important;background:none!important;border:0!important;border-radius:9px!important;padding:6px 11px!important;cursor:pointer!important;font-family:inherit!important}
+      ${S} .v111-sbtn:hover{background:#fef2f2!important}
+      ${S} .v111-pbtn{font-size:12.5px!important;font-weight:700!important;color:#fff!important;background:var(--v111-brand)!important;border:none!important;border-radius:11px!important;padding:9px 16px!important;cursor:pointer!important;margin-left:6px!important;font-family:inherit!important;box-shadow:0 8px 20px rgba(99,50,200,.3)!important}
+      ${S} .v111-pbtn:hover{box-shadow:0 12px 26px rgba(99,50,200,.42)!important}
+
+      /* ---- Live-Vorschau: dunkle „Premium"-Karte ---- */
+      ${S} .v111-preview{background:linear-gradient(160deg,#1a1440 0%,#2b1b62 48%,#3730a3 100%)!important;border:0!important;border-radius:22px!important;padding:18px!important;box-shadow:0 22px 60px rgba(80,40,160,.32)!important;position:relative!important;overflow:hidden!important}
+      ${S} .v111-preview:after{content:""!important;position:absolute!important;inset:0!important;background:radial-gradient(360px 200px at 100% 0,rgba(236,72,153,.4),transparent 55%),radial-gradient(320px 220px at 0 100%,rgba(56,189,248,.32),transparent 50%)!important;pointer-events:none!important}
+      ${S} .v111-pvtitle{font-size:17px!important;font-weight:800!important;letter-spacing:-.01em!important;color:#fff!important;margin:0!important;position:relative!important;z-index:1!important}
+      ${S} .v111-pvgoal{font-size:12px!important;color:rgba(255,255,255,.82)!important;margin:4px 0 12px!important;position:relative!important;z-index:1!important}
+      ${S} .v111-route{display:flex!important;align-items:center!important;gap:3px!important;margin:12px 0 16px!important;position:relative!important;z-index:1!important}
+      ${S} .v111-routedot{width:26px!important;height:26px!important;border-radius:50%!important;display:flex!important;align-items:center!important;justify-content:center!important;font-size:11px!important;font-weight:800!important;flex-shrink:0!important;background:rgba(255,255,255,.12)!important;border:1.5px solid rgba(255,255,255,.22)!important;color:rgba(255,255,255,.8)!important}
+      ${S} .v111-routedot.done{background:linear-gradient(135deg,#22c55e,#4ade80)!important;border-color:transparent!important;color:#06381f!important}
+      ${S} .v111-routedot.current{background:linear-gradient(135deg,#f472b6,#fb7185)!important;border-color:#fff!important;color:#fff!important;width:30px!important;height:30px!important;font-size:12px!important;box-shadow:0 0 0 4px rgba(244,114,182,.28)!important}
+      ${S} .v111-routedot.trophy{background:linear-gradient(135deg,#fbbf24,#f59e0b)!important;border-color:transparent!important;color:#5b3d00!important}
+      ${S} .v111-routeline{flex:1!important;height:3px!important;border-radius:3px!important;background:rgba(255,255,255,.16)!important;min-width:12px!important}
+      ${S} .v111-routeline.done{background:linear-gradient(90deg,#22c55e,#4ade80)!important}
+      ${S} .v111-pvstation{font-size:13px!important;font-weight:800!important;color:#fff!important;margin-bottom:9px!important;position:relative!important;z-index:1!important}
+      ${S} .v111-pvtask{display:flex!important;flex-direction:column!important;background:rgba(255,255,255,.08)!important;border:1px solid rgba(255,255,255,.1)!important;border-radius:12px!important;padding:10px 12px!important;margin-bottom:7px!important;position:relative!important;z-index:1!important}
+      ${S} .v111-pvtask>span:first-child{font-size:12px!important;font-weight:650!important;color:#fff!important}
+      ${S} .v111-pvmeta{font-size:10.5px!important;color:rgba(255,255,255,.6)!important;margin-top:2px!important}
+      ${S} .v111-empty{font-size:12px!important;color:var(--v111-t3)!important;padding:14px!important;text-align:center!important;background:#faf8ff!important;border:1px dashed var(--v111-b1)!important;border-radius:12px!important}
+
+      /* ---- Aufgaben-Panel ---- */
+      ${S} .v111-panel{background:var(--v111-bg1)!important;border:1px solid var(--v111-b1)!important;border-radius:18px!important;padding:16px!important;margin-top:14px!important;box-shadow:0 10px 30px rgba(60,45,120,.09)!important}
+      ${S} .v111-panelhead{font-size:15px!important;font-weight:800!important;letter-spacing:-.01em!important;color:var(--v111-t1)!important;margin-bottom:13px!important;padding-bottom:11px!important;border-bottom:1px solid var(--v111-b1)!important}
+      ${S} .v111-flabel{font-size:11.5px!important;font-weight:750!important;color:var(--v111-t2)!important;margin-bottom:6px!important}
+      ${S} .v111-typerow{display:flex!important;gap:7px!important;flex-wrap:wrap!important;margin-bottom:12px!important}
+      ${S} .v111-typebtn{font-size:12.5px!important;font-weight:700!important;padding:8px 13px!important;border-radius:999px!important;background:var(--v111-bg1)!important;border:1.5px solid var(--v111-b1)!important;color:var(--v111-t2)!important;cursor:pointer!important;transition:.14s!important}
+      ${S} .v111-typebtn:hover{border-color:#c7b8f6!important;transform:translateY(-1px)!important}
+      ${S} .v111-typebtn.active{border-width:1.5px!important;box-shadow:0 6px 16px rgba(60,45,120,.14)!important}
+      ${S} .v111-hint{background:linear-gradient(135deg,#fff4d6,#ffe9c2)!important;border:0!important;border-radius:12px!important;padding:10px 13px!important;font-size:12px!important;color:#7a4b09!important;margin-bottom:11px!important}
+      ${S} .v111-panelfoot{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:10px!important;margin-top:6px!important;padding-top:12px!important;border-top:1px solid var(--v111-b1)!important}
+      ${S} .v111-toggle{display:flex!important;align-items:center!important;gap:8px!important;font-size:12.5px!important;font-weight:650!important;color:var(--v111-t2)!important;cursor:pointer!important}
+
+      /* ---- Material ---- */
+      ${S} .v111-material{margin-bottom:11px!important}
       ${S} .v111-matrow{display:flex!important;gap:6px!important;margin-bottom:6px!important;align-items:center!important}
-      ${S} .v111-matbtn{display:inline-flex!important;align-items:center!important;gap:5px!important;font-size:12px!important;color:var(--v111-t2)!important;background:var(--v111-bg1)!important;border:0.5px dashed var(--v111-b2)!important;border-radius:8px!important;padding:7px 11px!important;cursor:pointer!important}
+      ${S} .v111-matbtn{display:inline-flex!important;align-items:center!important;gap:6px!important;font-size:12px!important;font-weight:650!important;color:var(--v111-accent2)!important;background:#faf8ff!important;border:1.5px dashed #c7b8f6!important;border-radius:11px!important;padding:8px 12px!important;cursor:pointer!important}
+      ${S} .v111-matbtn:hover{background:#f3eeff!important}
       ${S} .v111-matstatus{font-size:11px!important;color:var(--v111-t3)!important;min-height:14px!important}
       ${S} .v111-matlist{margin-top:6px!important}
-      ${S} .v111-matitem{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:8px!important;background:var(--v111-bg1)!important;border:0.5px solid var(--v111-b1)!important;border-radius:8px!important;padding:6px 10px!important;margin-bottom:4px!important;font-size:12px!important;color:var(--v111-t1)!important}
-      ${S} .v111-matdel{background:none!important;border:none!important;color:var(--v111-t3)!important;cursor:pointer!important;font-size:13px!important;padding:0 4px!important}
-      ${S} .v111-quiz{margin-bottom:10px!important}
-      ${S} .v111-qcard{background:var(--v111-bg1)!important;border:0.5px solid var(--v111-b1)!important;border-radius:10px!important;padding:10px!important;margin-bottom:8px!important}
-      ${S} .v111-qhead{display:flex!important;align-items:center!important;justify-content:space-between!important;margin-bottom:6px!important}
-      ${S} .v111-qnum{font-size:12px!important;font-weight:500!important;color:var(--v111-t1)!important}
-      ${S} .v111-qopts{margin:6px 0!important}
-      ${S} .v111-qopt{display:flex!important;align-items:center!important;gap:6px!important;margin-bottom:5px!important}
-      ${S} .v111-qcorrect{flex-shrink:0!important;width:26px!important;height:26px!important;border-radius:50%!important;border:0.5px solid var(--v111-b2)!important;background:var(--v111-bg1)!important;color:var(--v111-t3)!important;cursor:pointer!important;font-size:13px!important;display:flex!important;align-items:center!important;justify-content:center!important}
-      ${S} .v111-qcorrect.on{background:#639922!important;border-color:#639922!important;color:#fff!important}
-      ${S} .v111-qaddopt,${S} .v111-qadd{font-size:12px!important;color:#185FA5!important;background:none!important;border:0.5px dashed var(--v111-b2)!important;border-radius:8px!important;padding:6px 11px!important;cursor:pointer!important}
-      ${S} .v111-qadd{display:block!important;width:100%!important;margin-top:4px!important;padding:8px!important}
-      ${S} .v111-ytok{display:flex!important;align-items:center!important;gap:8px!important;font-size:12px!important;color:#27500A!important;margin-top:6px!important}
-      ${S} .v111-ytthumb{width:64px!important;height:36px!important;object-fit:cover!important;border-radius:6px!important;flex-shrink:0!important}
+      ${S} .v111-matitem{display:flex!important;align-items:center!important;justify-content:space-between!important;gap:8px!important;background:#fbfaff!important;border:1px solid var(--v111-b1)!important;border-radius:11px!important;padding:7px 11px!important;margin-bottom:5px!important;font-size:12px!important;color:var(--v111-t1)!important}
+      ${S} .v111-matdel{background:none!important;border:none!important;color:var(--v111-t3)!important;cursor:pointer!important;font-size:14px!important;padding:0 4px!important}
+      ${S} .v111-matdel:hover{color:#b3261e!important}
+
+      /* ---- Quiz ---- */
+      ${S} .v111-quiz{margin-bottom:11px!important}
+      ${S} .v111-qcard{background:#fbfaff!important;border:1px solid var(--v111-b1)!important;border-radius:14px!important;padding:11px!important;margin-bottom:9px!important}
+      ${S} .v111-qhead{display:flex!important;align-items:center!important;justify-content:space-between!important;margin-bottom:7px!important}
+      ${S} .v111-qnum{font-size:12.5px!important;font-weight:750!important;color:var(--v111-accent)!important}
+      ${S} .v111-qopts{margin:7px 0!important}
+      ${S} .v111-qopt{display:flex!important;align-items:center!important;gap:7px!important;margin-bottom:6px!important}
+      ${S} .v111-qcorrect{flex-shrink:0!important;width:28px!important;height:28px!important;border-radius:50%!important;border:1.5px solid var(--v111-b2)!important;background:var(--v111-bg1)!important;color:var(--v111-t3)!important;cursor:pointer!important;font-size:14px!important;display:flex!important;align-items:center!important;justify-content:center!important;transition:.14s!important}
+      ${S} .v111-qcorrect.on{background:linear-gradient(135deg,#16a34a,#4ade80)!important;border-color:transparent!important;color:#fff!important}
+      ${S} .v111-qaddopt,${S} .v111-qadd{font-size:12px!important;font-weight:700!important;color:var(--v111-accent)!important;background:#faf8ff!important;border:1.5px dashed #c7b8f6!important;border-radius:11px!important;padding:7px 12px!important;cursor:pointer!important}
+      ${S} .v111-qaddopt:hover,${S} .v111-qadd:hover{background:#f3eeff!important}
+      ${S} .v111-qadd{display:block!important;width:100%!important;margin-top:5px!important;padding:9px!important}
+
+      /* ---- Video ---- */
+      ${S} .v111-ytok{display:flex!important;align-items:center!important;gap:9px!important;font-size:12px!important;font-weight:650!important;color:#0f6e56!important;background:#e1f5ee!important;border-radius:11px!important;padding:9px 11px!important;margin-top:8px!important}
+      ${S} .v111-ytthumb{width:70px!important;height:42px!important;object-fit:cover!important;border-radius:8px!important;flex-shrink:0!important}
       ${S} .v111-yterr{font-size:12px!important;color:#854F0B!important;margin-top:6px!important}
-      ${S} .v111-reflex{margin-bottom:10px!important}
-      ${S} .v111-rxcard{background:var(--v111-bg1)!important;border:0.5px solid var(--v111-b1)!important;border-radius:10px!important;padding:11px!important;margin-top:8px!important}
-      ${S} .v111-lerncard{background:#E6F1FB!important;border:0.5px solid #B5D4F4!important}
-      ${S} .v111-lerntoolbar{display:flex!important;gap:6px!important;margin-bottom:6px!important}
-      ${S} .v111-lernbtn{font-size:12px!important;padding:4px 10px!important;border:0.5px solid var(--v111-b2)!important;border-radius:6px!important;background:var(--v111-bg1)!important;color:var(--v111-t1)!important;cursor:pointer!important;line-height:1.4!important}
-      ${S} .v111-lernbtn:hover{background:#fff!important;border-color:#185FA5!important;color:#185FA5!important}
+
+      /* ---- Reflexion / Lerninhalt ---- */
+      ${S} .v111-reflex{margin-bottom:11px!important}
+      ${S} .v111-rxcard{background:#fbfaff!important;border:1px solid var(--v111-b1)!important;border-radius:14px!important;padding:12px!important;margin-top:9px!important}
+      ${S} .v111-lerncard{background:linear-gradient(135deg,#eef4ff,#e6f1fb)!important;border:1px solid #c9ddf6!important}
+      ${S} .v111-lerntoolbar{display:flex!important;gap:6px!important;margin-bottom:7px!important;flex-wrap:wrap!important}
+      ${S} .v111-lernbtn{font-size:12px!important;font-weight:700!important;padding:5px 11px!important;border:1.5px solid var(--v111-b1)!important;border-radius:9px!important;background:#fff!important;color:var(--v111-t1)!important;cursor:pointer!important;line-height:1.4!important;transition:.14s!important}
+      ${S} .v111-lernbtn:hover{background:#f3eeff!important;border-color:var(--v111-accent)!important;color:var(--v111-accent)!important}
       ${S} .v111-lernbtn-icon{display:inline-flex!important;align-items:center!important;justify-content:center!important;min-width:30px!important}
       ${S} .v111-listdots{display:inline-block!important;width:4px!important;height:16px!important;position:relative!important}
       ${S} .v111-listdots:before{content:""!important;position:absolute!important;left:0!important;width:4px!important;height:4px!important;border-radius:50%!important;background:currentColor!important;box-shadow:0 6px 0 currentColor,0 12px 0 currentColor!important;top:0!important}
-      ${S} .v111-lernedit{min-height:150px!important;max-height:340px!important;overflow-y:auto!important;background:var(--v111-bg1)!important;border:0.5px solid var(--v111-b2)!important;border-radius:8px!important;padding:9px 11px!important;font-size:13px!important;line-height:1.6!important;color:var(--v111-t1)!important;font-family:inherit!important;outline:none!important}
-      ${S} .v111-lernedit:focus{border-color:#185FA5!important}
+      ${S} .v111-lernedit{min-height:150px!important;max-height:340px!important;overflow-y:auto!important;background:#fff!important;border:1.5px solid var(--v111-b1)!important;border-radius:12px!important;padding:11px 13px!important;font-size:13.5px!important;line-height:1.6!important;color:var(--v111-t1)!important;font-family:inherit!important;outline:none!important}
+      ${S} .v111-lernedit:focus{border-color:var(--v111-accent)!important;box-shadow:0 0 0 4px rgba(109,40,217,.13)!important}
       ${S} .v111-lernedit:empty:before{content:attr(data-ph)!important;color:var(--v111-t3)!important}
-      ${S} .v111-lernedit b,${S} .v111-lernedit strong{font-weight:600!important}
+      ${S} .v111-lernedit b,${S} .v111-lernedit strong{font-weight:700!important}
       ${S} .v111-lernedit p{margin:0 0 8px!important}
       ${S} .v111-lernedit i,${S} .v111-lernedit em{font-style:italic!important}
       ${S} .v111-lernedit sup{font-size:.75em!important;vertical-align:super!important}
       ${S} .v111-lernedit sub{font-size:.75em!important;vertical-align:sub!important}
-      ${S} .v111-lernedit h4{font-size:17px!important;font-weight:600!important;margin:12px 0 5px!important;line-height:1.35!important;color:var(--v111-t1)!important}
+      ${S} .v111-lernedit h4{font-size:17px!important;font-weight:700!important;margin:12px 0 5px!important;line-height:1.35!important;color:var(--v111-accent)!important}
       ${S} .v111-lernedit ul{margin:6px 0 8px!important;padding-left:22px!important;list-style:disc!important}
       ${S} .v111-lernedit ol{margin:6px 0 8px!important;padding-left:24px!important;list-style:decimal!important}
       ${S} .v111-lernedit li{margin:2px 0!important}
-      ${S} .v111-rxrow{display:flex!important;align-items:center!important;justify-content:space-between!important;font-size:12px!important;font-weight:500!important;color:var(--v111-t1)!important;cursor:pointer!important}
-      ${S} .v111-pvmedia{margin:8px 0!important}
-      ${S} .v111-pvimg{max-width:100%!important;border-radius:8px!important;margin-bottom:6px!important;display:block!important}
-      ${S} .v111-pvembed{position:relative!important;padding-bottom:56.25%!important;height:0!important;overflow:hidden!important;border-radius:8px!important;background:#000!important;margin-bottom:6px!important}
+      ${S} .v111-rxrow{display:flex!important;align-items:center!important;justify-content:space-between!important;font-size:12.5px!important;font-weight:650!important;color:var(--v111-t1)!important;cursor:pointer!important}
+      ${S} .v111-pvmedia{margin:8px 0!important;position:relative!important;z-index:1!important}
+      ${S} .v111-pvimg{max-width:100%!important;border-radius:10px!important;margin-bottom:6px!important;display:block!important}
+      ${S} .v111-pvembed{position:relative!important;padding-bottom:56.25%!important;height:0!important;overflow:hidden!important;border-radius:10px!important;background:#000!important;margin-bottom:6px!important}
       ${S} .v111-pvembed iframe{position:absolute!important;top:0!important;left:0!important;width:100%!important;height:100%!important;border:0!important}
     `;
     document.head.appendChild(css);

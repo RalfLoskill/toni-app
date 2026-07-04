@@ -1706,6 +1706,7 @@ function toniFileCountChip(n, kind){
 function renderStudentList(){
   const root=document.getElementById("student-list"); if(!root)return;
   const list=TONI_INSTITUTION_STUDENTS||[];
+  try{ toniUpdateSectionCount("student-panel","students"); }catch(e){}
   // Löschen nur für Admin/SuperAdmin (Tutor darf fremde Profile nicht löschen).
   const istAdmin = (typeof getCurrentRole==="function" ? getCurrentRole() : localStorage.getItem("toni_role")) === "admin"
                 || (typeof isSuperAdmin==="function" && isSuperAdmin());
@@ -1954,6 +1955,7 @@ async function loadTutorGroups(){
 
 function renderGroupList(){
   const root=document.getElementById("group-list"); if(!root)return;
+  try{ toniUpdateSectionCount("group-panel","groups"); }catch(e){}
   if(!TONI_GROUPS.length){root.innerHTML=`<div class="lr-editor-empty">Noch keine Lerngruppen vorhanden.</div>`;return;}
   root.innerHTML=TONI_GROUPS.map(g=>`<div class="group-row ${g.id===ACTIVE_GROUP_ID?"active":""}" onclick="selectLearningGroup('${g.id}')"><div class="group-row-main"><div class="group-row-title">${escapeHtml(g.name)}</div><div class="group-row-meta">Join-Code: ${escapeHtml(g.join_code)}</div></div><div class="group-row-actions"><button type="button" class="group-row-icon-btn" title="Bezeichnung ändern" onclick="event.stopPropagation();renameLearningGroup('${g.id}')">✏️</button><button type="button" class="group-row-icon-btn danger" title="Lerngruppe löschen" onclick="event.stopPropagation();deleteLearningGroup('${g.id}')">−</button></div></div>`).join("");
 }
@@ -2585,7 +2587,7 @@ Station: Reflexion | Ziel erreicht | Der Lernfortschritt wird reflektiert.
 function resetJourneyEditor(){
   window.TONI_ACTIVE_ADMIN_JOURNEY_ROW = null;
   document.getElementById("journey-edit-id").value = "";
-  document.getElementById("journey-editor-title").textContent = "Neue Lernreise anlegen";
+  document.getElementById("journey-editor-title").textContent = "Lernreise erstellen/bearbeiten";
   ["journey-title","journey-subject","journey-goal","journey-description","journey-structure"].forEach(id => {
     const el = document.getElementById(id);
     if(el) el.value = "";
@@ -2778,6 +2780,7 @@ async function loadAdminLearningJourneys(){
     }
 
     window.TONI_ADMIN_JOURNEYS = rows;
+    try{ toniUpdateSectionCount("journey-admin-panel","manage"); }catch(e){}
     renderAdminJourneyListV16(rows);
   }catch(error){
     console.warn("Lernreisen konnten nicht aus Supabase geladen werden:", error);
@@ -3157,7 +3160,7 @@ function toniToggleJourneyEditor(){
 function toniOpenJourneyEditorNew(){
   try{ resetJourneyEditor?.(); }catch(e){}
   const title=document.getElementById("journey-editor-title");
-  if(title) title.textContent="Neue Lernreise anlegen";
+  if(title) title.textContent="Lernreise erstellen/bearbeiten";
   toniSetJourneyEditorOpen(true);
 }
 window.toniToggleJourneyEditor=toniToggleJourneyEditor;
@@ -3208,7 +3211,7 @@ function editAdminJourney(id){
   window.TONI_ACTIVE_ADMIN_JOURNEY_ROW = row;
 
   document.getElementById("journey-edit-id").value = row.id;
-  document.getElementById("journey-editor-title").textContent = "Lernreise bearbeiten";
+  document.getElementById("journey-editor-title").textContent = "Lernreise erstellen/bearbeiten";
   document.getElementById("journey-title").value = j.title || "";
   document.getElementById("journey-subject").value = j.subject || "";
   document.getElementById("journey-goal").value = j.goal || "";
@@ -4398,10 +4401,32 @@ function toniV19MakeSectionCollapsible(panelId, sectionKey, labelWhenClosed) {
   if (titleEl) {
     const originalTitle = titleEl.textContent.trim();
 
+    // Icon-Kachel je Sektion (gefülltes Symbol, Farbe pro Gruppe).
+    const TONI_SECTION_ICONS = {
+      "student-panel": { color:"#0071e3", shadow:"rgba(0,113,227,.26)",
+        path:'<path d="M12 12a5 5 0 1 0 0-10 5 5 0 0 0 0 10Zm0 2c-4.42 0-8 2.24-8 5v1a1 1 0 0 0 1 1h14a1 1 0 0 0 1-1v-1c0-2.76-3.58-5-8-5Z"/>' },
+      "group-panel": { color:"#0071e3", shadow:"rgba(0,113,227,.26)",
+        path:'<path d="M8 11a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7Zm8 0a3.5 3.5 0 1 0 0-7 3.5 3.5 0 0 0 0 7ZM8 13c-3.31 0-6 1.79-6 4v1a1 1 0 0 0 1 1h8.5c-.32-.62-.5-1.3-.5-2 0-1.42.66-2.71 1.74-3.64C11.79 13.28 9.98 13 8 13Zm8 0c-.62 0-1.22.05-1.79.14C15.31 14.09 16 15.47 16 17v1a3 3 0 0 1-.18 1H21a1 1 0 0 0 1-1v-1c0-2.21-2.69-4-6-4Z"/>' },
+      "journey-admin-panel": { color:"#f97316", shadow:"rgba(249,115,22,.28)",
+        path:'<path d="M6 2a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h13a1 1 0 0 0 1-1V3a1 1 0 0 0-1-1H6Zm9 1.5 2.5 1.5V3.5H15Zm-9 15.5a1 1 0 0 1 1-1h11v2H7a1 1 0 0 1-1-1Z"/>' },
+      "learning-journey-assignment-panel": { color:"#f97316", shadow:"rgba(249,115,22,.28)",
+        path:'<path d="M9 11a4 4 0 1 0 0-8 4 4 0 0 0 0 8Zm0 2c-3.87 0-7 1.79-7 4v1a1 1 0 0 0 1 1h9.1a5.5 5.5 0 0 1-.1-1c0-1.9.96-3.58 2.42-4.57C13.34 13.15 11.24 13 9 13Zm9.5-1-1.4 1.4 1.6 1.6H14v2h4.7l-1.6 1.6 1.4 1.4L22.5 16 18.5 12Z"/>' },
+      "dashboard-projects-card": { color:"#16a34a", shadow:"rgba(22,163,74,.26)",
+        path:'<path d="M4 3a1 1 0 0 0-1 1v16a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1H4Zm6 0a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1h-4Zm6 0a1 1 0 0 0-1 1v12a1 1 0 0 0 1 1h4a1 1 0 0 0 1-1V4a1 1 0 0 0-1-1h-4Z"/>' }
+    };
+    const ic = TONI_SECTION_ICONS[panelId];
+    const iconHtml = ic
+      ? `<span class="journey-section-icon" style="background:${ic.color};box-shadow:0 4px 12px ${ic.shadow}"><svg viewBox="0 0 24 24" aria-hidden="true">${ic.path}</svg></span>`
+      : "";
+
     titleEl.innerHTML = `
-      <span class="journey-section-toggle" onclick="toniV19ToggleSection('${panelId}','${sectionKey}')">
+      <span class="journey-section-toggle journey-section-toggle--stacked" onclick="toniV19ToggleSection('${panelId}','${sectionKey}')">
         <span class="journey-toggle-symbol" id="${panelId}-toggle-symbol">+</span>
-        <span>${originalTitle}</span>
+        ${iconHtml}
+        <span class="journey-section-textcol">
+          <span class="journey-section-title-text">${originalTitle}</span>
+          <span class="journey-section-collapsed-note" id="${panelId}-collapsed-note" onclick="event.stopPropagation()">${labelWhenClosed || "Klicke auf das Pluszeichen, um diesen Bereich zu öffnen."}</span>
+        </span>
       </span>
     `;
   }
@@ -4410,22 +4435,85 @@ function toniV19MakeSectionCollapsible(panelId, sectionKey, labelWhenClosed) {
   body.className = "journey-collapsible-body";
   body.id = panelId + "-body";
 
-  const note = document.createElement("div");
-  note.className = "journey-section-collapsed-note";
-  note.id = panelId + "-collapsed-note";
-  note.textContent = labelWhenClosed || "Klicke auf das Pluszeichen, um diesen Bereich zu öffnen.";
-
   const children = Array.from(panel.childNodes);
   children.forEach(node => {
     if (node === header) return;
     body.appendChild(node);
   });
 
-  panel.appendChild(note);
   panel.appendChild(body);
 
   toniV19ApplySectionState(panelId, sectionKey);
 }
+
+// Ersetzt die "Klicke auf das Pluszeichen…"-Hinweise durch aktuelle Zahlen.
+// Robust: liest bevorzugt globale Variablen, sonst zählt es aus dem DOM.
+function toniSectionCountText(sectionKey){
+  const arrLen = (v)=> Array.isArray(v) ? v.length : null;
+  const domCount = (sel)=>{ try{ return document.querySelectorAll(sel).length; }catch(e){ return null; } };
+  const fmt = (n, one, many)=> `${n} ${n===1?one:many}`;
+
+  if(sectionKey==="students"){
+    let n = (typeof TONI_INSTITUTION_STUDENTS !== "undefined" && Array.isArray(TONI_INSTITUTION_STUDENTS)) ? TONI_INSTITUTION_STUDENTS.length : null;
+    if(n==null) n = domCount("#student-list .student-row, #student-list .student-card");
+    return n==null ? null : fmt(n, "Student", "Studenten");
+  }
+  if(sectionKey==="groups"){
+    let n = (typeof TONI_GROUPS !== "undefined" && Array.isArray(TONI_GROUPS)) ? TONI_GROUPS.length : null;
+    if(n==null) n = domCount("#group-list .group-row");
+    return n==null ? null : fmt(n, "Lerngruppe", "Lerngruppen");
+  }
+  if(sectionKey==="manage"){
+    let n = arrLen(window.TONI_ADMIN_JOURNEYS);
+    if(n==null && typeof TONI_ADMIN_JOURNEYS !== "undefined") n = arrLen(TONI_ADMIN_JOURNEYS);
+    if(n==null) n = domCount("#admin-journey-list .journey-tile");
+    return n==null ? null : fmt(n, "Lernreise", "Lernreisen");
+  }
+  if(sectionKey==="assign"){
+    // Lernreisen mit mindestens einem zugeordneten Studenten (eindeutige Template-IDs).
+    let rows = window.TONI_JOURNEY_ASSIGNMENTS;
+    if(!Array.isArray(rows) && typeof TONI_JOURNEY_ASSIGNMENTS !== "undefined") rows = TONI_JOURNEY_ASSIGNMENTS;
+    if(Array.isArray(rows)){
+      const ids = new Set();
+      rows.forEach(r=>{ const id = r && (r.learning_journey_template_id||r.journey_template_id||r.template_id||r.learning_journey_id); if(id!=null) ids.add(String(id)); });
+      const n = ids.size;
+      return `${n} ${n===1?"Lernreise":"Lernreisen"} mit Zuordnung`;
+    }
+    return null;
+  }
+  if(sectionKey==="projects"){
+    // Keine globale Variable verfügbar -> aus der gerenderten Liste zählen.
+    const list = document.getElementById("toni-projects-list");
+    if(list){
+      // echte Projekt-Einträge: Elemente mit onclick/Projekt-Klasse, keine Platzhalter.
+      let n = list.querySelectorAll("[data-project-id]").length;
+      if(n===0) n = list.querySelectorAll(".toni-project-row, .project-row, .project-card, .toni-project-item").length;
+      return `${n} ${n===1?"Projekt":"Projekte"}`;
+    }
+    return null;
+  }
+  return null;
+}
+function toniUpdateSectionCount(panelId, sectionKey){
+  const note = document.getElementById(panelId + "-collapsed-note");
+  if(!note) return;
+  const txt = toniSectionCountText(sectionKey);
+  if(txt!=null){
+    note.textContent = txt;
+    note.classList.add("toni-section-count");
+  }
+}
+function toniUpdateAllSectionCounts(){
+  const map = [
+    ["student-panel","students"],
+    ["group-panel","groups"],
+    ["journey-admin-panel","manage"],
+    ["learning-journey-assignment-panel","assign"],
+    ["dashboard-projects-card","projects"]
+  ];
+  map.forEach(([pid,key])=> toniUpdateSectionCount(pid,key));
+}
+window.toniUpdateAllSectionCounts = toniUpdateAllSectionCounts;
 
 function toniV19ApplySectionState(panelId, sectionKey) {
   const open = !!window.TONI_SECTION_OPEN_STATE[sectionKey];
@@ -4437,6 +4525,9 @@ function toniV19ApplySectionState(panelId, sectionKey) {
   if (body) body.classList.toggle("open", open);
   if (note) note.classList.toggle("hidden", open);
   if (symbol) symbol.textContent = open ? "−" : "+";
+
+  // Zahl in der Hinweiszeile aktualisieren (ersetzt den "Klicke…"-Text).
+  toniUpdateSectionCount(panelId, sectionKey);
 
   if (sectionKey === "manage") {
     sessionStorage.setItem("toni_section_manage_open", open ? "1" : "0");
@@ -4504,6 +4595,13 @@ function toniV19SetupCollapsibleJourneySections() {
     "assign",
     "Klicke auf das Pluszeichen, um Lernreisen einzelnen Studenten zuzuordnen."
   );
+
+  // Zahlen einblenden: Daten einmalig laden (falls Sektion nie geöffnet wird),
+  // damit die Zähler auch ohne Aufklappen stimmen. Danach aktualisieren die
+  // Render-Hooks die Zahlen automatisch bei jeder Datenänderung.
+  try{ if(typeof loadAdminLearningJourneys==="function") loadAdminLearningJourneys(); }catch(e){}
+  try{ if(typeof loadJourneyAssignmentTable==="function") loadJourneyAssignmentTable(); }catch(e){}
+  [300, 800, 1600, 3000].forEach(ms => setTimeout(toniUpdateAllSectionCounts, ms));
 }
 
 // Projekte-Panel (nur Tutor/Admin) aufklappbar machen.
@@ -4513,6 +4611,7 @@ function toniV19SetupCollapsibleProjectsSection() {
     "projects",
     "Klicke auf das Pluszeichen, um die aktiven Projekte anzuzeigen."
   );
+  [200, 600, 1200, 2500].forEach(ms => setTimeout(toniUpdateAllSectionCounts, ms));
 }
 window.toniV19SetupCollapsibleProjectsSection = toniV19SetupCollapsibleProjectsSection;
 
@@ -4824,7 +4923,7 @@ function toniV23FindLearningJourneyCard(){
   if(card)return card;
   card=cards.find(c=>{
     const t=(c.querySelector(".card-title")?.textContent)||"";
-    return t.includes("Lernreise")&&!t.includes("verwalten")&&!t.includes("zuordnen")&&!t.includes("Meine Lernreisen")&&!t.includes("zugeordnete");
+    return t.includes("Lernreise")&&!t.includes("verwalten")&&!t.includes("zuordnen")&&!t.includes("anlegen")&&!t.includes("bearbeiten")&&!t.includes("Meine Lernreisen")&&!t.includes("zugeordnete");
   });
   return card||null;
 }
@@ -6462,6 +6561,7 @@ async function toniV41RenderAssignmentTable(){
 
     window.TONI_JOURNEY_ASSIGNMENT_ROWS = journeys;
     window.TONI_JOURNEY_ASSIGNMENTS = assignments;
+    try{ toniUpdateSectionCount("learning-journey-assignment-panel","assign"); }catch(e){}
 
     if(!journeys.length){
       tbody.innerHTML = `<tr><td colspan="3"><div class="assignment-empty">Noch keine Lernreisen vorhanden. Lege zuerst im Bereich „Lernreisen verwalten“ eine Lernreise an.</div></td></tr>`;
