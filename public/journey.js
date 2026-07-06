@@ -178,18 +178,23 @@ function toniInjectTimelineStyles(){
     .toni-tl-nav:hover .toni-tl-head{color:#185FA5}
     .toni-tl-nav.selected .toni-tl-body{background:var(--color-background-secondary,#f0f4f8);border-radius:8px;margin:-2px -6px;padding:2px 6px}
     .toni-tl-nav .toni-tl-body{padding-bottom:14px}
-    .toni-slim-task{display:flex;align-items:center;gap:8px;padding:9px 11px;border-radius:8px;font-size:13px;border:0.5px solid transparent;margin-bottom:0;transition:box-shadow .15s,transform .05s}
+    .toni-slim-task{position:relative;display:flex;align-items:center;gap:13px;padding:13px;border-radius:16px;font-size:13px;background:var(--tbg,#fff);border:1.5px solid var(--tborder,#eee);margin-bottom:0;overflow:hidden;transition:box-shadow .16s,transform .12s,border-color .16s}
+    .toni-slim-task::before{content:"";position:absolute;left:0;top:0;bottom:0;width:5px;background:var(--tcol,#888)}
     .toni-slim-task[onclick]{cursor:pointer}
-    .toni-slim-task[onclick]:hover{box-shadow:0 2px 8px rgba(15,23,42,.12)}
-    .toni-slim-task.current{box-shadow:0 0 0 2px #185FA5 inset}
-    .toni-slim-task.started{box-shadow:0 0 0 2px #639922 inset}
-    .toni-slim-task.locked{opacity:.5;cursor:not-allowed}
-    .toni-slim-name{flex:1;color:var(--color-text-primary,#1a1a18);overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-    .toni-slim-name.done{color:var(--color-text-secondary,#5f5e5a)}
-    .toni-slim-meta{font-size:11px;color:var(--color-text-tertiary,#888);flex-shrink:0}
-    .toni-slim-meta.cur{color:#185FA5;font-weight:500}
-    .toni-slim-arr{color:var(--color-text-tertiary,#888);opacity:0;transition:opacity .15s;flex-shrink:0}
-    .toni-slim-task[onclick]:hover .toni-slim-arr{opacity:1}
+    .toni-slim-task[onclick]:hover{transform:translateY(-2px);box-shadow:0 14px 30px rgba(40,20,60,.12);border-color:transparent}
+    .toni-slim-task.current{box-shadow:0 0 0 2px var(--tcol,#185FA5) inset}
+    .toni-slim-task.started{box-shadow:0 0 0 2px #16a34a inset}
+    .toni-slim-task.locked{opacity:.55;cursor:not-allowed}
+    .toni-slim-icon-box{flex-shrink:0;width:50px;height:50px;border-radius:14px;display:grid;place-items:center;font-size:25px;background:#fff;color:var(--tcol,#333);box-shadow:0 4px 12px rgba(40,20,60,.10),inset 0 0 0 1.5px color-mix(in srgb,var(--tcol) 26%,transparent)}
+    .toni-slim-body{min-width:0;flex:1;display:flex;flex-direction:column;gap:1px}
+    .toni-slim-type{font-size:10.5px;font-weight:800;letter-spacing:.08em;text-transform:uppercase;color:var(--tcol,#666)}
+    .toni-slim-name{font-weight:700;font-size:14px;color:var(--color-text-primary,#1a1a18);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;line-height:1.25}
+    .toni-slim-name.done{color:var(--color-text-secondary,#5f5e5a);text-decoration:line-through;text-decoration-color:color-mix(in srgb,var(--tcol) 50%,transparent)}
+    .toni-slim-foot{display:flex;align-items:center;gap:8px;margin-top:6px}
+    .toni-slim-status{font-size:11px;color:#6b647e;font-weight:600;flex-shrink:0}
+    .toni-slim-mini{flex:1;height:6px;border-radius:20px;background:rgba(255,255,255,.75);box-shadow:inset 0 0 0 1px rgba(40,20,60,.07);overflow:hidden;max-width:130px}
+    .toni-slim-mini i{display:block;height:100%;background:var(--tcol,#888);border-radius:20px;transition:width .3s}
+    .toni-slim-badge{position:absolute;top:11px;right:12px;font-size:9.5px;font-weight:800;letter-spacing:.05em;color:#6b647e;background:rgba(255,255,255,.7);padding:2px 7px;border-radius:7px}
   `;
   document.head.appendChild(css);
   toniInjectTimelineStyles.__done=true;
@@ -2744,7 +2749,27 @@ function rowToJourneyV16(row){
   };
 }
 
+// Single-Flight-Schutz: verhindert, dass mehrere parallele Aufrufe gleichzeitig
+// laden und sich gegenseitig überschreiben (Ursache für "Kacheln erscheinen kurz
+// und verschwinden"). Läuft bereits ein Ladevorgang, wird dessen Promise wiederverwendet.
+window.TONI_ADMIN_JOURNEYS_INFLIGHT = window.TONI_ADMIN_JOURNEYS_INFLIGHT || null;
+
 async function loadAdminLearningJourneys(){
+  if(window.TONI_ADMIN_JOURNEYS_INFLIGHT){
+    return window.TONI_ADMIN_JOURNEYS_INFLIGHT;
+  }
+  const p = (async () => {
+    try{
+      return await toniDoLoadAdminLearningJourneys();
+    }finally{
+      window.TONI_ADMIN_JOURNEYS_INFLIGHT = null;
+    }
+  })();
+  window.TONI_ADMIN_JOURNEYS_INFLIGHT = p;
+  return p;
+}
+
+async function toniDoLoadAdminLearningJourneys(){
   const list = document.getElementById("admin-journey-list");
   if(!list) return;
 
@@ -2774,7 +2799,11 @@ async function loadAdminLearningJourneys(){
     }
 
     if(!rows.length){
-      list.innerHTML = `<div class="journey-empty">Noch keine Lernreisen vorhanden. Lege links eine neue Lernreise an.</div>`;
+      // Nur auf "leer" umstellen, wenn nicht schon echte Kacheln sichtbar sind
+      // (ein paralleler, langsamerer Aufruf soll gute Kacheln nicht wegwischen).
+      if(!list.querySelector(".journey-tile:not(.journey-tile-add)")){
+        list.innerHTML = `<div class="journey-empty">Noch keine Lernreisen vorhanden. Lege links eine neue Lernreise an.</div>`;
+      }
       window.TONI_ADMIN_JOURNEYS = [];
       return;
     }
@@ -2785,12 +2814,26 @@ async function loadAdminLearningJourneys(){
   }catch(error){
     console.warn("Lernreisen konnten nicht aus Supabase geladen werden:", error);
     const local = getLocalJourneysV16().map(r => ({...r, _source:"local"}));
-    window.TONI_ADMIN_JOURNEYS = local;
     if(local.length){
+      window.TONI_ADMIN_JOURNEYS = local;
       renderAdminJourneyListV16(local);
-    }else{
-      list.innerHTML = `<div class="journey-empty">⚠️ Lernreisen konnten nicht geladen werden:<br>${escapeToniV16(error.message)}</div>`;
+      return;
     }
+    // FEHLERPFAD ABGESICHERT: Bereits sichtbare Kacheln oder schon geladene
+    // Daten NICHT mit der Fehlermeldung überschreiben. Ein langsamer paralleler
+    // Aufruf, der in den Timeout läuft, darf gute Daten nicht zerstören.
+    const hasTilesVisible = !!list.querySelector(".journey-tile:not(.journey-tile-add)");
+    const hasLoadedData = Array.isArray(window.TONI_ADMIN_JOURNEYS) && window.TONI_ADMIN_JOURNEYS.length > 0;
+    if(hasTilesVisible || hasLoadedData){
+      console.warn("Fehler ignoriert – es sind bereits Lernreisen sichtbar/geladen.");
+      // Falls Daten da, aber (aus irgendeinem Grund) keine Kacheln sichtbar: neu rendern.
+      if(!hasTilesVisible && hasLoadedData){
+        try{ renderAdminJourneyListV16(window.TONI_ADMIN_JOURNEYS); }catch(e){}
+      }
+      return;
+    }
+    // Wirklich nichts vorhanden -> Fehlermeldung ist berechtigt.
+    list.innerHTML = `<div class="journey-empty">⚠️ Lernreisen konnten nicht geladen werden:<br>${escapeToniV16(error.message)}</div>`;
   }
 }
 
@@ -10912,46 +10955,46 @@ window.addEventListener("resize", () => {
     const clickable = !!opts.clickable;
     const ntype = (typeof toniNormalizeType==="function") ? toniNormalizeType(task.type) : "Aufgabe";
     const icon = (typeof toniTypeIcon==="function") ? toniTypeIcon(ntype) : "📌";
-    // Typ-Farben (gespiegelt aus dem Editor)
+    // Typ-Farben (gespiegelt aus dem Editor) – erweitert um Verlauf-Hintergrund + Rahmen
     const palette = {
-      "Lerninhalt":{bar:"#185FA5",bg:"#E6F1FB"},
-      "Aufgabe":{bar:"#854F0B",bg:"#FAEEDA"},
-      "Quiz":{bar:"#0F6E56",bg:"#E1F5EE"},
-      "Video":{bar:"#993C1D",bg:"#FAECE7"},
-      "Reflexion":{bar:"#534AB7",bg:"#EEEDFE"}
+      "Lerninhalt":{bar:"#2563eb",bg:"linear-gradient(135deg,#eff5ff,#ffffff 78%)",border:"#cfe0ff"},
+      "Aufgabe":{bar:"#ea580c",bg:"linear-gradient(135deg,#fff3e9,#ffffff 78%)",border:"#ffd9bf"},
+      "Quiz":{bar:"#0d9488",bg:"linear-gradient(135deg,#e7faf6,#ffffff 78%)",border:"#bdeee5"},
+      "Video":{bar:"#db2777",bg:"linear-gradient(135deg,#fdeef6,#ffffff 78%)",border:"#fbcfe4"},
+      "Reflexion":{bar:"#7c3aed",bg:"linear-gradient(135deg,#f3edff,#ffffff 78%)",border:"#ddccff"}
     };
     const col = palette[ntype] || palette["Aufgabe"];
-    const reqLabel = task.required ? 'Pflicht' : 'optional';
-    let statusIcon, metaHtml, cls="", extraStyle="";
+    let statusText, cls="", progWidth="0%";
     const isDone = task.status==="done"||task.done||task.completed;
     const isStarted = task.status==="in_progress";
     if(isDone){
-      statusIcon='<span style="color:#639922">✅</span>';
-      metaHtml=`<span class="toni-slim-meta">erledigt · ${reqLabel}</span>`;
+      statusText='erledigt'; cls='done'; progWidth='100%';
     }else if(!clickable){
-      statusIcon='<span>🔒</span>';
-      metaHtml=`<span class="toni-slim-meta">gesperrt · ${reqLabel}</span>`;
-      cls="locked";
+      statusText='gesperrt'; cls='locked';
     }else if(isStarted){
-      // gestartet/in Bearbeitung -> grüner Rand an der Kachel
-      statusIcon=`<span>${icon}</span>`;
-      metaHtml=`<span class="toni-slim-meta cur" style="color:#639922">in Bearbeitung · ${reqLabel}</span>`;
-      cls="started";
-      extraStyle=";box-shadow:0 0 0 2px #639922 inset";
+      statusText='in Bearbeitung'; cls='started'; progWidth='50%';
     }else if(opts.current){
-      statusIcon=`<span>${icon}</span>`;
-      metaHtml=`<span class="toni-slim-meta cur">jetzt dran · ${reqLabel}</span>`;
-      cls="current";
+      statusText='jetzt dran'; cls='current';
     }else{
-      statusIcon=`<span>${icon}</span>`;
-      metaHtml=`<span class="toni-slim-meta">${reqLabel}</span>`;
+      statusText='offen';
     }
-    const tname=`<span class="toni-slim-name ${isDone?'done':''}">${esc(task.title||'Aufgabe')}</span>`;
-    const styleAttr=`style="border-left:4px solid ${col.bar};background:${col.bg}${extraStyle}"`;
+    const pflichtBadge = task.required ? `<span class="toni-slim-badge">PFLICHT</span>` : '';
+    const styleAttr = `style="--tcol:${col.bar};--tbg:${col.bg};--tborder:${col.border}"`;
+    const inner =
+      `${pflichtBadge}` +
+      `<span class="toni-slim-icon-box">${icon}</span>` +
+      `<span class="toni-slim-body">` +
+        `<span class="toni-slim-type">${esc(ntype)}</span>` +
+        `<span class="toni-slim-name ${isDone?'done':''}">${esc(task.title||'Aufgabe')}</span>` +
+        `<span class="toni-slim-foot">` +
+          `<span class="toni-slim-status">${statusText}</span>` +
+          `<span class="toni-slim-mini"><i style="width:${progWidth}"></i></span>` +
+        `</span>` +
+      `</span>`;
     if(clickable){
-      return `<div class="toni-slim-task ${cls}" ${styleAttr} onclick="openLearningTask('${esc(task.id)}')">${statusIcon}${tname}${metaHtml}<span class="toni-slim-arr">→</span></div>`;
+      return `<div class="toni-slim-task ${cls}" ${styleAttr} onclick="openLearningTask('${esc(task.id)}')">${inner}</div>`;
     }
-    return `<div class="toni-slim-task ${cls}" ${styleAttr}>${statusIcon}${tname}${metaHtml}</div>`;
+    return `<div class="toni-slim-task ${cls}" ${styleAttr}>${inner}</div>`;
   }
 
   function readonlyTaskCard(task, stepStatusValue){

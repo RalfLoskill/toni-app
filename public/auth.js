@@ -1100,7 +1100,74 @@ async function toniGetSessionWithRetries(attempts = 6, delayMs = 600) {
   return null;
 }
 
+// Zentrale, sichere Profil-Beschaffung.
+// WICHTIG gegen den profile_complete=false-Bug: Ein vorhandenes Profil darf
+// beim Zurückkehren NIE auf false zurückgesetzt werden. Deshalb:
+//  - SELECT mit kurzen Retries (gegen Timing-Fehler nach Token-Refresh),
+//  - klare Trennung: geworfener Fehler != "kein Profil vorhanden",
+//  - Neuanlage NUR, wenn der SELECT nachweislich ERFOLGREICH und LEER war,
+//  - selbst dann werden profile_complete/force_password_change/password_set
+//    NICHT mitgesendet, damit ein evtl. doch vorhandenes Profil (Race) nie
+//    überschrieben wird (merge-duplicates lässt fehlende Felder unangetastet).
+async function toniSafeLoadOrCreateProfile(session, opts = {}) {
+  if (!session?.user) return null;
+  const user = session.user;
+  const selectCols = "id,display_name,email,class_name,role,password_set,profile_complete,force_password_change,first_name,last_name" + (opts.withIsActive ? ",is_active" : "");
+  const selectPath = `profiles?id=eq.${user.id}&select=${selectCols}&limit=1`;
+
+  let selectSucceeded = false;
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      const rows = await supabaseRequest(selectPath);
+      selectSucceeded = true;
+      if (rows && rows[0]) return rows[0];
+      break;
+    } catch (error) {
+      console.warn(`Profil-SELECT fehlgeschlagen (Versuch ${attempt + 1}):`, error);
+      await new Promise(r => setTimeout(r, 400));
+    }
+  }
+
+  if (!selectSucceeded) {
+    console.warn("Profil konnte nicht sicher gelesen werden – keine Neuanlage, um Daten zu schützen.");
+    return null;
+  }
+
+  try {
+    const fallbackName = user.email ? user.email.split("@")[0] : "Neuer Nutzer";
+    const inserted = await supabaseRequest("profiles?on_conflict=id", {
+      method: "POST",
+      headers: { "Prefer": "resolution=merge-duplicates,return=representation" },
+      body: JSON.stringify([{
+        id: user.id,
+        display_name: fallbackName,
+        email: user.email,
+        class_name: "",
+        role: "student",
+        is_active: true
+      }])
+    });
+    if (inserted && inserted[0]) return inserted[0];
+  } catch (insertError) {
+    console.warn("Profil konnte nicht angelegt werden:", insertError);
+  }
+
+  return {
+    id: user.id,
+    display_name: user.email ? user.email.split("@")[0] : "Neuer Nutzer",
+    email: user.email,
+    class_name: "",
+    role: "student",
+    password_set: false,
+    profile_complete: false,
+    force_password_change: true
+  };
+}
+
 async function toniLoadOrCreateProfileForSession(session) {
+  return await toniSafeLoadOrCreateProfile(session);
+}
+async function toniLoadOrCreateProfileForSession_OLD(session) {
   if (!session?.user) return null;
   const user = session.user;
 
@@ -1398,6 +1465,9 @@ async function toniV77GetSessionWithRetry(){
 }
 
 async function toniV77FetchOrCreateProfile(session){
+  return await toniSafeLoadOrCreateProfile(session);
+}
+async function toniV77FetchOrCreateProfile_OLD(session){
   if(!session?.user)return null;
   const user=session.user;
 
@@ -1590,6 +1660,9 @@ async function toniV8GetSession(retries = 10) {
 }
 
 async function toniV8LoadOrCreateProfile(session) {
+  return await toniSafeLoadOrCreateProfile(session, { withIsActive: true });
+}
+async function toniV8LoadOrCreateProfile_OLD(session) {
   if (!session?.user) return null;
 
   const user = session.user;
@@ -2086,6 +2159,9 @@ async function toniV9GetSession(retries = 8) {
 }
 
 async function toniV9Profile(session) {
+  return await toniSafeLoadOrCreateProfile(session, { withIsActive: true });
+}
+async function toniV9Profile_OLD(session) {
   if (!session?.user) return null;
   const user = session.user;
 
@@ -3469,10 +3545,17 @@ async function toniV12LoadOrCreateProfile(session){
 
   const user = session.user;
 
+  let v12SelectSucceeded = false;
   try{
     const rows = await toniV12AuthFetch(`profiles?id=eq.${user.id}&select=id,display_name,email,class_name,role,password_set,profile_complete,force_password_change,first_name,last_name,is_active&limit=1`);
+    v12SelectSucceeded = true;
     if(rows && rows[0]) return rows[0];
   }catch(error){ console.warn("TONI V12 Profil lesen:", error); }
+
+  if(!v12SelectSucceeded){
+    console.warn("TONI V12: Profil nicht sicher lesbar – keine Neuanlage.");
+    return null;
+  }
 
   const fallbackName = user.email ? user.email.split("@")[0] : "Neuer Nutzer";
   try{
@@ -3485,9 +3568,6 @@ async function toniV12LoadOrCreateProfile(session){
         email: user.email,
         class_name: "",
         role: "student",
-        password_set: false,
-        profile_complete: false,
-        force_password_change: true,
         is_active: true
       }])
     });
