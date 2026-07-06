@@ -4492,6 +4492,18 @@ function toniSectionCountText(sectionKey){
     }
     return null;
   }
+  if(sectionKey==="tutors"){
+    // Keine globale Variable verfügbar -> aus der gerenderten Liste zählen.
+    const list = document.getElementById("tutors-admin-list");
+    if(list){
+      const n = list.querySelectorAll(".tutor-card-v59").length;
+      // Solange noch der Platzhalter „… werden geladen" steht, nichts anzeigen.
+      const loading = list.querySelector(".assignment-empty");
+      if(n===0 && loading) return null;
+      return `${n} ${n===1?"Tutor":"Tutoren"}`;
+    }
+    return null;
+  }
   return null;
 }
 function toniUpdateSectionCount(panelId, sectionKey){
@@ -4509,9 +4521,31 @@ function toniUpdateAllSectionCounts(){
     ["group-panel","groups"],
     ["journey-admin-panel","manage"],
     ["learning-journey-assignment-panel","assign"],
-    ["dashboard-projects-card","projects"]
+    ["dashboard-projects-card","projects"],
+    ["tutors-admin-panel","tutors"]
   ];
   map.forEach(([pid,key])=> toniUpdateSectionCount(pid,key));
+}
+// Tutoren werden von einer externen Funktion (toniV59LoadTutors) in
+// #tutors-admin-list gerendert, an die wir keinen Hook hängen können.
+// Ein MutationObserver aktualisiert den Zähler, sobald sich die Liste ändert.
+function toniObserveTutorsList(){
+  const list = document.getElementById("tutors-admin-list");
+  if(!list || list.dataset.toniCountObserved) return;
+  list.dataset.toniCountObserved = "1";
+  try{
+    const obs = new MutationObserver(()=>{ try{ toniUpdateSectionCount("tutors-admin-panel","tutors"); }catch(e){} });
+    obs.observe(list, { childList:true, subtree:true });
+  }catch(e){}
+  // Initialer Versuch (falls schon Daten da sind):
+  try{ toniUpdateSectionCount("tutors-admin-panel","tutors"); }catch(e){}
+}
+if(typeof window !== "undefined"){
+  if(document.readyState === "loading"){
+    document.addEventListener("DOMContentLoaded", ()=> setTimeout(toniObserveTutorsList, 300));
+  } else {
+    setTimeout(toniObserveTutorsList, 300);
+  }
 }
 window.toniUpdateAllSectionCounts = toniUpdateAllSectionCounts;
 
@@ -11256,12 +11290,7 @@ window.addEventListener("resize", () => {
   }
 
   async function verifyPassword(password){
-    const role = currentRole();
     const email = currentUserEmail();
-
-    if(role === "superadmin"){
-      return password === (window.SUPERADMIN_PASSWORD || "SuperAdmin#");
-    }
 
     if(!email){
       throw new Error("Die E-Mail-Adresse des angemeldeten Nutzers wurde nicht gefunden.");
@@ -11591,12 +11620,7 @@ window.addEventListener("resize", () => {
   }
 
   async function verifyPassword(password){
-    const role = currentRole();
     const email = currentUserEmail();
-
-    if(role === "superadmin"){
-      return password === (window.SUPERADMIN_PASSWORD || "SuperAdmin#");
-    }
 
     if(!email){
       throw new Error("Die E-Mail-Adresse des angemeldeten Nutzers wurde nicht gefunden.");
@@ -11930,10 +11954,6 @@ window.addEventListener("resize", () => {
   }
 
   async function verifyPasswordV101(password){
-    if(currentRole() === "superadmin"){
-      return password === (window.SUPERADMIN_PASSWORD || "SuperAdmin#");
-    }
-
     const email = currentEmail();
     if(!email){
       throw new Error("Die E-Mail-Adresse des angemeldeten Nutzers wurde nicht gefunden.");

@@ -490,7 +490,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
 (function(){
   const SUPERADMIN_USERNAME = "SuperAdmin";
-  const SUPERADMIN_PASSWORD = window.SUPERADMIN_PASSWORD || "SuperAdmin#";
+  const SUPERADMIN_PASSWORD = window.SUPERADMIN_PASSWORD || "";
 
   function esc(value){
     if(typeof escapeHtml === "function") return escapeHtml(value);

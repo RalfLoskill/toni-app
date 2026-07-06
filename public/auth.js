@@ -6452,7 +6452,7 @@ window.addEventListener("DOMContentLoaded", () => {
 
 (function(){
   const SUPERADMIN_USERNAME = "SuperAdmin";
-  const SUPERADMIN_PASSWORD = window.SUPERADMIN_PASSWORD || "SuperAdmin#";
+  const SUPERADMIN_PASSWORD = window.SUPERADMIN_PASSWORD || "";
 
   window.TONI_V77_SUPERADMIN_OPEN = sessionStorage.getItem("toni_section_superadmin_admins_open") === "1";
 
@@ -6468,6 +6468,12 @@ window.addEventListener("DOMContentLoaded", () => {
   }
 
   function isSuperAdminName(value){
+    // SuperAdmin-Backdoor entfernt: Es gibt keinen Client-seitigen SuperAdmin-Login
+    // mehr. Der Zugang läuft ausschließlich über den echten Supabase-Account
+    // (superadmin@toni.de). Diese Funktion erkennt daher keinen Sonderfall mehr.
+    return false;
+  }
+  function isSuperAdminName_DISABLED(value){
     return String(value || "").trim() === SUPERADMIN_USERNAME;
   }
 
@@ -6635,19 +6641,8 @@ window.addEventListener("DOMContentLoaded", () => {
   }
 
   function trySuperAdminLogin(){
-    const username = document.getElementById("auth-email")?.value.trim();
-    const password = document.getElementById("auth-password")?.value || "";
-
-    if(!isSuperAdminName(username)) return false;
-
-    if(isSuperAdminPassword(password)){
-      setMsg("✅ SuperAdmin-Anmeldung erfolgreich.", "ok");
-      setSuperAdminProfile();
-    }else{
-      setMsg("⚠️ SuperAdmin-Anmeldung fehlgeschlagen.", "err");
-    }
-
-    return true;
+    // SuperAdmin-Backdoor entfernt. Kein Client-seitiger SuperAdmin-Login mehr.
+    return false;
   }
 
   function authValue(){
@@ -6971,9 +6966,7 @@ window.addEventListener("DOMContentLoaded", () => {
     setTimeout(wrapGlobalFunctions, 1500);
     setTimeout(applySuperAdminVisibility, 1500);
 
-    if(localStorage.getItem("toni_role") === "superadmin"){
-      setSuperAdminProfile();
-    }
+    // SuperAdmin-Backdoor entfernt: keine Reaktivierung mehr allein aus localStorage.
 
     const observer = new MutationObserver(() => {
       clearTimeout(window.TONI_V77_SUPERADMIN_TIMER);
@@ -6991,7 +6984,7 @@ window.addEventListener("DOMContentLoaded", () => {
 /* TONI V79 – SuperAdmin Admin-Löschen stabilisieren und Formular verbessern */
 (function(){
   const SUPERADMIN_USERNAME = "SuperAdmin";
-  const SUPERADMIN_PASSWORD = window.SUPERADMIN_PASSWORD || "SuperAdmin#";
+  const SUPERADMIN_PASSWORD = window.SUPERADMIN_PASSWORD || "";
 
   function esc(value){
     if(typeof escapeHtml === "function") return escapeHtml(value);
@@ -7232,7 +7225,7 @@ window.addEventListener("DOMContentLoaded", () => {
    ============================================================ */
 (function(){
   const SUPERADMIN_USERNAME = "SuperAdmin";
-  const SUPERADMIN_PASSWORD = window.SUPERADMIN_PASSWORD || "SuperAdmin#";
+  const SUPERADMIN_PASSWORD = window.SUPERADMIN_PASSWORD || "";
 
   function esc(value){
     if(typeof escapeHtml === "function") return escapeHtml(value);
@@ -7460,7 +7453,7 @@ window.addEventListener("DOMContentLoaded", () => {
    ============================================================ */
 (function(){
   const SUPERADMIN_USERNAME = "SuperAdmin";
-  const SUPERADMIN_PASSWORD = window.SUPERADMIN_PASSWORD || "SuperAdmin#";
+  const SUPERADMIN_PASSWORD = window.SUPERADMIN_PASSWORD || "";
 
   function esc(value){
     if(typeof escapeHtml === "function") return escapeHtml(value);
@@ -7618,7 +7611,7 @@ window.addEventListener("DOMContentLoaded", () => {
    ============================================================ */
 (function(){
   const SUPERADMIN_USERNAME = "SuperAdmin";
-  const SUPERADMIN_PASSWORD = window.SUPERADMIN_PASSWORD || "SuperAdmin#";
+  const SUPERADMIN_PASSWORD = window.SUPERADMIN_PASSWORD || "";
 
   function esc(value){
     if(typeof escapeHtml === "function") return escapeHtml(value);
