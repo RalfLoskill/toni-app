@@ -2754,6 +2754,25 @@ function rowToJourneyV16(row){
 // und verschwinden"). Läuft bereits ein Ladevorgang, wird dessen Promise wiederverwendet.
 window.TONI_ADMIN_JOURNEYS_INFLIGHT = window.TONI_ADMIN_JOURNEYS_INFLIGHT || null;
 
+// Wartet defensiv auf ein gültiges Auth-Token, bevor RLS-geschützte Daten
+// geladen werden. Grund: Beim ersten Öffnen ist die Supabase-Session evtl. noch
+// nicht wiederhergestellt -> ohne Token liefert RLS eine LEERE Liste (kein Fehler),
+// was fälschlich als "keine Lernreisen" (0) interpretiert wurde.
+async function toniWaitForAuthToken(attempts = 8, delayMs = 400){
+  for(let i = 0; i < attempts; i++){
+    try{
+      if(typeof getAuthAccessToken === "function"){
+        const t = await getAuthAccessToken();
+        if(t) return t;
+      }else{
+        return null; // keine Token-Funktion -> nicht blockieren
+      }
+    }catch(e){ /* weiter versuchen */ }
+    await new Promise(r => setTimeout(r, delayMs));
+  }
+  return null;
+}
+
 async function loadAdminLearningJourneys(){
   if(window.TONI_ADMIN_JOURNEYS_INFLIGHT){
     return window.TONI_ADMIN_JOURNEYS_INFLIGHT;
@@ -2786,8 +2805,32 @@ async function toniDoLoadAdminLearningJourneys(){
   try{
     const ownerId = getJourneyOwnerIdV16();
     let rows = [];
+    let loadedWithToken = false;
 
     if(typeof supabaseRequest === "function" && ownerId){
+      // DEFENSIV: erst auf ein gültiges Auth-Token warten. Ohne Token liefert
+      // die RLS-geschützte Abfrage eine leere Liste, die fälschlich als
+      // "keine Lernreisen" (0) erschiene.
+      const token = await toniWaitForAuthToken();
+
+      if(!token){
+        // Kein Token verfügbar -> NICHT leeren/als "keine Lernreisen" anzeigen.
+        // Ladezustand halten und begrenzt erneut versuchen; vorhandene Kacheln bleiben.
+        window.TONI_ADMIN_JOURNEYS_TOKEN_RETRIES = (window.TONI_ADMIN_JOURNEYS_TOKEN_RETRIES || 0) + 1;
+        if(!list.querySelector(".journey-tile:not(.journey-tile-add)")){
+          list.innerHTML = `<div class="journey-empty">Lernreisen werden geladen …</div>`;
+        }
+        if(window.TONI_ADMIN_JOURNEYS_TOKEN_RETRIES <= 5){
+          setTimeout(() => { loadAdminLearningJourneys(); }, 1200);
+        }else{
+          console.warn("Lernreisen: kein Auth-Token nach mehreren Versuchen – bitte Seite neu laden.");
+        }
+        return;
+      }
+      // Token da -> Retry-Zähler zurücksetzen.
+      window.TONI_ADMIN_JOURNEYS_TOKEN_RETRIES = 0;
+
+      loadedWithToken = true;
       const role = (window.TONI_AUTH_PROFILE && TONI_AUTH_PROFILE.role) || localStorage.getItem("toni_role") || "student";
       const query = role === "admin"
         ? "learning_journey_templates?select=*&order=updated_at.desc"
@@ -2799,12 +2842,28 @@ async function toniDoLoadAdminLearningJourneys(){
     }
 
     if(!rows.length){
+      // "leer" nur als "keine Lernreisen" werten, wenn MIT gültigem Token geladen
+      // wurde (oder es ein reiner Lokal-Fall ohne supabaseRequest war). Sonst könnte
+      // die Leere ein Token-/RLS-Timing-Artefakt sein -> dann lieber erneut versuchen.
+      const trustworthyEmpty = loadedWithToken || (typeof supabaseRequest !== "function") || !ownerId;
+      if(!trustworthyEmpty){
+        window.TONI_ADMIN_JOURNEYS_EMPTY_RETRIES = (window.TONI_ADMIN_JOURNEYS_EMPTY_RETRIES || 0) + 1;
+        if(!list.querySelector(".journey-tile:not(.journey-tile-add)")){
+          list.innerHTML = `<div class="journey-empty">Lernreisen werden geladen …</div>`;
+        }
+        if(window.TONI_ADMIN_JOURNEYS_EMPTY_RETRIES <= 5){
+          setTimeout(() => { loadAdminLearningJourneys(); }, 1200);
+        }
+        return;
+      }
+      window.TONI_ADMIN_JOURNEYS_EMPTY_RETRIES = 0;
       // Nur auf "leer" umstellen, wenn nicht schon echte Kacheln sichtbar sind
       // (ein paralleler, langsamerer Aufruf soll gute Kacheln nicht wegwischen).
       if(!list.querySelector(".journey-tile:not(.journey-tile-add)")){
         list.innerHTML = `<div class="journey-empty">Noch keine Lernreisen vorhanden. Lege links eine neue Lernreise an.</div>`;
       }
       window.TONI_ADMIN_JOURNEYS = [];
+      try{ toniUpdateSectionCount("journey-admin-panel","manage"); }catch(e){}
       return;
     }
 
