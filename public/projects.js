@@ -223,6 +223,7 @@ function renderProjectsDashboard() {
     done: p.task_done, total: p.task_total,
     mc: p.member_count || 0,
     mem: (p.members || []).slice(0, 5).map(m => (m && (m.id || m.user_id || m.display_name)) || ''),
+    cb: p.created_by || '',
     blk: !!p.has_blocker, off: !!p.is_official, ty: p.type || '',
     dl: p.deadline || ''
   })));
@@ -239,42 +240,76 @@ function renderProjectsDashboard() {
   wrap.innerHTML = projects.map(p => {
     const pct = p.task_total > 0 ? Math.round((p.task_done / p.task_total) * 100) : 0;
     const g = getProjectGradientDarkV114(p.id);
-    const members = (p.members || []).slice(0, 5);
-    const extra = (p.member_count||0) > 5 ? `<span style="font-size:11px;color:#fff;opacity:.85;margin-left:4px;align-self:center">+${p.member_count-5}</span>` : '';
-    const avatars = members.map(m => memberBlock(m, 32)).join('');
+    const memberCount = p.member_count || (p.members || []).length || 0;
 
     const badges = [
-      p.is_official ? `<span style="font-size:10px;background:rgba(255,255,255,.85);color:#475569;padding:1px 6px;border-radius:10px">Offiziell</span>` : '',
-      p.has_blocker ? `<span style="font-size:10px;background:rgba(255,255,255,.85);color:#854F0B;padding:1px 6px;border-radius:10px;border:0.5px solid #FAC775">⚠ Blocker</span>` : '',
-      p.type==='group' ? `<span style="font-size:10px;background:rgba(255,255,255,.85);color:#475569;padding:1px 6px;border-radius:10px">Gruppe</span>` : '',
+      p.is_official ? `<span class="journey-tile-chip" style="background:rgba(255,255,255,.9);color:#475569">Offiziell</span>` : '',
+      p.has_blocker ? `<span class="journey-tile-chip" style="background:rgba(255,255,255,.9);color:#854F0B;border:0.5px solid #FAC775">⚠ Blocker</span>` : '',
+      p.type==='group' ? `<span class="journey-tile-chip" style="background:rgba(255,255,255,.9);color:#475569">Gruppe</span>` : '',
     ].filter(Boolean).join(' ');
 
     const overdue = p.deadline && isOverdue(p.deadline) && p.status !== 'completed';
-    const deadlineHtml = p.deadline
-      ? `<span style="font-size:11px;color:#fff;opacity:${overdue?1:.85};font-weight:${overdue?600:400}">📅 ${formatDate(p.deadline)}${overdue?' · überfällig':''}</span>`
+    const deadlineChip = p.deadline
+      ? `<span class="journey-tile-chip" style="background:rgba(255,255,255,.9);color:${overdue?'#b91c1c':'#475569'};font-weight:${overdue?800:700}">📅 ${formatDate(p.deadline)}${overdue?' · überfällig':''}</span>`
       : '';
 
-    // Variante A: kräftiger Verlauf, Titel/Beschreibung in heller Glas-Box,
-    // Avatare/Deadline in weißer Schrift direkt auf dem Verlauf.
-    return `<div data-project-id="${p.id}" onclick="openProjectModal('${p.id}')" class="toni-proj-card-v114" style="cursor:pointer;background:${g.grad};border:none;border-radius:14px;padding:12px;margin-bottom:10px;box-shadow:0 4px 14px rgba(15,23,42,.14);transition:transform .14s ease, box-shadow .14s ease"
-      onmouseover="this.style.transform='translateY(-2px)';this.style.boxShadow='0 8px 22px rgba(15,23,42,.22)'" onmouseout="this.style.transform='translateY(0)';this.style.boxShadow='0 4px 14px rgba(15,23,42,.14)'">
-      <div style="background:rgba(255,255,255,.92);border-radius:11px;padding:10px 13px;backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px">
-          <div style="font-size:14px;font-weight:700;color:#0f172a;line-height:1.3">${escapeHtml(p.title)}</div>
-          <div style="font-size:14px;font-weight:800;color:${g.accent};white-space:nowrap;flex-shrink:0">${pct}%</div>
+    // Mitglieder mit Avatar + Name + Klasse (wie im Vorbild). Inhaber (created_by)
+    // zuerst und mit Krone/Ring markiert. So viele wie passen, Rest als "+N".
+    const allMembers = (p.members || []);
+    const ownerId = p.created_by;
+    const sortedMembers = allMembers.slice().sort((a, b) => {
+      const ao = (a && a.id === ownerId) ? 0 : 1;
+      const bo = (b && b.id === ownerId) ? 0 : 1;
+      return ao - bo;
+    });
+    const MAX_AVATARS = 5;
+    const shown = sortedMembers.slice(0, MAX_AVATARS);
+    const restCount = Math.max(0, (memberCount || sortedMembers.length) - shown.length);
+    const memberCols = shown.map(m => {
+      const isOwner = m && m.id === ownerId;
+      const name = escapeHtml(memberPrimaryName(m));
+      const sub  = escapeHtml(memberSubLabel(m));
+      const ring = isOwner ? "box-shadow:0 0 0 2px #f5b301;border-radius:50%;" : "";
+      const crown = isOwner
+        ? `<span title="Projektinhaber" style="position:absolute;top:-7px;right:-5px;font-size:13px;line-height:1;filter:drop-shadow(0 1px 1px rgba(0,0,0,.35))">👑</span>`
+        : "";
+      return `<div style="display:flex;flex-direction:column;align-items:center;gap:3px;width:64px;flex-shrink:0">
+        <div style="position:relative;${ring}display:inline-flex">${avatarHtml(m, 40)}${crown}</div>
+        <span style="font-size:11px;font-weight:700;color:#fff;line-height:1.2;text-align:center;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;text-shadow:0 1px 2px rgba(0,0,0,.4)">${name}</span>
+        <span style="font-size:10px;color:rgba(255,255,255,.85);line-height:1.2;text-align:center;text-shadow:0 1px 2px rgba(0,0,0,.4)">${sub}</span>
+      </div>`;
+    }).join('');
+    const restCol = restCount > 0
+      ? `<div style="display:flex;align-items:center;justify-content:center;width:40px;height:40px;border-radius:50%;background:rgba(255,255,255,.85);color:#334155;font-size:12px;font-weight:800;flex-shrink:0;align-self:flex-start;margin-top:2px">+${restCount}</div>`
+      : '';
+    const membersRow = (shown.length || restCount)
+      ? `<div style="display:flex;align-items:flex-start;gap:10px;flex-wrap:wrap;margin-top:12px">${memberCols}${restCol}</div>`
+      : '';
+
+    // Fuß-Metadaten (Deadline, Blocker, Gruppe) für den weißen Fußbereich.
+    const footItems = [
+      deadlineChip,
+      p.has_blocker ? `<span class="journey-tile-chip" style="background:#fff7ec;color:#854F0B;border:0.5px solid #FAC775">⚠ Blocker</span>` : '',
+      p.is_official ? `<span class="journey-tile-chip" style="background:#f1f5f9;color:#475569">Offiziell</span>` : '',
+      p.type==='group' ? `<span class="journey-tile-chip" style="background:#f1f5f9;color:#475569">Gruppe</span>` : '',
+    ].filter(Boolean).join(' ');
+
+    // Projektkachel: Verlauf-Hintergrund, Glas-Box (Titel+Prozent), Fortschritts-
+    // balken, Mitglieder (Name+Klasse), weißer abgesetzter Fußbereich.
+    return `<div data-project-id="${p.id}" onclick="openProjectModal('${p.id}')"
+      class="journey-tile journey-tile-cover-v112 has-cover journey-tile-clickable toni-proj-tile-v115" style="background:${g.grad}" role="button" tabindex="0" title="Projekt öffnen">
+      <div class="toni-proj-tile-body-v115">
+        <div class="toni-proj-glass-v115">
+          <div class="toni-proj-glass-head-v115">
+            <div class="toni-proj-title-v115">${escapeHtml(p.title)}</div>
+            <div class="toni-proj-pct-v115" style="color:${g.accent}">${pct}%</div>
+          </div>
+          ${p.description ? `<div class="toni-proj-desc-v115">${escapeHtml(p.description)}</div>` : ''}
         </div>
-        ${p.description ? `<div style="font-size:12px;color:#475569;margin-top:3px;line-height:1.4">${escapeHtml(p.description)}</div>` : ''}
+        <div class="toni-proj-bar-v115"><div class="toni-proj-bar-fill-v115" style="width:${pct}%;background:${g.bar}"></div></div>
+        ${membersRow}
       </div>
-      <div style="height:5px;background:rgba(255,255,255,.4);border-radius:3px;margin:10px 0">
-        <div style="height:5px;width:${pct}%;background:${g.bar};border-radius:3px;transition:width .3s"></div>
-      </div>
-      <div class="toni-proj-members-v114" style="display:flex;align-items:flex-start;gap:6px;margin-top:6px;flex-wrap:wrap">
-        <div style="display:flex;gap:6px;overflow-x:auto;max-width:100%;padding-bottom:2px">${avatars}${extra}</div>
-        <div style="display:flex;align-items:center;gap:6px;width:100%;margin-top:2px">
-          ${deadlineHtml}
-          <div style="margin-left:auto;display:flex;gap:4px">${badges}</div>
-        </div>
-      </div>
+      ${footItems ? `<div class="toni-proj-foot-v115">${footItems}</div>` : ''}
     </div>`;
   }).join('');
 }
@@ -486,11 +521,47 @@ function collectWeeklyPlanItems() {
   return items;
 }
 
+// Schaltet einen Wochenplan-Filter (journey/project/personal) an/aus und
+// rendert den Plan neu. Mindestens einer bleibt immer aktiv wäre optional –
+// hier ist auch "alle aus" erlaubt (zeigt dann leeren Plan).
+function toniToggleWeekplanFilter(key) {
+  if (!window.TONI_WEEKPLAN_FILTER) {
+    window.TONI_WEEKPLAN_FILTER = { journey: true, project: true, personal: true };
+  }
+  window.TONI_WEEKPLAN_FILTER[key] = !window.TONI_WEEKPLAN_FILTER[key];
+  renderWeeklyPlan();
+}
+window.toniToggleWeekplanFilter = toniToggleWeekplanFilter;
+
 function renderWeeklyPlan() {
   const wrap = document.getElementById('toni-weekly-plan');
   if (!wrap) return;
 
-  const items = collectWeeklyPlanItems();
+  // Filter-Zustand (Lernreise / Projekt / Eigene). Standard: alle sichtbar.
+  if (!window.TONI_WEEKPLAN_FILTER) {
+    window.TONI_WEEKPLAN_FILTER = { journey: true, project: true, personal: true };
+  }
+  const filter = window.TONI_WEEKPLAN_FILTER;
+  const sourceKey = (s) => s === 'journey' ? 'journey' : s === 'personal' ? 'personal' : 'project';
+
+  const allItems = collectWeeklyPlanItems();
+  const items = allItems.filter(it => filter[sourceKey(it.source)]);
+
+  // Filter-Auswahlpunkte oben rechts neben "Mein Wochenplan" rendern.
+  const filtersEl = document.getElementById('toni-weekplan-filters');
+  if (filtersEl) {
+    const chip = (key, label, color) => {
+      const on = !!filter[key];
+      return `<button type="button" class="toni-wp-filter-chip${on?' on':''}" onclick="toniToggleWeekplanFilter('${key}')" title="${label} ein-/ausblenden" aria-pressed="${on}">
+        <span class="toni-wp-filter-dot" style="background:${on?color:'transparent'};border-color:${color}"></span>
+        <span class="toni-wp-filter-label">${label}</span>
+      </button>`;
+    };
+    filtersEl.innerHTML =
+      chip('journey', 'Lernreisen', '#185FA5') +
+      chip('project', 'Projekte', '#BA7517') +
+      chip('personal', 'Eigene Aufgaben', '#534AB7');
+  }
 
   if (!items.length) {
     wrap.innerHTML = `<div style="color:var(--color-text-tertiary);font-size:13px;padding:14px 0;text-align:center">

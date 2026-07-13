@@ -2508,7 +2508,10 @@ window.TONI_ACTIVE_ADMIN_JOURNEY_ROW = null;
 
 function canManageLearningJourneysV16(){
   const role = (window.TONI_AUTH_PROFILE && TONI_AUTH_PROFILE.role) || localStorage.getItem("toni_role") || "student";
-  return role === "admin" || role === "tutor";
+  // Studenten dürfen ab jetzt ebenfalls eigene Lernreisen anlegen/bearbeiten/löschen.
+  // Die Datenbank-RLS stellt sicher, dass sie nur ihre EIGENEN (owner_profile_id =
+  // auth.uid()) verändern können; fremde Lernreisen bleiben serverseitig geschützt.
+  return role === "admin" || role === "tutor" || role === "student";
 }
 
 function getJourneyOwnerIdV16(){
@@ -2837,6 +2840,25 @@ async function toniDoLoadAdminLearningJourneys(){
         : `learning_journey_templates?owner_profile_id=eq.${encodeURIComponent(ownerId)}&select=*&order=updated_at.desc`;
       rows = await supabaseRequest(query);
       rows = (rows || []).map(r => ({...r, _source:"remote"}));
+
+      // Bei Studenten zusätzlich die ZUGEORDNETEN Lernreisen mit anzeigen
+      // (gehören einem Tutor). Sie werden im Renderer nur mit "Öffnen/Duplizieren"
+      // versehen – kein Bearbeiten/Export/Löschen, da nicht Eigentümer.
+      if(role === "student" && typeof loadAssignedJourneysForStudentV20 === "function"){
+        try{
+          const assignedRaw = await loadAssignedJourneysForStudentV20();
+          const assignedTemplates = (assignedRaw || [])
+            .map(r => r.journey_template || r.learning_journey_templates)
+            .filter(Boolean)
+            .map(t => ({...t, _source:"remote"}));
+          // Deduplizieren: eigene haben Vorrang; zugeordnete nur, wenn nicht schon eigene.
+          const ownIds = new Set(rows.map(r => String(r.id)));
+          const extra = assignedTemplates.filter(t => !ownIds.has(String(t.id)));
+          rows = rows.concat(extra);
+        }catch(assignErr){
+          console.warn("Zugeordnete Lernreisen (Student) nicht ladbar:", assignErr);
+        }
+      }
     }else{
       rows = getLocalJourneysV16().map(r => ({...r, _source:"local"}));
     }
@@ -2896,14 +2918,17 @@ async function toniDoLoadAdminLearningJourneys(){
   }
 }
 
-function renderAdminJourneyListV16(rows){
-  const list = document.getElementById("admin-journey-list");
+function renderAdminJourneyListV16(rows, listElId){
+  const list = document.getElementById(listElId || "admin-journey-list");
   if(!list) return;
 
   // Signatur-Guard gegen Zittern: nur neu rendern, wenn sich Titel/Stationen/Aufgaben/
   // Quelle einer Lernreise tatsächlich ändern (loadAdminLearningJourneys wird mehrfach
   // getriggert).
-  const signature = JSON.stringify((rows || []).map(row => {
+  const signatureRole = (window.TONI_AUTH_PROFILE && TONI_AUTH_PROFILE.role) || localStorage.getItem("toni_role") || "student";
+  const signature = JSON.stringify({
+    role: signatureRole,
+    rows: (rows || []).map(row => {
     const j = rowToJourneyV16(row);
     return {
       id: row.id,
@@ -2912,7 +2937,7 @@ function renderAdminJourneyListV16(rows){
       tk: (j.steps || []).reduce((sum, s) => sum + ((s.tasks || []).length), 0),
       src: row._source === "local" ? "local" : "remote"
     };
-  }));
+  })});
   if(list.dataset.adminJourneySignature === signature){
     return; // nichts geändert -> kein Rebuild, kein Zittern
   }
@@ -2925,6 +2950,9 @@ function renderAdminJourneyListV16(rows){
         <div class="journey-tile-add-label">Neue Lernreise</div>
       </div>`;
 
+  const viewerRole = (window.TONI_AUTH_PROFILE && TONI_AUTH_PROFILE.role) || localStorage.getItem("toni_role") || "student";
+  const viewerId = (typeof getJourneyOwnerIdV16 === "function") ? getJourneyOwnerIdV16() : null;
+
   const tiles = rows.map(row => {
     const j = rowToJourneyV16(row);
     const stations = (j.steps || []).length;
@@ -2933,29 +2961,54 @@ function renderAdminJourneyListV16(rows){
     const statusLabel = src === "local" ? "lokal" : "gespeichert";
     // V113: Farbverlauf statt Cover-Bild (performant, deterministisch aus Titel+ID).
     const gradient = toniCoverGradientV113((j.title || "") + "|" + (row.id || j.id || ""));
+
+    // Ist der/die Betrachtende Eigentümer dieser Lernreise?
+    // Eigene/duplizierte Lernreisen (owner == ich) sind voll verwaltbar.
+    // Bei Studenten: zugeordnete (fremde) Lernreisen erhalten nur "Duplizieren"
+    // (Öffnen = Klick auf die Kachel); kein Bearbeiten/Export/Löschen.
+    const isOwner = !!viewerId && String(row.owner_profile_id || "") === String(viewerId);
+    const restrictToAssigned = (viewerRole === "student") && !isOwner;
+
+    // SVG-Icons (Variante A) – einheitlich, eindeutig. Löschen = Mülltonne
+    // (echtes Löschen), Entfernen = Minus-im-Kreis (nur Zuordnung lösen).
+    const icoEdit = `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>`;
+    const icoExport = `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg>`;
+    const icoDuplicate = `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="9" y="9" width="11" height="11" rx="2"/><path d="M5 15V5a2 2 0 0 1 2-2h8"/></svg>`;
+    const icoDelete = `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a1 1 0 0 1 1-1h6a1 1 0 0 1 1 1v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/></svg>`;
+    const icoRemove = `<svg viewBox="0 0 24 24" width="17" height="17" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M8 12h8"/></svg>`;
+
+    const actionsHtml = restrictToAssigned
+      ? `<button class="journey-tile-action" onclick="duplicateAdminJourney('${row.id}')" title="Duplizieren" aria-label="Duplizieren"><span>${icoDuplicate}</span>Duplizieren</button>
+          <button class="journey-tile-action danger" onclick="removeAssignedJourneyForStudent('${row.id}', this)" data-journey-title="${escapeToniV16(j.title)}" title="Aus meiner Liste entfernen" aria-label="Aus meiner Liste entfernen"><span>${icoRemove}</span>Entfernen</button>`
+      : `<button class="journey-tile-action" onclick="editAdminJourney('${row.id}')" title="Bearbeiten"><span>${icoEdit}</span>Bearbeiten</button>
+          <button class="journey-tile-action" onclick="toniExportJourney('${row.id}')" title="Exportieren"><span>${icoExport}</span>Export</button>
+          <button class="journey-tile-action" onclick="duplicateAdminJourney('${row.id}')" title="Duplizieren" aria-label="Duplizieren"><span>${icoDuplicate}</span></button>
+          <button class="journey-tile-action danger" onclick="deleteAdminJourney('${row.id}')" title="Löschen" aria-label="Löschen"><span>${icoDelete}</span></button>`;
+
     return `
-      <div class="journey-tile journey-tile-cover-v112 has-cover" style="background:${gradient}">
-        <button class="journey-tile-open journey-tile-cover-open-v112" title="Öffnen" aria-label="Öffnen" onclick="openAdminJourney('${row.id}')">→</button>
+      <div class="journey-tile journey-tile-cover-v112 has-cover journey-tile-clickable" style="background:${gradient}" onclick="openAdminJourney('${row.id}')" role="button" tabindex="0" title="Lernreise öffnen">
         <div class="journey-tile-cover-body-v112">
           <div class="journey-tile-title journey-tile-cover-title-v112">${escapeToniV16(j.title)}</div>
-          <div class="journey-tile-cover-desc-v112">${escapeToniV16(j.goal || j.subject || "–")}</div>
+          <div class="journey-tile-cover-desc-v112">${
+            j.subject
+              ? `<span class="journey-tile-cover-subject-v112">${escapeToniV16(j.subject)}</span>${(j.goal || j.description) ? " · " + escapeToniV16(j.goal || j.description) : ""}`
+              : escapeToniV16(j.goal || j.description || "–")
+          }</div>
           <div class="journey-tile-chips journey-tile-cover-chips-v112">
             <span class="journey-tile-chip chip-stations">${stations} Station(en)</span>
             <span class="journey-tile-chip chip-tasks">${tasks} Aufgabe(n)</span>
             <span class="journey-tile-chip chip-status ${src}">${statusLabel}</span>
           </div>
         </div>
-        <div class="journey-tile-actions journey-tile-cover-actions-v112">
-          <button class="journey-tile-action" onclick="editAdminJourney('${row.id}')" title="Bearbeiten"><span>✏️</span>Bearbeiten</button>
-          <button class="journey-tile-action" onclick="toniExportJourney('${row.id}')" title="Exportieren"><span>⬇️</span>Export</button>
-          <button class="journey-tile-action" onclick="duplicateAdminJourney('${row.id}')" title="Duplizieren" aria-label="Duplizieren"><span>📑</span></button>
-          <button class="journey-tile-action danger" onclick="deleteAdminJourney('${row.id}')" title="Löschen" aria-label="Löschen"><span>🗑️</span></button>
+        <div class="journey-tile-actions journey-tile-cover-actions-v112" onclick="event.stopPropagation()">
+          ${actionsHtml}
         </div>
       </div>`;
   }).join("");
 
-  // TONi-KI-Kachel: öffnet das Leitfragen-Modal für die KI-gestützte Erstellung.
-  const toniTile = `
+  // TONi-KI-Kachel nur für Tutoren/Admins (nicht für Studenten).
+  const role = (window.TONI_AUTH_PROFILE && TONI_AUTH_PROFILE.role) || localStorage.getItem("toni_role") || "student";
+  const toniTile = (role === "student") ? "" : `
       <div class="journey-tile journey-tile-add journey-tile-toni" onclick="toniOpenAiJourneyModal()" role="button" tabindex="0" title="Lernreise mit TONi erstellen">
         <div class="journey-tile-add-icon">+</div>
         <div class="journey-tile-add-label">TONi Lernreise</div>
@@ -4478,11 +4531,13 @@ window.addEventListener("DOMContentLoaded", () => {
    ========================================================= */
 
 window.TONI_SECTION_OPEN_STATE = {
-  manage: sessionStorage.getItem("toni_section_manage_open") === "1",
+  // Lernreisen (manage) und Projekte standardmäßig OFFEN – nur zu, wenn der
+  // Nutzer sie in dieser Session explizit zugeklappt hat ("0").
+  manage: sessionStorage.getItem("toni_section_manage_open") !== "0",
   assign: sessionStorage.getItem("toni_section_assign_open") === "1",
   students: sessionStorage.getItem("toni_section_students_open") === "1",
   groups: sessionStorage.getItem("toni_section_groups_open") === "1",
-  projects: sessionStorage.getItem("toni_section_projects_open") === "1"
+  projects: sessionStorage.getItem("toni_section_projects_open") !== "0"
 };
 
 function toniV19MakeSectionCollapsible(panelId, sectionKey, labelWhenClosed) {
@@ -4945,7 +5000,7 @@ function downloadJourneyQrCode(){
   img.src=qrUrl;
 }
 function updateAssignmentHeaderV20(){const table=document.querySelector(".assignment-table");if(!table)return;const ths=table.querySelectorAll("thead th");if(ths[2])ths[2].textContent="QR-Code";}
-function installStudentJourneyButtonsV20(){if(document.getElementById("student-journey-actions-v20"))return;const cards=[...document.querySelectorAll(".card")];const journeyCard=cards.find(card=>{const title=card.querySelector(".card-title")?.textContent||"";return title.includes("Deine Lernreise")||title.includes("Lernreise");});if(!journeyCard)return;const header=journeyCard.querySelector(".card-header")||journeyCard;const actions=document.createElement("div");actions.className="student-journey-actions student-only";actions.id="student-journey-actions-v20";actions.innerHTML=`<button class="student-journey-btn" onclick="openJourneyScanModal()">+ Lernreise hinzufügen</button><button class="student-journey-btn" onclick="openJourneySwitchModal()">Lernreise wechseln</button>`;header.insertAdjacentElement("afterend",actions);}
+function installStudentJourneyButtonsV20(){if(document.getElementById("student-journey-actions-v20"))return;const cards=[...document.querySelectorAll(".card")];const isExcluded=(c)=>{const id=c.id||"";return id==="journey-admin-panel"||id==="dashboard-my-journeys-card"||id==="dashboard-projects-card"||id==="dashboard-weekly-plan-card"||c.classList.contains("journey-admin-panel");};const journeyCard=cards.find(card=>{if(isExcluded(card))return false;const title=card.querySelector(".card-title")?.textContent||"";return title.includes("Deine Lernreise")||title.includes("Lernreise");});if(!journeyCard)return;const header=journeyCard.querySelector(".card-header")||journeyCard;const actions=document.createElement("div");actions.className="student-journey-actions student-only";actions.id="student-journey-actions-v20";actions.innerHTML=`<button class="student-journey-btn" onclick="openJourneyScanModal()">+ Lernreise hinzufügen</button><button class="student-journey-btn" onclick="openJourneySwitchModal()">Lernreise wechseln</button>`;header.insertAdjacentElement("afterend",actions);}
 function setScanStatusV20(message,type=""){const el=document.getElementById("journey-scan-status");if(!el)return;el.className="scan-status"+(type?" "+type:"");el.innerHTML=message;}
 function loadJsQrV20(){return new Promise((resolve,reject)=>{if(window.jsQR)return resolve(window.jsQR);const existing=document.querySelector("script[data-toni-jsqr='1']");if(existing){existing.addEventListener("load",()=>resolve(window.jsQR));existing.addEventListener("error",()=>reject(new Error("QR-Scanner-Bibliothek konnte nicht geladen werden.")));return;}const script=document.createElement("script");script.src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js";script.async=true;script.dataset.toniJsqr="1";script.onload=()=>resolve(window.jsQR);script.onerror=()=>reject(new Error("QR-Scanner-Bibliothek konnte nicht geladen werden."));document.head.appendChild(script);});}
 async function openJourneyScanModal(){document.getElementById("journey-scan-modal")?.classList.add("open");document.getElementById("manual-journey-code").value="";setScanStatusV20("Kamera wird vorbereitet …");try{await loadJsQrV20();const video=document.getElementById("journey-qr-video");if(!navigator.mediaDevices?.getUserMedia){setScanStatusV20("Diese Browser-Version erlaubt keinen Kamerazugriff. Bitte Code manuell eingeben.","err");return;}const stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"},audio:false});window.TONI_QR_STREAM=stream;video.srcObject=stream;await video.play();setScanStatusV20("Kamera aktiv. Halte den QR-Code in den sichtbaren Bereich.");startQrScanLoopV20();}catch(error){console.error("QR-Kamera:",error);setScanStatusV20("Kamera konnte nicht gestartet werden. Du kannst den Code unten manuell eingeben.<br>"+toniV20Escape(error.message),"err");}}
@@ -5055,9 +5110,21 @@ async function toniV23LoadAssignedJourneysSafe(){
 }
 function toniV23FindLearningJourneyCard(){
   const cards=[...document.querySelectorAll(".card")];
-  let card=cards.find(c=>((c.querySelector(".card-title")?.textContent)||"").includes("Deine Lernreise"));
+  // Verwaltungs-/Panel-Cards, die NICHT die aktive Stationenleiste sind,
+  // zuverlässig per ID ausschließen (robust gegen Titel-Umbenennungen wie
+  // "Lernreise anlegen/bearbeiten" -> "Lernreisen").
+  const isExcludedPanel=(c)=>{
+    const id=c.id||"";
+    return id==="journey-admin-panel"
+      || id==="dashboard-my-journeys-card"
+      || id==="dashboard-projects-card"
+      || id==="dashboard-weekly-plan-card"
+      || c.classList.contains("journey-admin-panel");
+  };
+  let card=cards.find(c=>!isExcludedPanel(c) && ((c.querySelector(".card-title")?.textContent)||"").includes("Deine Lernreise"));
   if(card)return card;
   card=cards.find(c=>{
+    if(isExcludedPanel(c))return false;
     const t=(c.querySelector(".card-title")?.textContent)||"";
     return t.includes("Lernreise")&&!t.includes("verwalten")&&!t.includes("zuordnen")&&!t.includes("anlegen")&&!t.includes("bearbeiten")&&!t.includes("Meine Lernreisen")&&!t.includes("zugeordnete");
   });
@@ -5096,6 +5163,41 @@ async function toniV23DeleteActiveJourneyAssignment(){
     appendMsg?.("toni","🗑️ Die Zuordnung zur Lernreise wurde gelöscht.",typeof time==="function"?time():"","desktop");
   }catch(e){console.error("TONI V23: Zuordnung löschen fehlgeschlagen:",e);alert("Die Zuordnung konnte nicht gelöscht werden:\n"+e.message);}
 }
+
+// Entfernt für den Studenten NUR die Zuordnung zu einer (fremden, vom Tutor
+// übertragenen) Lernreise – die Vorlage selbst bleibt bestehen. Wird aus den
+// Kacheln der zugeordneten Lernreisen aufgerufen.
+async function removeAssignedJourneyForStudent(templateId, btnEl){
+  const title = (btnEl && btnEl.getAttribute("data-journey-title")) || "diese Lernreise";
+  if(!confirm(`„${title}" aus deiner Liste entfernen?\n\nDie Lernreise selbst wird nicht gelöscht – nur die Zuordnung zu dir wird entfernt. Der Tutor kann sie dir jederzeit erneut zuordnen.`)) return;
+  try{
+    if(typeof supabaseRequest==="function"){
+      await supabaseRequest("rpc/delete_my_learning_journey_assignment",{method:"POST",body:JSON.stringify({p_template_id:templateId})});
+    }else if(typeof getLocalAssignmentsV18==="function"&&typeof setLocalAssignmentsV18==="function"){
+      const profile=window.TONI_AUTH_PROFILE||{};
+      const email=String(profile.email||"").toLowerCase();
+      const rows=getLocalAssignmentsV18().filter(a=>!(String(a.learning_journey_template_id)===String(templateId)&&String(a.student_email||"").toLowerCase()===email));
+      setLocalAssignmentsV18(rows);
+    }
+    // Aus dem aktiven State entfernen (falls es die aktive Lernreise war).
+    if(typeof STATE!=="undefined"){
+      STATE.learningJourneys=(STATE.learningJourneys||[]).filter(j=>String(j.id)!==String(templateId));
+      if(String(STATE.activeJourneyId)===String(templateId)){
+        STATE.activeJourneyId=STATE.learningJourneys[0]?.id||null;
+      }
+      saveState?.(STATE);syncJourneyToDashboard?.();
+    }
+    window.TONI_V23_ASSIGNED_JOURNEYS_CACHE=null;
+    // Kachel-Liste neu laden, damit die entfernte Lernreise verschwindet.
+    if(typeof loadAdminLearningJourneys==="function"){ await loadAdminLearningJourneys(); }
+    if(typeof toniV23RefreshLearningJourneyHeader==="function"){ toniV23RefreshLearningJourneyHeader(); }
+    appendMsg?.("toni","🗑️ Die Lernreise wurde aus deiner Liste entfernt.",typeof time==="function"?time():"","desktop");
+  }catch(e){
+    console.error("Zuordnung (Kachel) löschen fehlgeschlagen:",e);
+    alert("Die Lernreise konnte nicht entfernt werden:\n"+e.message);
+  }
+}
+window.removeAssignedJourneyForStudent = removeAssignedJourneyForStudent;
 function toniV23BuildHeader(card){
   const header=card.querySelector(".card-header"); if(!header)return null;
   if(!header.classList.contains("lr-hero-header-v23")){
@@ -5106,10 +5208,10 @@ function toniV23BuildHeader(card){
         <div class="lr-title-sub-v23" id="lr-title-sub-v23"></div>
       </div>
       <div class="lr-action-row-v23">
-        <button class="lr-icon-btn-v23" id="lr-open-btn-v23" title="Lernreise öffnen" aria-label="Lernreise öffnen" onclick="toniV23OpenActiveJourney()">🎯</button>
-        <button class="lr-icon-btn-v23" title="Lernreise wechseln" aria-label="Lernreise wechseln" onclick="openJourneySwitchModal()">⇄</button>
-        <button class="lr-icon-btn-v23" title="Lernreise hinzufügen" aria-label="Lernreise hinzufügen" onclick="openJourneyScanModal()">+</button>
-        <button class="lr-icon-btn-v23 danger" id="lr-delete-assignment-btn-v23" title="Zuordnung löschen" aria-label="Zuordnung löschen" onclick="toniV23DeleteActiveJourneyAssignment()">−</button>
+        <button class="lr-icon-btn-v23-filled" id="lr-open-btn-v23" style="background:#16a34a" title="Lernreise öffnen" aria-label="Lernreise öffnen" onclick="toniV23OpenActiveJourney()"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="#fff" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.4" fill="#fff" stroke="none"/></svg></button>
+        <button class="lr-icon-btn-v23-filled" style="background:#7c3aed" title="Lernreise wechseln" aria-label="Lernreise wechseln" onclick="openJourneySwitchModal()"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h16l-4-4"/><path d="M21 16H5l4 4"/></svg></button>
+        <button class="lr-icon-btn-v23-filled" style="background:#2f6fed" title="Lernreise hinzufügen" aria-label="Lernreise hinzufügen" onclick="openJourneyScanModal()"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M12 4v16"/><path d="M4 12h16"/></svg></button>
+        <button class="lr-icon-btn-v23-filled" id="lr-delete-assignment-btn-v23" style="background:#e11d48" title="Zuordnung löschen" aria-label="Zuordnung löschen" onclick="toniV23DeleteActiveJourneyAssignment()"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round" aria-hidden="true"><path d="M4 12h16"/></svg></button>
       </div>`;
   }
   [...card.querySelectorAll(".card-link")].forEach(el=>{if((el.textContent||"").includes("Lernreise öffnen"))el.style.display="none";});
@@ -5202,8 +5304,9 @@ function toniV24GetActiveJourney(){
 function toniV24SetOpenButtonIcon(){
   const btn = document.getElementById("lr-open-btn-v23");
   if(!btn) return;
+  // Gefüllter Stil: grüner Button mit weißem Zielscheiben-SVG (statt altem Dot).
   btn.classList.add("open-v24");
-  btn.innerHTML = '<span class="lr-open-dot-v24" aria-hidden="true"></span>';
+  btn.innerHTML = '<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="#fff" stroke-width="2.2" aria-hidden="true"><circle cx="12" cy="12" r="8.5"/><circle cx="12" cy="12" r="3.4" fill="#fff" stroke="none"/></svg>';
   btn.title = "Lernreise öffnen";
   btn.setAttribute("aria-label", "Lernreise öffnen");
 }
@@ -7607,6 +7710,78 @@ async function toniV50RenderAllJourneysInActivities(){
   }
 }
 
+// Rendert für Studenten einen Verwaltungsabschnitt (eigene Lernreisen +
+// "Neue Lernreise") unterhalb der zugeordneten Lernreisen. Nutzt denselben
+// Kachel-Renderer wie Tutoren (renderAdminJourneyListV16) über einen eigenen
+// Sub-Container, damit der zugeordnete-Lernreisen-Block unberührt bleibt.
+function toniRenderStudentJourneyManager(parentContainer){
+  const host = parentContainer || document.getElementById("activity-learning-journeys-v50");
+  if(!host) return;
+
+  // Eigenen Abschnitt (einmalig) erzeugen bzw. wiederverwenden.
+  let section = document.getElementById("student-journey-manager-v50");
+  if(!section){
+    section = document.createElement("div");
+    section.id = "student-journey-manager-v50";
+    section.className = "student-journey-manager-v50";
+    host.appendChild(section);
+  }else if(section.parentElement !== host){
+    host.appendChild(section);
+  }
+
+  // Eigene Container-ID (NICHT "admin-journey-list", um Doppel-ID mit dem
+  // versteckten Tutor-Panel zu vermeiden).
+  section.innerHTML = `
+    <div class="activity-learning-heading-v50" style="margin-top:22px">
+      Eigene Lernreisen
+    </div>
+    <div id="student-admin-journey-list" class="lr-task-grid" style="margin-top:10px"></div>
+  `;
+
+  toniLoadStudentOwnJourneys();
+}
+
+// Lädt die EIGENEN Lernreisen des Studenten und rendert sie im Tutor-Kachel-Design
+// in den studenteneigenen Container. Nutzt denselben Renderer wie Tutoren, aber mit
+// eigener Container-ID (Parameter). Single-Flight gegen Mehrfachaufrufe.
+async function toniLoadStudentOwnJourneys(){
+  if(window.TONI_STUDENT_JOURNEYS_INFLIGHT) return window.TONI_STUDENT_JOURNEYS_INFLIGHT;
+  const p = (async () => {
+    try{
+      const listEl = document.getElementById("student-admin-journey-list");
+      if(!listEl) return;
+
+      const ownerId = (typeof getJourneyOwnerIdV16 === "function") ? getJourneyOwnerIdV16() : null;
+      let rows = [];
+      if(typeof supabaseRequest === "function" && ownerId){
+        const token = (typeof toniWaitForAuthToken === "function") ? await toniWaitForAuthToken() : "x";
+        if(!token){
+          // Kein Token -> später erneut; nicht leeren.
+          setTimeout(toniLoadStudentOwnJourneys, 1200);
+          return;
+        }
+        // Nur EIGENE Lernreisen (owner = ich).
+        const query = `learning_journey_templates?owner_profile_id=eq.${encodeURIComponent(ownerId)}&select=*&order=updated_at.desc`;
+        rows = await supabaseRequest(query);
+        rows = (rows || []).map(r => ({...r, _source:"remote"}));
+      }else if(typeof getLocalJourneysV16 === "function"){
+        rows = getLocalJourneysV16().map(r => ({...r, _source:"local"}));
+      }
+
+      window.TONI_STUDENT_OWN_JOURNEYS = rows;
+      if(typeof renderAdminJourneyListV16 === "function"){
+        renderAdminJourneyListV16(rows, "student-admin-journey-list");
+      }
+    }catch(e){
+      console.warn("Eigene Lernreisen (Student) konnten nicht geladen werden:", e);
+    }finally{
+      window.TONI_STUDENT_JOURNEYS_INFLIGHT = null;
+    }
+  })();
+  window.TONI_STUDENT_JOURNEYS_INFLIGHT = p;
+  return p;
+}
+
 window.toniV50OpenActivityJourney = async function(journeyId){
   const journey = (window.TONI_V50_ACTIVITY_CACHE || []).find(j => String(j.id) === String(journeyId));
   if(!journey) return;
@@ -8380,6 +8555,26 @@ window.addEventListener("resize", () => {
 
     const mainGrid = leftPanel.querySelector(".main-grid");
     if(mainGrid) mainGrid.classList.add("v52-empty-main-grid");
+
+    // Projekte-Karte für Studenten ebenfalls als aufklappbare Leiste (mit +-Button,
+    // Icon und Zähler) einrichten – genau wie "Lernreise anlegen/bearbeiten".
+    // toniV19MakeSectionCollapsible ist idempotent (eigener dataset-Guard),
+    // daher ist ein erneuter Aufruf unschädlich.
+    try{
+      const projectsCard = document.getElementById("dashboard-projects-card");
+      if(projectsCard){
+        // 1) Aus der rechten Spalte (dashboard-projects-col) herauslösen und als
+        //    eigenständige, volle-Breite-Karte direkt ins left-panel setzen.
+        projectsCard.classList.add("v83-student-projects-fullwidth");
+        if(projectsCard.parentElement !== leftPanel){
+          leftPanel.appendChild(projectsCard);
+        }
+        // 2) Als aufklappbare Sektion einrichten (mit +-Button, Icon, Zähler).
+        if(typeof toniV19SetupCollapsibleProjectsSection === "function"){
+          toniV19SetupCollapsibleProjectsSection();
+        }
+      }
+    }catch(e){ console.warn("Projekte-Sektion (Student):", e); }
   }
 
   async function renderCompletedJourneys(){

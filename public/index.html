@@ -936,6 +936,14 @@ body { font-family:'Inter',sans-serif; background:#f8fafc; font-size:13px; color
 /* =========================================================
    TONI – V16 / Admin-Tutor Lernreisen verwalten
    ========================================================= */
+/* Studenten dürfen Lernreisen selbst verwalten. Vom Tutor-Panel wird für
+   Studenten NUR die Editor-Card sichtbar gemacht (zum Anlegen/Bearbeiten).
+   Die Kachel-Liste des Panels bleibt ausgeblendet – die eigenen Lernreisen
+   zeigt der Studenten-eigene Abschnitt unter "Meine Lernreisen".
+   Übersteuert das inline display:none aus applyRoleUI. */
+body.role-student #journey-admin-panel{display:block !important}
+body.role-student #journey-admin-panel .journey-admin-grid > aside.journey-admin-card{display:block !important}
+body.role-student #journey-admin-panel #admin-journey-list{display:grid !important}
 .journey-admin-panel{display:none}
 .journey-admin-panel.visible{display:block}
 .journey-admin-grid{
@@ -1379,6 +1387,17 @@ body { font-family:'Inter',sans-serif; background:#f8fafc; font-size:13px; color
 .lr-icon-btn-v23.danger{border-color:#fecaca;background:#fef2f2;color:#dc2626}
 .lr-icon-btn-v23.danger:hover{background:#fee2e2;border-color:#fca5a5}
 .lr-icon-btn-v23:disabled{opacity:.45;cursor:not-allowed;transform:none}
+
+/* Gefüllte Variante der Stationenleisten-Buttons (vier Farben, weiße SVG-Icons) */
+.lr-icon-btn-v23-filled{
+  width:46px;height:46px;border-radius:13px;border:none;padding:0;
+  cursor:pointer;display:inline-flex;align-items:center;justify-content:center;line-height:0;
+  transition:transform .12s ease, filter .12s ease;
+}
+.lr-icon-btn-v23-filled:hover{transform:translateY(-1px);filter:brightness(1.07)}
+.lr-icon-btn-v23-filled:active{transform:translateY(0)}
+.lr-icon-btn-v23-filled:disabled{opacity:.45;cursor:not-allowed;transform:none;filter:none}
+.lr-icon-btn-v23-filled svg{display:block}
 #student-journey-actions-v20{display:none!important}
 @media(max-width:640px){.lr-hero-header-v23{align-items:flex-start!important;flex-direction:column}}
 
@@ -5565,8 +5584,37 @@ body.role-student .left-panel.v83-student-order{
 }
 
 body.role-student .left-panel.v83-student-order .v52-learning-journey-row{
+  order:-1 !important;
+  width:100% !important;
+}
+
+/* Das Lernreise-Verwaltungspanel erscheint beim Studenten NACH der
+   Stationenleiste (die Leiste hat order:-1). Ohne diese Regel hätte das
+   Panel den Default order:0 und stünde damit VOR der Stationenleiste. */
+body.role-student .left-panel.v83-student-order #journey-admin-panel{
   order:1 !important;
   width:100% !important;
+}
+
+/* Projekte-Karte beim Studenten: volle Breite, direkt nach dem Lernreise-Panel. */
+body.role-student .left-panel.v83-student-order .v83-student-projects-fullwidth{
+  order:2 !important;
+  width:100% !important;
+  max-width:100% !important;
+}
+
+/* Da die Projekte-Karte herausgelöst wurde, nutzt "Meine Lernreisen" nun die
+   volle Breite (bottom-grid einspaltig statt zweispaltig). */
+body.role-student .left-panel.v83-student-order .bottom-grid{
+  grid-template-columns:1fr !important;
+  order:3 !important;
+}
+
+/* Block "Meine Lernreisen" bei Studenten ausblenden: die zugeordneten
+   Lernreisen erscheinen bereits im Panel "Lernreise anlegen/bearbeiten".
+   Übersteuert das inline display:"" aus applyRoleUI. */
+body.role-student #dashboard-my-journeys-card{
+  display:none !important;
 }
 
 body.role-student .left-panel.v83-student-order .v52-projects-row{
@@ -8610,7 +8658,8 @@ input.youtube-force-invalid-v105{
 .journey-tile-action:hover{background:#f1f5f9}
 .journey-tile-action.danger{flex:0 0 auto;color:#dc2626}
 .journey-tile-action.danger:hover{background:#fef2f2}
-.journey-tile-action span{font-size:12px}
+.journey-tile-action span{font-size:12px;display:inline-flex;align-items:center}
+.journey-tile-action span svg{display:block}
 /* === V112: Variante A – Deckblatt als Hintergrund (Tutor/Admin-Kacheln) === */
 .journey-tile-cover-v112{
   position:relative;overflow:hidden;min-height:240px;
@@ -8619,6 +8668,10 @@ input.youtube-force-invalid-v105{
   transition:transform .14s ease, box-shadow .14s ease;
 }
 .journey-tile-cover-v112:hover{transform:translateY(-3px);box-shadow:0 10px 28px rgba(15,23,42,.16)}
+/* Vollflächig klickbare Kachel (Pfeil-Button entfällt) */
+.journey-tile-clickable{cursor:pointer}
+.journey-tile-clickable .journey-tile-cover-actions-v112{cursor:default}
+.journey-tile-clickable:focus-visible{outline:3px solid #2563eb;outline-offset:2px}
 /* V95-Override (#admin-journey-list .journey-tile) zurücknehmen, damit der inline-Verlauf durchkommt */
 #journey-admin-panel #admin-journey-list .journey-tile.journey-tile-cover-v112{background-color:transparent}
 .journey-tile-cover-v112.has-cover::before{
@@ -8630,12 +8683,44 @@ input.youtube-force-invalid-v105{
 .journey-tile-cover-body-v112{position:relative;z-index:2;display:flex;flex-direction:column;flex:1;padding:14px;min-width:0}
 .journey-tile-cover-title-v112{
   color:#fff;font-size:15px;font-weight:900;line-height:1.28;text-shadow:0 1px 4px rgba(0,0,0,.45);
-  padding-right:40px;
 }
 .journey-tile-cover-desc-v112{
   color:rgba(255,255,255,.94);font-size:12px;line-height:1.5;margin-top:8px;text-shadow:0 1px 3px rgba(0,0,0,.45);
-  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;
+  display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden;
 }
+.journey-tile-cover-subject-v112{font-weight:800}
+
+/* === Projektkachel V115: Glas-Box + Fortschrittsbalken + weißer Fußbereich === */
+.toni-proj-tile-v115{display:flex;flex-direction:column;justify-content:flex-start}
+.toni-proj-tile-body-v115{padding:14px 14px 4px 14px;flex:1;display:flex;flex-direction:column}
+.toni-proj-glass-v115{background:rgba(255,255,255,.92);border-radius:12px;padding:12px 14px;backdrop-filter:blur(3px);-webkit-backdrop-filter:blur(3px)}
+.toni-proj-glass-head-v115{display:flex;align-items:flex-start;justify-content:space-between;gap:10px}
+.toni-proj-title-v115{font-size:15px;font-weight:800;color:#0f172a;line-height:1.3}
+.toni-proj-pct-v115{font-size:15px;font-weight:900;white-space:nowrap;flex-shrink:0}
+.toni-proj-desc-v115{font-size:12px;color:#475569;margin-top:4px;line-height:1.4}
+.toni-proj-bar-v115{height:6px;background:rgba(255,255,255,.45);border-radius:4px;margin:12px 0 0 0;overflow:hidden}
+.toni-proj-bar-fill-v115{height:6px;border-radius:4px;transition:width .3s}
+.toni-proj-foot-v115{background:#fff;border-top:1px solid var(--slate-100,#f1f5f9);border-radius:0 0 16px 16px;padding:10px 14px;display:flex;flex-wrap:wrap;gap:6px;align-items:center;margin-top:12px}
+
+/* === Wochenplan-Filter (Auswahlpunkte mit kleinen Labels) === */
+.toni-weekplan-filters{display:inline-flex;align-items:center;gap:6px;margin-left:auto;margin-right:14px;flex-wrap:wrap}
+.toni-wp-filter-chip{display:inline-flex;flex-direction:column;align-items:center;gap:3px;background:none;border:none;cursor:pointer;padding:2px 4px;border-radius:8px;transition:background .12s}
+.toni-wp-filter-chip:hover{background:#f1f5f9}
+.toni-wp-filter-dot{width:14px;height:14px;border-radius:50%;border:2px solid;box-sizing:border-box;transition:background .12s}
+.toni-wp-filter-label{font-size:10px;font-weight:700;color:#64748b;line-height:1}
+.toni-wp-filter-chip.on .toni-wp-filter-label{color:#334155}
+.toni-wp-filter-chip:not(.on){opacity:.55}
+
+/* Icon-Buttons (Lernreise importieren / QR-Code scannen) – ohne Beschriftung */
+.lr-icon-action-btn{
+  width:46px;height:46px;border:none;border-radius:13px;
+  display:inline-flex;align-items:center;justify-content:center;
+  cursor:pointer;padding:0;line-height:0;
+  transition:transform .12s ease, filter .12s ease;
+}
+.lr-icon-action-btn:hover{transform:translateY(-1px);filter:brightness(1.06)}
+.lr-icon-action-btn:active{transform:translateY(0)}
+.lr-icon-action-btn svg{display:block}
 .journey-tile-cover-v112.no-cover .journey-tile-cover-title-v112{color:#0f172a;text-shadow:none}
 .journey-tile-cover-v112.no-cover .journey-tile-cover-desc-v112{color:#475569;text-shadow:none}
 .journey-tile-cover-chips-v112{margin-top:auto;padding-top:10px}
@@ -8735,6 +8820,19 @@ input.youtube-force-invalid-v105{
 .bottom-grid.toni-staff-projects-fullwidth #dashboard-projects-col{width:100%;}
 .bottom-grid.toni-staff-projects-fullwidth #toni-projects-list{
   display:grid;grid-template-columns:repeat(3,1fr);gap:12px;align-items:start;
+}
+
+/* Projekt-Kacheln im Lernreise-Kacheldesign: gleiches Grid + gleiche Abmessungen
+   wie #admin-journey-list. Greift überall dort, wo die neuen journey-tile-Kacheln
+   im Projekt-Container gerendert werden. */
+#toni-projects-list:has(.journey-tile-cover-v112){
+  display:grid !important;
+  grid-template-columns:repeat(auto-fill,minmax(230px,1fr)) !important;
+  gap:12px !important;
+  align-items:start !important;
+}
+@media(max-width:980px){
+  #toni-projects-list:has(.journey-tile-cover-v112){grid-template-columns:1fr !important}
 }
 .bottom-grid.toni-staff-projects-fullwidth #toni-projects-list > div{margin-bottom:0 !important;}
 @media(max-width:1100px){
@@ -9116,6 +9214,7 @@ input.youtube-force-invalid-v105{
     <div class="card" id="dashboard-weekly-plan-card">
       <div class="card-header">
         <span class="card-title">Mein Wochenplan</span>
+        <span id="toni-weekplan-filters" class="toni-weekplan-filters"></span>
         <span class="card-link" onclick="renderWeeklyPlan()">Aktualisieren</span>
       </div>
       <div id="toni-weekly-plan" class="kanban-outer">
@@ -9260,8 +9359,7 @@ input.youtube-force-invalid-v105{
     <!-- Lernreisen verwalten -->
     <div class="card journey-admin-panel tutor-only" id="journey-admin-panel">
       <div class="card-header">
-        <span class="card-title">Lernreise anlegen/bearbeiten</span>
-        <span class="role-badge tutor">Tutor/Admin</span>
+        <span class="card-title">Lernreisen</span>
       </div>
 
       <div class="journey-admin-grid">
@@ -9375,7 +9473,6 @@ input.youtube-force-invalid-v105{
         <section class="journey-admin-card">
           <div class="card-header">
             <span class="card-title">Meine zugeordneten Lernreisen</span>
-            <button class="lr-secondary-btn" onclick="loadAdminLearningJourneys()">Aktualisieren</button>
           </div>
 
           <div class="journey-editor-help" style="margin-bottom:12px">
@@ -9385,8 +9482,8 @@ input.youtube-force-invalid-v105{
 
           <div class="journey-import-bar" style="margin-bottom:12px;display:flex;gap:8px;align-items:center;flex-wrap:wrap">
             <input type="file" id="journey-import-file" accept=".json,application/json" style="display:none" onchange="toniHandleImportFile(event)"/>
-            <button class="lr-secondary-btn" onclick="document.getElementById('journey-import-file').click()">📥 Lernreise importieren</button>
-            <button class="lr-secondary-btn" onclick="openJourneyScanModal()" title="Lernreise per QR-Code hinzufügen" aria-label="Lernreise per QR-Code scannen">📷 QR-Code scannen</button>
+            <button class="lr-icon-action-btn" style="background:#2f6fed" onclick="document.getElementById('journey-import-file').click()" title="Lernreise importieren" aria-label="Lernreise importieren"><svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v12"/><path d="m7 10 5 5 5-5"/><path d="M5 21h14"/></svg></button>
+            <button class="lr-icon-action-btn" style="background:#e11d48" onclick="openJourneyScanModal()" title="QR-Code scannen" aria-label="Lernreise per QR-Code scannen"><svg viewBox="0 0 24 24" width="22" height="22" fill="#fff" aria-hidden="true"><path d="M3 3h8v8H3V3zm2 2v4h4V5H5z"/><path d="M13 3h8v8h-8V3zm2 2v4h4V5h-4z"/><path d="M3 13h8v8H3v-8zm2 2v4h4v-4H5z"/><path d="M13 13h3v3h-3v-3zm5 0h3v3h-3v-3zm-5 5h3v3h-3v-3zm5 0h3v3h-3v-3z"/></svg></button>
             <span id="journey-import-status" style="font-size:12px;color:#64748b"></span>
           </div>
 
@@ -9909,7 +10006,7 @@ input.youtube-force-invalid-v105{
 
 <script src="/chat.js?v=12"></script>
 
-<script src="/journey.js?v=193"></script>
+<script src="/journey.js?v=200"></script>
 <script src="/journey/theme/journey_theme.js?v=4"></script>
 <script src="/journey/theme/journey_theme_space.js?v=9"></script>
 <script src="/journey/theme/journey_theme_football.js?v=2"></script>
@@ -10887,6 +10984,6 @@ input.youtube-force-invalid-v105{
   </div>
 </div>
 
-<script src="/projects.js?v=64"></script>
+<script src="/projects.js?v=68"></script>
 </body>
 </html>
