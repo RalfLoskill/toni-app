@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Toni Business Center</title>
+<style>
+/* ============================================================
+   Toni Business Center — Dashboard
+   CSS inline wie in index.html. Farben an das Mockup angelehnt.
+   ============================================================ */
+:root{
+  --bg:#f4f5f9; --card:#ffffff; --ink:#1f2430; --muted:#6b7280;
+  --line:#e9ebf0; --accent:#4f46e5; --good:#16a34a; --warn:#d97706;
+  --bad:#dc2626; --shadow:0 1px 3px rgba(20,20,50,.06),0 1px 2px rgba(20,20,50,.04);
+  --r:16px;
+}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--ink);
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+  font-size:14px;line-height:1.4}
+a{color:inherit;text-decoration:none}
+
+.bc-wrap{max-width:1440px;margin:0 auto;padding:24px}
+.bc-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px;flex-wrap:wrap;gap:12px}
+.bc-head h1{font-size:24px;margin:0;font-weight:800}
+.bc-head .sub{color:var(--muted);margin-top:2px}
+.bc-badge{background:#eef2ff;color:var(--accent);border-radius:999px;padding:4px 12px;font-weight:600;font-size:12px}
+
+/* KPI-Kacheln */
+.kpi-row{display:grid;grid-template-columns:repeat(6,1fr);gap:14px;margin-bottom:20px}
+@media(max-width:1100px){.kpi-row{grid-template-columns:repeat(3,1fr)}}
+@media(max-width:640px){.kpi-row{grid-template-columns:repeat(2,1fr)}}
+.kpi{background:var(--card);border-radius:var(--r);box-shadow:var(--shadow);padding:16px}
+.kpi .ico{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:20px;margin-bottom:12px}
+.kpi .val{font-size:26px;font-weight:800;letter-spacing:-.02em}
+.kpi .lbl{color:var(--muted);font-size:13px;margin-top:2px}
+.kpi .delta{font-size:12px;margin-top:8px;font-weight:600}
+.delta.up{color:var(--good)} .delta.down{color:var(--bad)} .delta.flat{color:var(--muted)}
+
+/* Grid der Panels */
+.grid{display:grid;gap:16px;grid-template-columns:repeat(3,1fr)}
+@media(max-width:1100px){.grid{grid-template-columns:1fr}}
+.card{background:var(--card);border-radius:var(--r);box-shadow:var(--shadow);padding:18px}
+.card h2{font-size:16px;margin:0 0 14px;font-weight:700;display:flex;align-items:center;gap:8px}
+.card h2 .count{background:#f1f2f7;color:var(--muted);border-radius:999px;padding:1px 9px;font-size:12px;font-weight:600}
+
+/* Trichter */
+.funnel{display:flex;flex-direction:column;gap:6px}
+.funnel .stage{display:flex;align-items:center;gap:10px}
+.funnel .bar{height:34px;border-radius:8px;display:flex;align-items:center;padding:0 12px;color:#fff;font-weight:700;font-size:13px;min-width:64px;white-space:nowrap}
+.funnel .meta{color:var(--muted);font-size:12px;white-space:nowrap}
+
+/* Listen */
+.list{display:flex;flex-direction:column}
+.row{display:flex;align-items:center;gap:10px;padding:10px 0;border-top:1px solid var(--line)}
+.row:first-child{border-top:none}
+.row .time{font-variant-numeric:tabular-nums;color:var(--accent);font-weight:700;min-width:46px}
+.row .main{flex:1;min-width:0}
+.row .main .t{font-weight:600;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .main .s{color:var(--muted);font-size:12px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .amt{font-weight:700;white-space:nowrap}
+.pill{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;white-space:nowrap}
+.pill.high{background:#fee2e2;color:var(--bad)}
+.pill.normal{background:#eef2ff;color:var(--accent)}
+.pill.low{background:#f1f2f7;color:var(--muted)}
+.pill.hoch{background:#fee2e2;color:var(--bad)}
+.pill.mittel{background:#fef3c7;color:var(--warn)}
+.pill.niedrig{background:#dcfce7;color:var(--good)}
+
+/* Testphasen-Fortschritt */
+.trial{padding:10px 0;border-top:1px solid var(--line)}
+.trial:first-child{border-top:none}
+.trial .top{display:flex;justify-content:space-between;margin-bottom:6px}
+.trial .track{height:7px;background:#eef0f5;border-radius:999px;overflow:hidden}
+.trial .fill{height:100%;background:var(--accent);border-radius:999px}
+
+.muted-empty{color:var(--muted);padding:14px 0;text-align:center}
+.bc-foot{margin-top:24px;color:var(--muted);font-size:12px;text-align:center}
+.spin{display:inline-block;width:16px;height:16px;border:2px solid var(--line);border-top-color:var(--accent);border-radius:50%;animation:sp .7s linear infinite;vertical-align:-3px}
+@keyframes sp{to{transform:rotate(360deg)}}
+
+/* Login-Gate (Muster aus kosten.html) */
+#bc-gate{position:fixed;inset:0;background:linear-gradient(135deg,#EAF1FB,#F8FAFC);
+  display:flex;align-items:center;justify-content:center;z-index:100;padding:20px}
+.login-card{background:#fff;border:1px solid var(--line);border-radius:16px;
+  box-shadow:0 12px 40px rgba(15,27,45,.10);padding:32px 30px;width:100%;max-width:380px;text-align:center}
+.login-logo{width:48px;height:48px;border-radius:12px;background:var(--accent);
+  display:flex;align-items:center;justify-content:center;color:#fff;font-weight:700;font-size:22px;margin:0 auto 16px}
+.login-card h2{font-size:19px;font-weight:700;margin:0}
+.login-sub{font-size:13px;color:var(--muted);margin:7px 0 22px;line-height:1.5}
+.login-field{text-align:left;margin-bottom:14px}
+.login-field label{display:block;font-size:12px;font-weight:600;color:var(--ink);margin-bottom:5px}
+.login-field input{width:100%;border:1px solid var(--line);border-radius:9px;padding:10px 12px;
+  font:inherit;font-size:14px;color:var(--ink);transition:border-color .15s}
+.login-field input:focus{outline:none;border-color:var(--accent)}
+.login-btn{width:100%;border:none;border-radius:9px;background:var(--accent);color:#fff;
+  font:inherit;font-size:14px;font-weight:600;padding:11px;cursor:pointer;margin-top:6px;transition:background .15s}
+.login-btn:hover{filter:brightness(.94)}
+.login-btn:disabled{opacity:.6;cursor:not-allowed}
+.login-msg{font-size:12.5px;margin-top:14px;min-height:18px}
+.login-msg.err{color:var(--bad)} .login-msg.ok{color:var(--good)}
+.bc-logout{background:none;border:1px solid var(--line);border-radius:8px;padding:6px 12px;
+  font:inherit;font-size:12px;color:var(--muted);cursor:pointer}
+.bc-logout:hover{background:#f7f8fb}
+</style>
+</head>
+<body>
+
+<div id="bc-gate">
+  <div class="login-card">
+    <div class="login-logo">T</div>
+    <h2>Business Center</h2>
+    <p class="login-sub">Bitte mit deinem Vertriebs-Account anmelden.</p>
+    <div class="login-field">
+      <label for="login-email">E-Mail</label>
+      <input id="login-email" type="email" autocomplete="username" placeholder="name@toni.de">
+    </div>
+    <div class="login-field">
+      <label for="login-pass">Passwort</label>
+      <input id="login-pass" type="password" autocomplete="current-password" placeholder="••••••••">
+    </div>
+    <button id="login-btn" class="login-btn">Anmelden</button>
+    <div id="login-msg" class="login-msg"></div>
+  </div>
+</div>
+
+<div class="bc-wrap" id="bc-app" style="display:none">
+  <div class="bc-head">
+    <div>
+      <h1>Toni Business Center</h1>
+      <div class="sub" id="bc-greeting">Aktuelle Entwicklung</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <div class="bc-badge" id="bc-role">–</div>
+      <button class="bc-logout" id="bc-logout">Abmelden</button>
+    </div>
+  </div>
+
+  <!-- KPI-Kacheln -->
+  <div class="kpi-row" id="kpi-row">
+    <div class="kpi"><div class="val"><span class="spin"></span></div></div>
+  </div>
+
+  <!-- Obere Reihe -->
+  <div class="grid" style="margin-bottom:16px">
+    <div class="card">
+      <h2>Sales Pipeline</h2>
+      <div class="funnel" id="funnel"></div>
+    </div>
+    <div class="card">
+      <h2>Aktivitäten heute <span class="count" id="act-count">0</span></h2>
+      <div class="list" id="activities"></div>
+    </div>
+    <div class="card">
+      <h2>Offene Angebote <span class="count" id="offer-count">0</span></h2>
+      <div class="list" id="offers"></div>
+    </div>
+  </div>
+
+  <!-- Untere Reihe -->
+  <div class="grid">
+    <div class="card">
+      <h2>Aktuelle Testphasen <span class="count" id="trial-count">0</span></h2>
+      <div id="trials"></div>
+    </div>
+    <div class="card" style="grid-column:span 2">
+      <h2>Renewals <span class="count" id="renewal-count">0</span> <span class="muted-empty" style="padding:0;font-size:12px;font-weight:400">· nächste 90 Tage</span></h2>
+      <div class="list" id="renewals"></div>
+    </div>
+  </div>
+
+  <div class="bc-foot" id="bc-foot">Daten live aus Supabase.</div>
+</div>
+
+<!-- Reihenfolge exakt wie in index.html:
+     1) /api/config setzt die window.*-Globale (Supabase-URL + Anon-Key)
+     2) supabase-js per CDN
+     3) business.js -->
+<script src="/api/config"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="business.js?v=2"></script>
+</body>
+</html>
