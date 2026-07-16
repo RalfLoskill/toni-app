@@ -1,0 +1,154 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Schule · Toni Business Center</title>
+<link rel="stylesheet" href="business.css?v=4">
+</head>
+<body>
+
+<div id="bc-gate">
+  <div class="login-card">
+    <div class="login-logo">T</div>
+    <h2>Business Center</h2>
+    <p class="login-sub">Bitte mit deinem Vertriebs-Account anmelden.</p>
+    <div class="login-field">
+      <label for="login-email">E-Mail</label>
+      <input id="login-email" type="email" autocomplete="username" placeholder="name@toni.de">
+    </div>
+    <div class="login-field">
+      <label for="login-pass">Passwort</label>
+      <input id="login-pass" type="password" autocomplete="current-password" placeholder="••••••••">
+    </div>
+    <button id="login-btn" class="login-btn">Anmelden</button>
+    <div id="login-msg" class="login-msg"></div>
+  </div>
+</div>
+
+<div class="bc-wrap" id="bc-app" style="display:none">
+  <div class="bc-head">
+    <div>
+      <h1 id="inst-name">…</h1>
+      <div class="sub" id="inst-sub"></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <div class="bc-badge" id="bc-role">–</div>
+      <button class="bc-logout" id="bc-logout">Abmelden</button>
+    </div>
+  </div>
+
+  <nav class="bc-nav" id="bc-nav"></nav>
+
+  <div style="margin-bottom:16px">
+    <a href="business_institutions.html" class="btn ghost sm">← Zurück zur Liste</a>
+  </div>
+
+  <div class="grid" style="grid-template-columns:2fr 1fr">
+    <!-- linke Spalte -->
+    <div>
+      <div class="card" style="margin-bottom:16px">
+        <h2>Verkaufschancen <span class="count" id="opp-count">0</span><span class="spacer"></span>
+          <button class="btn sm" id="opp-add" style="display:none">+ Chance</button></h2>
+        <div id="opps"></div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <h2>Ansprechpartner <span class="count" id="con-count">0</span><span class="spacer"></span>
+          <button class="btn sm" id="con-add" style="display:none">+ Kontakt</button></h2>
+        <div id="contacts"></div>
+      </div>
+
+      <div class="card">
+        <h2>Aktivitätsverlauf <span class="count" id="act-count">0</span></h2>
+        <div class="list" id="activities"></div>
+      </div>
+    </div>
+
+    <!-- rechte Spalte -->
+    <div>
+      <div class="card" style="margin-bottom:16px">
+        <h2>Vertrag</h2>
+        <div id="subscription"></div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <h2>Nutzung der Toni-App</h2>
+        <div id="usage"></div>
+      </div>
+
+      <div class="card">
+        <h2>Notizen</h2>
+        <div class="field"><textarea id="notes" placeholder="Interne Notizen zu dieser Schule …"></textarea></div>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span id="notes-msg" class="login-msg" style="margin:0"></span>
+          <button class="btn sm" id="notes-save" style="display:none">Speichern</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Kontakt -->
+<div class="modal-back" id="con-modal" style="display:none">
+  <div class="modal">
+    <h3>Ansprechpartner hinzufügen</h3>
+    <div class="field-row">
+      <div class="field"><label>Vorname</label><input id="c-first" type="text"></div>
+      <div class="field"><label>Nachname</label><input id="c-last" type="text"></div>
+    </div>
+    <div class="field"><label>Rolle</label><input id="c-role" type="text" placeholder="z. B. Schulleitung, IT, Schulträger"></div>
+    <div class="field-row">
+      <div class="field"><label>E-Mail</label><input id="c-email" type="email"></div>
+      <div class="field"><label>Telefon</label><input id="c-phone" type="text"></div>
+    </div>
+    <label style="font-size:13px;display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <input id="c-dm" type="checkbox" style="width:auto"> Entscheider</label>
+    <label style="font-size:13px;display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <input id="c-primary" type="checkbox" style="width:auto"> Hauptansprechpartner</label>
+    <div id="con-msg" class="login-msg"></div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="con-cancel">Abbrechen</button>
+      <button class="btn" id="con-savebtn">Hinzufügen</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Chance -->
+<div class="modal-back" id="opp-modal" style="display:none">
+  <div class="modal">
+    <h3>Verkaufschance anlegen</h3>
+    <div class="field"><label>Titel *</label><input id="o-title" type="text" placeholder="z. B. Toni Schullizenz 2026"></div>
+    <div class="field-row">
+      <div class="field"><label>Stufe</label><select id="o-stage"></select></div>
+      <div class="field"><label>Quelle</label>
+        <select id="o-source">
+          <option value="">–</option>
+          <option value="website">Website</option>
+          <option value="recommendation">Empfehlung</option>
+          <option value="event">Event</option>
+          <option value="outbound">Outbound</option>
+          <option value="partner">Partner</option>
+          <option value="newsletter">Newsletter</option>
+          <option value="personal_contact">Persönlicher Kontakt</option>
+        </select>
+      </div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Erwarteter Wert (€, netto)</label><input id="o-value" type="number" min="0" step="100"></div>
+      <div class="field"><label>Wahrscheinlichkeit (%)</label><input id="o-prob" type="number" min="0" max="100" step="5"></div>
+    </div>
+    <div id="opp-msg" class="login-msg"></div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="opp-cancel">Abbrechen</button>
+      <button class="btn" id="opp-savebtn">Anlegen</button>
+    </div>
+  </div>
+</div>
+
+<script src="/api/config"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="business_common.js?v=2"></script>
+<script src="business_institution.js?v=1"></script>
+</body>
+</html>
