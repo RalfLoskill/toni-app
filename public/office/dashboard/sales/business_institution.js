@@ -42,6 +42,7 @@
     renderStage(DET);
     renderBase(INST, DET);
     renderProvenance(DET);
+    renderQualification(DET);
     renderContacts(list(r[2]));
     renderSubscription(list(r[3])[0]);
     renderUsage(one(r[4]));
@@ -141,6 +142,58 @@
 
   function one(res) { if (res && res.error) console.warn(res.error.message); return (res && res.data) || null; }
   function list(res) { if (res && res.error) console.warn(res.error.message); return (res && res.data) || []; }
+
+  // --- KI-Einschätzung (von einem Mitarbeiter-Agenten erzeugt) ---
+  function fitLabel(f) { return f === "high" ? "hohe Passung" : f === "medium" ? "mittlere Passung" : "geringe Passung"; }
+  function fitColor(f) { return f === "high" ? "#22c55e" : f === "medium" ? "#f59e0b" : "#9ca3af"; }
+
+  function renderQualification(det) {
+    var card = $("qual-card"); if (!card) return;
+    var q = det.ai_qualification || {}, a = det.ai_assessment || {};
+    var hasData = det.ai_assessed_at && (Object.keys(q).length || Object.keys(a).length);
+    if (!hasData) {
+      card.style.display = "";
+      $("qual-body").innerHTML = B.empty("Noch keine KI-Einschätzung. Ein Mitarbeiter kann diese Schule über „Leads bewerten“ einschätzen.");
+      return;
+    }
+    card.style.display = "";
+    var score = Math.round(Number(q.lead_score) || 0);
+    var conf = q.confidence != null ? Math.round(Number(q.confidence) * 100) + " %" : "–";
+    var needs = (q.identified_needs || []).map(function (x) { return "<li>" + B.esc(x) + "</li>"; }).join("");
+    var objs = (q.likely_objections || []).map(function (x) { return "<li>" + B.esc(x) + "</li>"; }).join("");
+    var acts = (a.recommended_actions || []).map(function (x) { return "<li>" + B.esc(x) + "</li>"; }).join("");
+    var sig = (q.digital_signals || []).map(function (s) {
+      var val = (s && s.value != null) ? s.value : s;
+      var inf = s && s.inferred;
+      return '<span class="sig' + (inf ? " inf" : "") + '">' + B.esc(val) + (inf ? " (vermutet)" : "") + '</span>';
+    }).join("");
+
+    $("qual-body").innerHTML =
+      '<div class="qual-head">' +
+        '<div class="qual-score" style="color:' + fitColor(q.toni_fit) + '">' + score + '<span>/100</span></div>' +
+        '<div><div class="qual-fit" style="color:' + fitColor(q.toni_fit) + '">' + B.esc(fitLabel(q.toni_fit)) + '</div>' +
+          '<div class="qual-meta">Sicherheit: ' + conf + ' · bewertet am ' + B.ddmm(det.ai_assessed_at) +
+          '<span id="qual-by"></span></div></div>' +
+      '</div>' +
+      (a.customer_summary ? '<p class="qual-sum">' + B.esc(a.customer_summary) + '</p>' : "") +
+      (sig ? '<div class="qual-sec"><h4>Digitale Signale</h4><div class="sigs">' + sig + '</div></div>' : "") +
+      (needs ? '<div class="qual-sec"><h4>Vermutete Bedürfnisse</h4><ul>' + needs + '</ul></div>' : "") +
+      (objs ? '<div class="qual-sec"><h4>Wahrscheinliche Einwände</h4><ul>' + objs + '</ul></div>' : "") +
+      (a.main_risk ? '<div class="qual-sec"><h4>Größtes Risiko</h4><p>' + B.esc(a.main_risk) + '</p></div>' : "") +
+      (acts ? '<div class="qual-sec"><h4>Empfohlene nächste Schritte</h4><ul>' + acts + '</ul></div>' : "");
+
+    // Mitarbeitername nachladen (nicht blockierend)
+    if (det.ai_assessed_by) fillAssessedBy(det.ai_assessed_by);
+  }
+
+  async function fillAssessedBy(empId) {
+    try {
+      var r = await sb.from("crm_employees").select("name").eq("id", empId).maybeSingle();
+      var nm = r && r.data ? r.data.name : null;
+      var el = $("qual-by");
+      if (nm && el) el.textContent = " · durch " + nm;
+    } catch (e) { /* Name optional */ }
+  }
 
   // --- Kopf ---------------------------------------------------
   function renderHeader(inst, det) {
