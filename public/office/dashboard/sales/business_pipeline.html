@@ -1,0 +1,78 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Pipeline · Toni Business Center</title>
+<link rel="stylesheet" href="business.css?v=6">
+</head>
+<body>
+
+<div id="bc-gate">
+  <div class="login-card">
+    <div class="login-logo">T</div>
+    <h2>Business Center</h2>
+    <p class="login-sub">Bitte mit deinem Vertriebs-Account anmelden.</p>
+    <div class="login-field">
+      <label for="login-email">E-Mail</label>
+      <input id="login-email" type="email" autocomplete="username" placeholder="name@toni.de">
+    </div>
+    <div class="login-field">
+      <label for="login-pass">Passwort</label>
+      <input id="login-pass" type="password" autocomplete="current-password" placeholder="••••••••">
+    </div>
+    <button id="login-btn" class="login-btn">Anmelden</button>
+    <div id="login-msg" class="login-msg"></div>
+  </div>
+</div>
+
+<div class="bc-wrap" id="bc-app" style="display:none">
+  <div class="bc-head">
+    <div>
+      <h1>Sales Pipeline</h1>
+      <div class="sub" id="pipe-sub">Karten zwischen Stufen ziehen</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <div class="bc-badge" id="bc-role">–</div>
+      <button class="bc-logout" id="bc-logout">Abmelden</button>
+    </div>
+  </div>
+
+  <nav class="bc-nav" id="bc-nav"></nav>
+
+  <!-- Erfolgs-Leiste: macht sichtbar, wie erfolgreich gearbeitet wird -->
+  <div class="success-bar" id="success-bar" style="display:none"></div>
+
+  <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
+    <button class="btn" id="opp-add" style="display:none">+ Schule</button>
+  </div>
+
+  <div class="board" id="board"><div class="muted-empty"><span class="spin"></span></div></div>
+
+  <div class="board-foot" id="board-foot"></div>
+</div>
+
+<!-- Modal: neue Schule -->
+<div class="modal-back" id="opp-modal" style="display:none">
+  <div class="modal">
+    <h3>Neue Schule anlegen</h3>
+    <div class="field"><label>Name *</label><input id="o-name" type="text" placeholder="z. B. Berufskolleg Musterstadt"></div>
+    <div class="field-row">
+      <div class="field"><label>Ort</label><input id="o-city" type="text"></div>
+      <div class="field"><label>Stufe</label><select id="o-stage"></select></div>
+    </div>
+    <div class="field"><label>Erwarteter Wert (€, netto)</label><input id="o-value" type="number" min="0" step="100"></div>
+    <div id="opp-msg" class="login-msg"></div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="opp-cancel">Abbrechen</button>
+      <button class="btn" id="opp-savebtn">Anlegen</button>
+    </div>
+  </div>
+</div>
+
+<script src="/api/config"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="business_common.js?v=6"></script>
+<script src="business_pipeline.js?v=4"></script>
+</body>
+</html>
