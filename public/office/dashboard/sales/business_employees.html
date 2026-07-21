@@ -1,0 +1,119 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mitarbeiter · Toni Business Center</title>
+<link rel="stylesheet" href="business.css?v=9">
+</head>
+<body>
+
+<div id="bc-gate">
+  <div class="login-card">
+    <div class="login-logo">T</div>
+    <h2>Business Center</h2>
+    <p class="login-sub">Bitte mit deinem Vertriebs-Account anmelden.</p>
+    <div class="login-field">
+      <label for="login-email">E-Mail</label>
+      <input id="login-email" type="email" autocomplete="username" placeholder="name@toni.de">
+    </div>
+    <div class="login-field">
+      <label for="login-pass">Passwort</label>
+      <input id="login-pass" type="password" autocomplete="current-password" placeholder="••••••••">
+    </div>
+    <button id="login-btn" class="login-btn">Anmelden</button>
+    <div id="login-msg" class="login-msg"></div>
+  </div>
+</div>
+
+<div class="bc-wrap" id="bc-app" style="display:none">
+  <div class="bc-head">
+    <div>
+      <h1>Virtuelle Mitarbeiter</h1>
+      <div class="sub">Mitarbeiter anlegen und ihnen Agenten zuordnen</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <div class="bc-badge" id="bc-role">–</div>
+      <button class="bc-logout" id="bc-logout">Abmelden</button>
+    </div>
+  </div>
+
+  <nav class="bc-nav" id="bc-nav"></nav>
+
+  <div class="emp-layout">
+    <!-- linke Spalte: Mitarbeiterliste -->
+    <div class="emp-side">
+      <div class="card">
+        <h2>Mitarbeiter <span class="count" id="emp-count">0</span><span class="spacer"></span>
+          <button class="btn sm" id="emp-add" style="display:none">+ Neu</button></h2>
+        <div id="emp-list"></div>
+      </div>
+    </div>
+
+    <!-- rechte Spalte: aktives Profil -->
+    <div class="emp-main">
+      <div id="emp-empty" class="card"><div class="muted-empty">Wähle links einen Mitarbeiter oder lege einen neuen an.</div></div>
+
+      <div id="emp-detail" style="display:none">
+        <!-- Profilkopf -->
+        <div class="card emp-profile">
+          <div class="emp-avatar-wrap">
+            <img id="emp-avatar" class="emp-avatar" alt="" style="display:none">
+            <div id="emp-avatar-ph" class="emp-avatar emp-avatar-ph">🙂</div>
+            <button class="btn ghost sm emp-avatar-btn" id="avatar-btn" style="display:none">Bild ändern</button>
+            <input type="file" id="avatar-file" accept="image/*" style="display:none">
+          </div>
+          <input class="emp-name-input" id="e-name" type="text" placeholder="Name (z. B. Lisa)">
+          <input class="emp-role-input" id="e-role" type="text" placeholder="Rolle (z. B. Sales-Managerin)">
+          <textarea class="emp-desc-input" id="e-desc" placeholder="Beschreibung: „Mein Name ist Lisa, ich bin eine erfahrene Sales-Managerin …"></textarea>
+          <div class="emp-profile-foot">
+            <span id="prof-msg" class="login-msg" style="margin:0"></span>
+            <div style="display:flex;gap:8px">
+              <button class="btn ghost sm" id="emp-del" style="display:none;color:var(--bad);border-color:#f3c9c9">Löschen</button>
+              <button class="btn sm" id="prof-save" style="display:none">Speichern</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Agenten des Mitarbeiters -->
+        <div class="card" style="margin-top:16px">
+          <h2>Agenten <span class="count" id="agent-count">0</span>
+            <span class="muted-empty" style="padding:0;font-size:12px;font-weight:400">· in Reihenfolge</span></h2>
+          <div id="agent-tiles" class="agent-tiles"></div>
+          <div id="agent-add-row" style="margin-top:12px;display:none">
+            <div class="field-row" style="align-items:flex-end">
+              <div class="field" style="margin:0"><label>Agent hinzufügen</label>
+                <select id="agent-pick"></select></div>
+              <button class="btn sm" id="agent-add-btn">Zuordnen</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Gedächtnis -->
+        <div class="card" style="margin-top:16px">
+          <h2>Gedächtnis <span class="count" id="mem-count">0</span></h2>
+          <div id="mem-add-row" style="display:none;margin-bottom:12px">
+            <div class="field-row" style="align-items:flex-end">
+              <div class="field" style="margin:0;flex:0 0 150px"><label>Art</label>
+                <select id="mem-kind">
+                  <option value="insight">Erkenntnis</option>
+                  <option value="event">Ereignis</option>
+                </select></div>
+              <div class="field" style="margin:0"><label>Eintrag</label>
+                <input id="mem-content" type="text" placeholder="z. B. Einstieg über Bildungsgangleitung wirkt besser"></div>
+              <button class="btn sm" id="mem-add-btn">Hinzufügen</button>
+            </div>
+          </div>
+          <div id="mem-list" class="list"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script src="/api/config"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="business_common.js?v=8"></script>
+<script src="business_employees.js?v=1"></script>
+</body>
+</html>
