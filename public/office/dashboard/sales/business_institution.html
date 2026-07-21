@@ -1,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Schule · Toni Business Center</title>
+<link rel="stylesheet" href="business.css?v=8">
+</head>
+<body>
+
+<div id="bc-gate">
+  <div class="login-card">
+    <div class="login-logo">T</div>
+    <h2>Business Center</h2>
+    <p class="login-sub">Bitte mit deinem Vertriebs-Account anmelden.</p>
+    <div class="login-field">
+      <label for="login-email">E-Mail</label>
+      <input id="login-email" type="email" autocomplete="username" placeholder="name@toni.de">
+    </div>
+    <div class="login-field">
+      <label for="login-pass">Passwort</label>
+      <input id="login-pass" type="password" autocomplete="current-password" placeholder="••••••••">
+    </div>
+    <button id="login-btn" class="login-btn">Anmelden</button>
+    <div id="login-msg" class="login-msg"></div>
+  </div>
+</div>
+
+<div class="bc-wrap" id="bc-app" style="display:none">
+  <div class="bc-head">
+    <div>
+      <h1 id="inst-name">…</h1>
+      <div class="sub" id="inst-sub"></div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <div class="bc-badge" id="bc-role">–</div>
+      <button class="bc-logout" id="bc-logout">Abmelden</button>
+    </div>
+  </div>
+
+  <nav class="bc-nav" id="bc-nav"></nav>
+
+  <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:10px;flex-wrap:wrap">
+    <a href="business_institutions.html" class="btn ghost sm">← Zurück zur Liste</a>
+    <div style="display:flex;align-items:center;gap:12px">
+      <span id="inst-ref" style="font-size:12px;color:var(--muted);font-variant-numeric:tabular-nums"></span>
+      <button class="btn ghost sm" id="del-btn" style="display:none;color:var(--bad);border-color:#f3c9c9">Löschen</button>
+    </div>
+  </div>
+
+  <div class="grid" style="grid-template-columns:2fr 1fr">
+    <!-- linke Spalte -->
+    <div>
+      <div class="card" style="margin-bottom:16px">
+        <h2>Vertriebsstufe</h2>
+        <div class="field"><label>Stufe</label><select id="lc-stage"></select></div>
+        <div class="field-row">
+          <div class="field"><label>Dealwert (€, netto)</label><input id="lc-value" type="number" min="0" step="100"></div>
+          <div class="field"><label>Wahrscheinlichkeit (%)</label><input id="lc-prob" type="number" min="0" max="100" step="5"></div>
+        </div>
+        <label style="font-size:13px;display:flex;align-items:center;gap:8px;margin-bottom:10px">
+          <input id="lc-partner" type="checkbox" style="width:auto"> Kooperationspartner</label>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span id="lc-msg" class="login-msg" style="margin:0"></span>
+          <button class="btn sm" id="lc-save" style="display:none">Speichern</button>
+        </div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <h2>Ansprechpartner <span class="count" id="con-count">0</span><span class="spacer"></span>
+          <button class="btn sm" id="con-add" style="display:none">+ Kontakt</button></h2>
+        <div id="contacts"></div>
+      </div>
+
+      <div class="card">
+        <h2>Aktivitätsverlauf <span class="count" id="act-count">0</span></h2>
+        <div class="list" id="activities"></div>
+      </div>
+    </div>
+
+    <!-- rechte Spalte -->
+    <div>
+      <div class="card" style="margin-bottom:16px">
+        <h2>Stammdaten <span class="spacer"></span>
+          <button class="btn sm" id="base-save" style="display:none">Speichern</button></h2>
+        <div class="field"><label>Name</label><input id="b-name" type="text"></div>
+        <div class="field-row">
+          <div class="field"><label>Schulform</label>
+            <select id="b-type">
+              <option value="">–</option>
+              <option value="berufskolleg">Berufskolleg</option>
+              <option value="berufsschule">Berufsschule</option>
+              <option value="gymnasium">Gymnasium</option>
+              <option value="gesamtschule">Gesamtschule</option>
+              <option value="realschule">Realschule</option>
+              <option value="hauptschule">Hauptschule</option>
+              <option value="grundschule">Grundschule</option>
+              <option value="foerderschule">Förderschule</option>
+              <option value="hochschule">Hochschule</option>
+              <option value="schultraeger">Schulträger</option>
+              <option value="ministerium">Ministerium</option>
+              <option value="sonstige">Sonstige</option>
+            </select>
+          </div>
+          <div class="field"><label>Land</label><select id="b-country"></select></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>Bundesland</label><select id="b-state"></select></div>
+          <div class="field"><label>Ort</label><input id="b-city" type="text"></div>
+        </div>
+        <div class="field-row">
+          <div class="field"><label>PLZ</label><input id="b-postal" type="text"></div>
+          <div class="field"><label>Straße</label><input id="b-street" type="text"></div>
+        </div>
+        <div class="field"><label>Website</label><input id="b-website" type="text" placeholder="https://…"></div>
+        <div id="base-msg" class="login-msg" style="margin-top:4px"></div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <h2>Herkunft &amp; Datenschutz <span class="spacer"></span>
+          <button class="btn sm" id="prov-save" style="display:none">Speichern</button></h2>
+        <div class="field-row">
+          <div class="field"><label>Datenquelle</label><select id="p-source"></select></div>
+          <div class="field"><label>Erstmals erfasst</label><input id="p-collected" type="text" readonly style="color:var(--muted)"></div>
+        </div>
+        <div class="field"><label>Beleg-URLs (eine pro Zeile)</label>
+          <textarea id="p-urls" placeholder="https://schule.de/impressum"></textarea></div>
+        <label style="font-size:13px;display:flex;align-items:center;gap:8px;margin-bottom:8px">
+          <input id="p-dnc" type="checkbox" style="width:auto"> Nicht kontaktieren (ganze Schule)</label>
+        <div class="field" id="p-dnc-reason-wrap" style="display:none">
+          <label>Grund der Sperre</label><input id="p-dnc-reason" type="text" placeholder="z. B. ausdrückliche Ablehnung"></div>
+        <div id="prov-msg" class="login-msg" style="margin-top:4px"></div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <h2>Vertrag</h2>
+        <div id="subscription"></div>
+      </div>
+
+      <div class="card" style="margin-bottom:16px">
+        <h2>Nutzung der Toni-App</h2>
+        <div id="usage"></div>
+      </div>
+
+      <div class="card">
+        <h2>Notizen</h2>
+        <div class="field"><textarea id="notes" placeholder="Interne Notizen zu dieser Schule …"></textarea></div>
+        <div style="display:flex;justify-content:space-between;align-items:center">
+          <span id="notes-msg" class="login-msg" style="margin:0"></span>
+          <button class="btn sm" id="notes-save" style="display:none">Speichern</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Kontakt -->
+<div class="modal-back" id="con-modal" style="display:none">
+  <div class="modal">
+    <h3>Ansprechpartner hinzufügen</h3>
+    <div class="field-row">
+      <div class="field"><label>Vorname</label><input id="c-first" type="text"></div>
+      <div class="field"><label>Nachname</label><input id="c-last" type="text"></div>
+    </div>
+    <div class="field"><label>Rolle</label><input id="c-role" type="text" placeholder="z. B. Schulleitung, IT, Schulträger"></div>
+    <div class="field-row">
+      <div class="field"><label>E-Mail</label><input id="c-email" type="email"></div>
+      <div class="field"><label>Telefon</label><input id="c-phone" type="text"></div>
+    </div>
+    <div class="field-row">
+      <div class="field"><label>Herkunft</label><select id="c-source"></select></div>
+      <div class="field"><label>Einwilligungsstatus</label><select id="c-consent"></select></div>
+    </div>
+    <div class="field"><label>Beleg-URL (Herkunft dieses Kontakts)</label>
+      <input id="c-source-url" type="text" placeholder="https://schule.de/team"></div>
+    <label style="font-size:13px;display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <input id="c-dnc" type="checkbox" style="width:auto"> Diese Person nicht kontaktieren</label>
+    <label style="font-size:13px;display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <input id="c-dm" type="checkbox" style="width:auto"> Entscheider</label>
+    <label style="font-size:13px;display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <input id="c-primary" type="checkbox" style="width:auto"> Hauptansprechpartner</label>
+    <div id="con-msg" class="login-msg"></div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="con-cancel">Abbrechen</button>
+      <button class="btn" id="con-savebtn">Hinzufügen</button>
+    </div>
+  </div>
+</div>
+
+<script src="/api/config"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="business_common.js?v=7"></script>
+<script src="business_institution.js?v=5"></script>
+</body>
+</html>
