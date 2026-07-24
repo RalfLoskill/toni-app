@@ -7,11 +7,11 @@
   ],
   "crons": [
     {
-      "path": "/api/worker?key= toni-xyz-7hK2p9mXq4vB",
+      "path": "/api/worker?key=toni-xyz-7hK2p9mXq4vB",
       "schedule": "* * * * *"
     },
     {
-      "path": "/api/schedule?key= toni-xyz-7hK2p9mXq4vB",
+      "path": "/api/schedule?key=toni-xyz-7hK2p9mXq4vB",
       "schedule": "*/5 * * * *"
     }
   ]
