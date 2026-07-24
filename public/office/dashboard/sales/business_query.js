@@ -121,7 +121,8 @@
         // institutions: nur die Spalten, die es dort wirklich gibt
         // (state/website gehören zu crm_institution_details)
         var ins = await sb.from("institutions").insert({
-          name: r.name, city: r.city || null, postal_code: r.postal_code || null,
+          name: r.name, internal_code: makeInternalCode(r.name),
+          city: r.city || null, postal_code: r.postal_code || null,
           street: r.street || null
         }).select("id").single();
         if (ins.error) throw ins.error;
@@ -210,6 +211,15 @@
   }
 
   function show(id) { var e = $(id); if (e) e.style.display = ""; }
+
+  // internal_code ist in institutions NOT NULL. Gleiche Bildung wie in der
+  // SuperAdmin-RPC: Buchstaben/Ziffern aus dem Namen (max. 8) + Zufallssuffix.
+  function makeInternalCode(name) {
+    var base = String(name || "").toUpperCase().replace(/[^A-Z0-9]/g, "");
+    base = (base || "INST").slice(0, 8);
+    var suffix = Math.random().toString(36).slice(2, 6).toUpperCase();
+    return base + "-" + suffix;
+  }
   function qmsg(t, type) { var m = $("q-msg"); if (m) { m.textContent = t; m.className = "login-msg " + (type || ""); } }
 
   // Für Tests
