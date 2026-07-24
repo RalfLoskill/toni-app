@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Pipeline · Toni Business Center</title>
+<title>Query · Toni Business Center</title>
 <link rel="stylesheet" href="business.css?v=15">
 </head>
 <body>
@@ -29,8 +29,8 @@
 <div class="bc-wrap" id="bc-app" style="display:none">
   <div class="bc-head">
     <div>
-      <h1>Sales Pipeline</h1>
-      <div class="sub" id="pipe-sub">Karten zwischen Stufen ziehen</div>
+      <h1>Query</h1>
+      <div class="sub">Gefundene Schulen — prüfen und als Leads übernehmen</div>
     </div>
     <div style="display:flex;align-items:center;gap:10px">
       <div class="bc-badge" id="bc-role">–</div>
@@ -40,32 +40,39 @@
 
   <nav class="bc-nav" id="bc-nav"></nav>
 
-  <!-- Erfolgs-Leiste: macht sichtbar, wie erfolgreich gearbeitet wird -->
-  <div class="success-bar" id="success-bar" style="display:none"></div>
-
-  <div style="display:flex;justify-content:flex-end;margin-bottom:12px">
-    <button class="btn" id="opp-add" style="display:none">+ Schule</button>
+  <div class="searchbar">
+    <input id="q" type="search" placeholder="Nach Name oder Ort suchen …">
+    <select id="status-filter">
+      <option value="new">Neu</option>
+      <option value="accepted">Übernommen</option>
+      <option value="discarded">Verworfen</option>
+      <option value="">Alle</option>
+    </select>
+    <span class="spacer" style="flex:1"></span>
+    <button class="btn ghost" id="q-discard" style="display:none">Ausgewählte verwerfen</button>
+    <button class="btn" id="q-accept" style="display:none">Ausgewählte als Leads übernehmen</button>
   </div>
 
-  <div class="board" id="board"><div class="muted-empty"><span class="spin"></span></div></div>
-
-  <div class="board-foot" id="board-foot"></div>
+  <div class="card">
+    <table class="bc-tbl">
+      <thead><tr>
+        <th style="width:34px"><input type="checkbox" id="q-all"></th>
+        <th>Name</th><th>Ort</th><th>Kontakte</th><th>Herkunft</th><th>Status</th>
+      </tr></thead>
+      <tbody id="rows"><tr><td colspan="6"><span class="spin"></span></td></tr></tbody>
+    </table>
+    <div id="list-empty"></div>
+  </div>
+  <div id="q-msg" class="login-msg"></div>
 </div>
 
-<!-- Modal: neue Schule -->
-<div class="modal-back" id="opp-modal" style="display:none">
+<!-- Modal: Detail eines Query-Eintrags -->
+<div class="modal-back" id="q-modal" style="display:none">
   <div class="modal">
-    <h3>Neue Schule anlegen</h3>
-    <div class="field"><label>Name *</label><input id="o-name" type="text" placeholder="z. B. Berufskolleg Musterstadt"></div>
-    <div class="field-row">
-      <div class="field"><label>Ort</label><input id="o-city" type="text"></div>
-      <div class="field"><label>Stufe</label><select id="o-stage"></select></div>
-    </div>
-    <div class="field"><label>Erwarteter Wert (€, netto)</label><input id="o-value" type="number" min="0" step="100"></div>
-    <div id="opp-msg" class="login-msg"></div>
+    <h3 id="qm-title">Fund</h3>
+    <div id="qm-body"></div>
     <div class="modal-actions">
-      <button class="btn ghost" id="opp-cancel">Abbrechen</button>
-      <button class="btn" id="opp-savebtn">Anlegen</button>
+      <button class="btn ghost" id="qm-close">Schließen</button>
     </div>
   </div>
 </div>
@@ -73,6 +80,6 @@
 <script src="/api/config"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="business_common.js?v=10"></script>
-<script src="business_pipeline.js?v=4"></script>
+<script src="business_query.js?v=2"></script>
 </body>
 </html>

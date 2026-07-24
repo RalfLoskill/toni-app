@@ -4,5 +4,11 @@
       "source": "/api/(.*)",
       "destination": "/api/$1"
     }
+  ],
+  "crons": [
+    {
+      "path": "/api/worker?key=toni-xyz-7hK2p9mXq4vB",
+      "schedule": "* * * * *"
+    }
   ]
 }

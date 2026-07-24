@@ -55,6 +55,15 @@ window.BC = (function () {
   };
   function statusColor(s) { return STATUS_COLOR[s] || "#9ca3af"; }
 
+  // --- Autonomiestufen der Agenten (Migration 120) ------------
+  var AUTONOMY = {
+    autonomous: ["Autonom", "#22c55e"],
+    rule_based: ["Regelbasiert", "#f59e0b"],
+    approval:   ["Freigabe nötig", "#dc2626"]
+  };
+  function autonomyLabel(k) { return (AUTONOMY[k] || ["–", "#9ca3af"])[0]; }
+  function autonomyColor(k) { return (AUTONOMY[k] || ["–", "#9ca3af"])[1]; }
+
   // --- Datenherkunft + Einwilligung (Migration 100) -----------
   // Herkunft eines Datensatzes (Institution + Kontakt)
   var SOURCE_LABEL = {
@@ -166,7 +175,10 @@ window.BC = (function () {
   // --- Navigation zwischen den Seiten -------------------------
   function nav(active) {
     var items = [["business.html", "Übersicht"], ["business_pipeline.html", "Pipeline"],
-                 ["business_institutions.html", "Institutionen"], ["business_map.html", "Karte"]];
+                 ["business_query.html", "Query"],
+                 ["business_institutions.html", "Institutionen"], ["business_map.html", "Karte"],
+                 ["business_employees.html", "Mitarbeiter"],
+                 ["business_agents.html", "Aktionen"]];
     return items.map(function (it) {
       var on = it[0] === active;
       return '<a href="' + it[0] + '" class="bc-nav-link' + (on ? " on" : "") + '">' + it[1] + '</a>';
@@ -246,6 +258,7 @@ window.BC = (function () {
     BUNDESLAENDER: BUNDESLAENDER, countryOptions: countryOptions, stateOptions: stateOptions,
     canWriteSales: canWriteSales, canWriteCustomers: canWriteCustomers,
     SOURCE_LABEL: SOURCE_LABEL, sourceLabel: sourceLabel, sourceOptions: sourceOptions,
-    CONSENT: CONSENT, consentLabel: consentLabel, consentColor: consentColor, consentOptions: consentOptions
+    CONSENT: CONSENT, consentLabel: consentLabel, consentColor: consentColor, consentOptions: consentOptions,
+    AUTONOMY: AUTONOMY, autonomyLabel: autonomyLabel, autonomyColor: autonomyColor
   };
 })();

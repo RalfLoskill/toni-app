@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Schule · Toni Business Center</title>
-<link rel="stylesheet" href="business.css?v=8">
+<link rel="stylesheet" href="business.css?v=15">
 </head>
 <body>
 
@@ -51,6 +51,11 @@
   <div class="grid" style="grid-template-columns:2fr 1fr">
     <!-- linke Spalte -->
     <div>
+      <div class="card qual-card" id="qual-card" style="margin-bottom:16px;display:none">
+        <h2>🤖 KI-Einschätzung</h2>
+        <div id="qual-body"></div>
+      </div>
+
       <div class="card" style="margin-bottom:16px">
         <h2>Vertriebsstufe</h2>
         <div class="field"><label>Stufe</label><select id="lc-stage"></select></div>
@@ -189,7 +194,7 @@
 
 <script src="/api/config"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="business_common.js?v=7"></script>
-<script src="business_institution.js?v=5"></script>
+<script src="business_common.js?v=10"></script>
+<script src="business_institution.js?v=6"></script>
 </body>
 </html>

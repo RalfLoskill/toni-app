@@ -7345,16 +7345,69 @@ window.addEventListener("DOMContentLoaded", () => {
     return (b/(1024*1024*1024)).toFixed(1).replace(".",",") + " GB";
   }
 
+  // CRM-Status-Beschriftungen + Farben (lokal, da auth.js kein CRM kennt)
+  const SA_STAGE_LABEL = {
+    lead:"Lead", qualified:"Qualifiziert", campaign:"Kampagne", demo:"Demo",
+    trial:"Testphase", offer:"Angebot", negotiation:"Verhandlung",
+    customer:"Aktiver Kunde", churned_prospect:"Abgesprungen", churned_customer:"Verlorener Kunde"
+  };
+  const SA_STAGE_COLOR = {
+    lead:"#94a3b8", qualified:"#60a5fa", campaign:"#818cf8", demo:"#a78bfa",
+    trial:"#22d3ee", offer:"#f472b6", negotiation:"#fb923c",
+    customer:"#22c55e", churned_prospect:"#cbd5e1", churned_customer:"#9ca3af"
+  };
+  function saStageLabel(s){ return s ? (SA_STAGE_LABEL[s] || s) : "Echte Institution"; }
+  function saStageColor(s){ return s ? (SA_STAGE_COLOR[s] || "#94a3b8") : "#16a34a"; }
+
+  // Volle Liste + aktueller Filter (clientseitig)
+  let SA_INST_ALL = [];
+  let SA_INST_FILTER = "real";   // Standard: echte Institutionen zeigen
+
+  function saInstFiltered(){
+    if(SA_INST_FILTER === "all") return SA_INST_ALL;
+    if(SA_INST_FILTER === "real") return SA_INST_ALL.filter(r => !r.is_crm);
+    if(SA_INST_FILTER === "crm")  return SA_INST_ALL.filter(r => r.is_crm);
+    // sonst: konkrete Stufe
+    return SA_INST_ALL.filter(r => r.lifecycle_stage === SA_INST_FILTER);
+  }
+
+  window.toniV160SetInstFilter = function(value){
+    SA_INST_FILTER = value;
+    renderInstitutionStats();
+  };
+
   function renderInstitutionStats(list){
     const root = document.getElementById("superadmin-institutions-content");
     if(!root) return;
-    const rows = Array.isArray(list) ? list : [];
+    // Beim ersten Aufruf (mit Liste) speichern; danach aus dem Speicher filtern
+    if(Array.isArray(list)) SA_INST_ALL = list;
+
+    // Welche Stufen kommen in den Daten vor? (für die Filter-Optionen)
+    const presentStages = [];
+    SA_INST_ALL.forEach(r=>{ if(r.lifecycle_stage && presentStages.indexOf(r.lifecycle_stage)<0) presentStages.push(r.lifecycle_stage); });
+    const stageOpts = presentStages.map(s =>
+      `<option value="${esc(s)}"${SA_INST_FILTER===s?" selected":""}>${esc(saStageLabel(s))}</option>`).join("");
+
+    const nReal = SA_INST_ALL.filter(r=>!r.is_crm).length;
+    const nCrm  = SA_INST_ALL.filter(r=>r.is_crm).length;
+    const filterBar = `
+      <div class="sa-inst-filterbar">
+        <label class="sa-inst-filter-label">Anzeigen:</label>
+        <select class="sa-inst-filter-select" onchange="toniV160SetInstFilter(this.value)">
+          <option value="real"${SA_INST_FILTER==="real"?" selected":""}>Echte Institutionen (${nReal})</option>
+          <option value="crm"${SA_INST_FILTER==="crm"?" selected":""}>CRM / Leads (${nCrm})</option>
+          <option value="all"${SA_INST_FILTER==="all"?" selected":""}>Alle (${SA_INST_ALL.length})</option>
+          ${presentStages.length ? `<optgroup label="Einzelne Stufen">${stageOpts}</optgroup>` : ""}
+        </select>
+      </div>`;
+
+    const rows = saInstFiltered();
     if(!rows.length){
-      root.innerHTML = `<div class="assignment-empty">Keine Institutionen gefunden.</div>`;
+      root.innerHTML = filterBar + `<div class="assignment-empty">Keine Institutionen in dieser Ansicht.</div>`;
       return;
     }
 
-    // Summen für Kennzahl-Karten + Gesamtzeile
+    // Summen (nur über die gefilterten Zeilen)
     let sumAdmin=0,sumTutor=0,sumStudent=0,sumImg=0,sumDoc=0,sumBytes=0;
     rows.forEach(r=>{
       sumAdmin   += Number(r.admin_count)||0;
@@ -7375,9 +7428,13 @@ window.addEventListener("DOMContentLoaded", () => {
         <div class="sa-inst-card"><div class="sa-inst-card-label">Gesamtspeicher</div><div class="sa-inst-card-value sa-inst-accent">${fmtBytes(sumBytes)}</div></div>
       </div>`;
 
-    const body = rows.map(r=>`
+    const body = rows.map(r=>{
+      const st = r.lifecycle_stage;
+      const badge = `<span class="sa-inst-status" style="background:${saStageColor(st)}22;color:${saStageColor(st)}">${esc(saStageLabel(st))}</span>`;
+      return `
       <tr>
         <td class="sa-inst-name">${esc(r.inst_name || "Ohne Namen")}</td>
+        <td>${badge}</td>
         <td class="sa-inst-num">${Number(r.admin_count)||0}</td>
         <td class="sa-inst-num">${Number(r.tutor_count)||0}</td>
         <td class="sa-inst-num">${Number(r.student_count)||0}</td>
@@ -7385,11 +7442,12 @@ window.addEventListener("DOMContentLoaded", () => {
         <td class="sa-inst-num sa-inst-doc">${Number(r.doc_count)||0}</td>
         <td class="sa-inst-bytes">${fmtBytes(r.total_bytes)}</td>
         <td class="sa-inst-del-cell"><button class="sa-inst-invite-btn" title="Admin einladen" onclick="toniV121InviteAdmin(event,'${esc(r.institution_id)}','${esc(String(r.inst_name||'').replace(/'/g,"\\'"))}')">✉</button><button class="sa-inst-del-btn" title="Institution vollständig löschen" onclick="toniV118AskDeleteInstitution('${esc(r.institution_id)}','${esc(String(r.inst_name||'').replace(/'/g,"\\'"))}')">−</button></td>
-      </tr>`).join("");
+      </tr>`;}).join("");
 
     const totalRow = `
       <tr class="sa-inst-total">
         <td class="sa-inst-name">Gesamt</td>
+        <td></td>
         <td class="sa-inst-num">${sumAdmin}</td>
         <td class="sa-inst-num">${sumTutor}</td>
         <td class="sa-inst-num">${sumStudent}</td>
@@ -7399,12 +7457,13 @@ window.addEventListener("DOMContentLoaded", () => {
         <td class="sa-inst-del-cell"></td>
       </tr>`;
 
-    root.innerHTML = cards + `
+    root.innerHTML = filterBar + cards + `
       <div class="sa-inst-table-wrap">
         <table class="sa-inst-table">
           <thead>
             <tr>
               <th>Institution</th>
+              <th>Status</th>
               <th title="Admins">Admin</th>
               <th title="Tutoren">Tutor</th>
               <th title="Schüler">Schüler</th>
