@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Mitarbeiter · Toni Business Center</title>
+<link rel="stylesheet" href="business.css?v=18">
+</head>
+<body>
+
+<div id="bc-gate">
+  <div class="login-card">
+    <div class="login-logo">T</div>
+    <h2>Business Center</h2>
+    <p class="login-sub">Bitte mit deinem Vertriebs-Account anmelden.</p>
+    <div class="login-field">
+      <label for="login-email">E-Mail</label>
+      <input id="login-email" type="email" autocomplete="username" placeholder="name@toni.de">
+    </div>
+    <div class="login-field">
+      <label for="login-pass">Passwort</label>
+      <input id="login-pass" type="password" autocomplete="current-password" placeholder="••••••••">
+    </div>
+    <button id="login-btn" class="login-btn">Anmelden</button>
+    <div id="login-msg" class="login-msg"></div>
+  </div>
+</div>
+
+<div class="bc-wrap" id="bc-app" style="display:none">
+  <div class="bc-head">
+    <div>
+      <h1>Virtuelle Mitarbeiter</h1>
+      <div class="sub">Mitarbeiter anlegen und ihnen Agenten zuordnen</div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <div class="bc-badge" id="bc-role">–</div>
+      <button class="bc-logout" id="bc-logout">Abmelden</button>
+    </div>
+  </div>
+
+  <nav class="bc-nav" id="bc-nav"></nav>
+
+  <div class="emp-layout">
+    <!-- linke Spalte: Mitarbeiterliste -->
+    <div class="emp-side">
+      <div class="card">
+        <h2>Mitarbeiter <span class="count" id="emp-count">0</span><span class="spacer"></span>
+          <button class="btn sm" id="emp-add" style="display:none">+ Neu</button></h2>
+        <div id="emp-list"></div>
+      </div>
+    </div>
+
+    <!-- rechte Spalte: aktives Profil -->
+    <div class="emp-main">
+      <div id="emp-empty" class="card"><div class="muted-empty">Wähle links einen Mitarbeiter oder lege einen neuen an.</div></div>
+
+      <div id="emp-detail" style="display:none">
+        <!-- Profilkopf -->
+        <div class="card emp-profile">
+          <div class="emp-avatar-wrap">
+            <img id="emp-avatar" class="emp-avatar" alt="" style="display:none">
+            <div id="emp-avatar-ph" class="emp-avatar emp-avatar-ph">🙂</div>
+            <button class="btn ghost sm emp-avatar-btn" id="avatar-btn" style="display:none">Bild ändern</button>
+            <input type="file" id="avatar-file" accept="image/*" style="display:none">
+          </div>
+          <input class="emp-name-input" id="e-name" type="text" placeholder="Name (z. B. Lisa)">
+          <input class="emp-role-input" id="e-role" type="text" placeholder="Rolle (z. B. Sales-Managerin)">
+          <textarea class="emp-desc-input" id="e-desc" placeholder="Beschreibung: „Mein Name ist Lisa, ich bin eine erfahrene Sales-Managerin …"></textarea>
+          <div class="emp-profile-foot">
+            <span id="prof-msg" class="login-msg" style="margin:0"></span>
+            <div style="display:flex;gap:8px">
+              <button class="btn ghost sm" id="emp-del" style="display:none;color:var(--bad);border-color:#f3c9c9">Löschen</button>
+              <button class="btn sm" id="prof-save" style="display:none">Speichern</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Mitarbeiterkosten -->
+        <div class="card emp-costs" style="margin-top:16px">
+          <h2>Mitarbeiterkosten <span class="muted-empty" style="padding:0;font-size:12px;font-weight:400">· in Euro</span></h2>
+          <div class="cost-top">
+            <div class="cost-fig"><span class="n" id="cost-total">–</span><span class="l">Gesamt</span></div>
+            <div class="cost-fig"><span class="n" id="cost-month">–</span><span class="l">Dieser Monat</span></div>
+            <div class="cost-fig"><span class="n" id="cost-runs">–</span><span class="l">Abgerechnete Läufe</span></div>
+          </div>
+          <div id="cost-bars" class="cost-bars"></div>
+        </div>
+
+        <!-- Agenten des Mitarbeiters -->
+        <div class="card" style="margin-top:16px">
+          <h2>Agenten <span class="count" id="agent-count">0</span>
+            <span class="muted-empty" style="padding:0;font-size:12px;font-weight:400">· in Reihenfolge · ▶ startet einen Lauf</span></h2>
+          <div id="agent-tiles" class="agent-tiles"></div>
+          <div id="agent-add-row" style="margin-top:12px;display:none">
+            <div class="field-row" style="align-items:flex-end">
+              <div class="field" style="margin:0"><label>Agent hinzufügen</label>
+                <select id="agent-pick"></select></div>
+              <button class="btn sm" id="agent-add-btn">Zuordnen</button>
+            </div>
+          </div>
+        </div>
+
+        <!-- Zeitpläne (wiederkehrende Aufträge) -->
+        <div class="card" style="margin-top:16px">
+          <h2>Zeitpläne <span class="muted-empty" style="padding:0;font-size:12px;font-weight:400">· starten Aufträge automatisch</span>
+            <span class="spacer" style="flex:1"></span>
+            <button class="btn ghost sm" id="sched-new" style="display:none">+ Zeitplan</button>
+          </h2>
+          <div id="sched-list" class="sched-list"></div>
+        </div>
+
+        <!-- Aufträge / Läufe (Status, browser-unabhängig) -->
+        <div class="card" style="margin-top:16px">
+          <h2>Aufträge <span class="muted-empty" style="padding:0;font-size:12px;font-weight:400">· laufen im Hintergrund</span></h2>
+          <div id="runs-list" class="runs-list"></div>
+        </div>
+
+        <!-- Arbeitsverlauf (aktueller Auftrag / Rückmeldung) -->
+        <div class="card" id="run-card" style="margin-top:16px;display:none">
+          <h2 id="run-title">Auftrag</h2>
+          <div id="run-chat" class="run-chat"></div>
+          <div id="run-result" class="run-result" style="display:none"></div>
+        </div>
+
+        <!-- Gedächtnis -->
+        <div class="card" style="margin-top:16px">
+          <h2>Gedächtnis <span class="count" id="mem-count">0</span></h2>
+          <div id="mem-add-row" style="display:none;margin-bottom:12px">
+            <div class="field-row" style="align-items:flex-end">
+              <div class="field" style="margin:0;flex:0 0 150px"><label>Art</label>
+                <select id="mem-kind">
+                  <option value="insight">Erkenntnis</option>
+                  <option value="event">Ereignis</option>
+                </select></div>
+              <div class="field" style="margin:0"><label>Eintrag</label>
+                <input id="mem-content" type="text" placeholder="z. B. Einstieg über Bildungsgangleitung wirkt besser"></div>
+              <button class="btn sm" id="mem-add-btn">Hinzufügen</button>
+            </div>
+          </div>
+          <div id="mem-list" class="list"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Lead auswählen -->
+<div class="modal-back" id="lead-modal" style="display:none">
+  <div class="modal">
+    <h3 id="lead-modal-title">Welchen Lead bewerten?</h3>
+    <p class="login-sub" style="margin:0 0 14px">Wähle eine Schule aus den offenen Leads.</p>
+    <input id="lead-search" type="search" placeholder="Suchen …"
+      style="width:100%;border:1px solid var(--line);border-radius:9px;padding:9px 11px;font:inherit;font-size:14px;margin-bottom:10px">
+    <div id="lead-list" class="lead-list"></div>
+    <div id="lead-msg" class="login-msg"></div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="lead-cancel">Abbrechen</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Ergebnis übernehmen -->
+<div class="modal-back" id="apply-modal" style="display:none">
+  <div class="modal">
+    <h3>Bewertung übernehmen?</h3>
+    <div id="apply-body"></div>
+    <div id="apply-msg" class="login-msg"></div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="apply-discard">Verwerfen</button>
+      <button class="btn" id="apply-confirm">An Schule übernehmen</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Kriterien für Lead-Suche -->
+<div class="modal-back" id="crit-modal" style="display:none">
+  <div class="modal">
+    <h3>Wonach soll gesucht werden?</h3>
+    <p class="login-sub" style="margin:0 0 14px">Felder an-/abwählen und ausfüllen. Der Agent sucht reale Schulen mit Quellenbeleg.</p>
+    <div id="crit-fields"></div>
+    <div class="field-row" style="align-items:flex-end;margin-top:6px">
+      <div class="field" style="margin:0"><label>Eigenes Kriterium</label>
+        <input id="crit-new" type="text" placeholder="z. B. mit Fachrichtung Technik"></div>
+      <button class="btn ghost sm" id="crit-add">+ Hinzufügen</button>
+    </div>
+    <div id="crit-msg" class="login-msg"></div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="crit-cancel">Abbrechen</button>
+      <button class="btn" id="crit-start">Suche starten</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal: Zeitplan anlegen/bearbeiten -->
+<div class="modal-back" id="sched-modal" style="display:none">
+  <div class="modal">
+    <h3 id="sched-title">Zeitplan</h3>
+
+    <div class="field"><label>Agent</label>
+      <select id="sc-agent"></select></div>
+
+    <div class="field"><label>Wiederholung</label>
+      <select id="sc-repeat">
+        <option value="once">Einmalig</option>
+        <option value="daily">Täglich</option>
+        <option value="weekly" selected>Wöchentlich</option>
+        <option value="monthly">Monatlich</option>
+      </select></div>
+
+    <div class="field-row">
+      <div class="field" id="sc-wrap-weekday"><label>Wochentag</label>
+        <select id="sc-weekday">
+          <option value="1">Montag</option><option value="2">Dienstag</option>
+          <option value="3">Mittwoch</option><option value="4">Donnerstag</option>
+          <option value="5">Freitag</option><option value="6">Samstag</option>
+          <option value="0">Sonntag</option>
+        </select></div>
+      <div class="field" id="sc-wrap-dom" style="display:none"><label>Tag im Monat</label>
+        <input id="sc-dom" type="number" min="1" max="28" value="1"></div>
+      <div class="field" id="sc-wrap-time"><label>Uhrzeit</label>
+        <input id="sc-time" type="time" value="08:00"></div>
+    </div>
+
+    <div class="field" id="sc-wrap-once" style="display:none"><label>Zeitpunkt</label>
+      <input id="sc-runat" type="datetime-local"></div>
+
+    <!-- agentenspezifische Optionen -->
+    <div id="sc-opts-find" style="display:none">
+      <div class="field"><label>Suchkriterien (Freitext)</label>
+        <textarea id="sc-criteria" placeholder="z. B. Berufsbildende Schulen in Rheinland-Pfalz, Umkreis Trier"></textarea>
+        <div class="field-hint">Wird bei jedem Lauf als Vorgabe verwendet.</div></div>
+    </div>
+    <div id="sc-opts-qualify" style="display:none">
+      <div class="field-hint" style="margin-bottom:10px">
+        Bewertet bei jedem Lauf die noch nicht bewerteten Leads (max. 10 pro Lauf).
+      </div>
+    </div>
+
+    <label style="font-size:13px;display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <input id="sc-active" type="checkbox" checked style="width:auto"> Aktiv</label>
+
+    <div id="sc-msg" class="login-msg"></div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="sc-delete" style="display:none;margin-right:auto">Löschen</button>
+      <button class="btn ghost" id="sc-cancel">Abbrechen</button>
+      <button class="btn" id="sc-save">Speichern</button>
+    </div>
+  </div>
+</div>
+
+<script src="/api/config"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="business_common.js?v=11"></script>
+<script src="business_employees.js?v=11"></script>
+</body>
+</html>
