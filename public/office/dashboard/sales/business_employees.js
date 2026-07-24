@@ -184,7 +184,7 @@
       $("agent-tiles").innerHTML = ACTIVE_AGENTS.map(function (ea, idx) {
         var a = agentById(ea.agent_id); if (!a) return "";
         var au = a.autonomy;
-        var runnable = a.agent_key === "qualify_leads" || a.agent_key === "find_leads";
+        var runnable = a.agent_key === "qualify_leads" || a.agent_key === "find_leads" || a.agent_key === "find_contacts";
         var play = canWrite
           ? '<button class="tile-play' + (runnable ? "" : " soon") + '" data-act="run" data-key="' + B.esc(a.agent_key) + '"' +
               (runnable ? ' title="Lauf starten"' : ' title="Bald verfügbar" disabled') + '>▶</button>'
@@ -401,7 +401,7 @@
     var openKeys = [];
     box.innerHTML = runs.map(function (r) {
       if (r.status === "queued" || r.status === "running") { hasOpen = true; openKeys.push(r.id); }
-      var label = r.agent_key === "find_leads" ? "Lead-Suche" : (r.agent_key === "qualify_leads" ? "Bewertung" : r.agent_key);
+      var label = runLabel(r.agent_key);
       var st = runStatus(r.status);
       var when = B.ddmm(r.created_at);
       var extra = "";
@@ -412,11 +412,35 @@
           extra = "Score " + Math.round(r.result.lead_score);
       }
       if (r.status === "error" && r.error_text) extra = B.esc(String(r.error_text).slice(0, 80));
+      if (r.status === "awaiting_approval") {
+        var res2 = r.result || {};
+        var det = res2.institution_name ? B.esc(res2.institution_name) + " · " : "";
+        det += (res2.pending != null ? res2.pending + " Einträge"
+              : res2.found != null ? res2.found + " gefunden"
+              : (res2.lead_score != null ? "Score " + Math.round(res2.lead_score) : ""));
+        return '<div class="run-row approval"><span class="run-when">' + when + '</span>' +
+          '<span class="run-label">' + B.esc(label) + '</span>' +
+          '<span class="run-st awaiting_approval">Freigabe nötig</span>' +
+          '<span class="run-extra">' + det + '</span>' +
+          (canWrite ? '<span class="run-actions">' +
+            '<button class="btn ghost sm run-reject" data-id="' + r.id + '">Verwerfen</button>' +
+            '<button class="btn sm run-approve" data-id="' + r.id + '">Freigeben</button></span>' : "") +
+          '</div>';
+      }
       return '<div class="run-row"><span class="run-when">' + when + '</span>' +
         '<span class="run-label">' + B.esc(label) + '</span>' +
         '<span class="run-st ' + r.status + '">' + st + '</span>' +
         (extra ? '<span class="run-extra">' + extra + '</span>' : "") + '</div>';
     }).join("");
+
+    if (canWrite) {
+      Array.prototype.forEach.call(box.querySelectorAll(".run-approve"), function (b) {
+        b.addEventListener("click", function () { approveRun(b.getAttribute("data-id"), true); });
+      });
+      Array.prototype.forEach.call(box.querySelectorAll(".run-reject"), function (b) {
+        b.addEventListener("click", function () { approveRun(b.getAttribute("data-id"), false); });
+      });
+    }
 
     // Ein Auftrag, der eben noch offen war, ist jetzt fertig -> Kosten neu laden
     var finished = prevOpen.filter(function (id) { return openKeys.indexOf(id) < 0; });
@@ -453,10 +477,7 @@
     try { var d = new Date(iso); return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); }
     catch (e) { return ""; }
   }
-  function agentLabel(key) {
-    var a = CATALOG.filter(function (x) { return x.agent_key === key; })[0];
-    return a ? a.name : key;
-  }
+  function agentLabel(key) { return runLabel(key); }
 
   function renderSchedules() {
     var box = $("sched-list"); if (!box) return;
@@ -588,19 +609,82 @@
   }
 
   function scmsg(t, type) { var m = $("sc-msg"); if (m) { m.textContent = t; m.className = "login-msg " + (type || ""); } }
+  // Geparktes Ergebnis eines "Freigabe nötig"-Agenten anwenden oder verwerfen
+  async function approveRun(runId, approve) {
+    if (!canWrite) return;
+    var res = await sb.from("crm_agent_runs").select("*").eq("id", runId).single();
+    if (res.error || !res.data) { pushChat("system", "Auftrag nicht gefunden."); return; }
+    var run = res.data, pl = run.pending_payload || {};
+
+    if (!approve) {
+      await sb.from("crm_agent_runs").update({
+        status: "discarded", rejected_at: new Date().toISOString()
+      }).eq("id", runId);
+      await refreshRuns();
+      return;
+    }
+
+    var err = null, applied = 0;
+    try {
+      if (pl.kind === "query_rows" && Array.isArray(pl.rows) && pl.rows.length) {
+        var r1 = await sb.from("crm_query").insert(pl.rows);
+        if (r1.error) throw r1.error;
+        applied = pl.rows.length;
+
+      } else if (pl.kind === "contacts" && Array.isArray(pl.rows) && pl.rows.length) {
+        var r2 = await sb.from("crm_contacts").insert(pl.rows);
+        if (r2.error) throw r2.error;
+        applied = pl.rows.length;
+
+      } else if (pl.kind === "qualification" && pl.institution_id) {
+        var r3 = await sb.from("crm_institution_details").update({
+          ai_qualification: pl.qualification, ai_assessment: pl.assessment,
+          ai_assessed_at: new Date().toISOString(), ai_assessed_by: run.employee_id
+        }).eq("institution_id", pl.institution_id);
+        if (r3.error) throw r3.error;
+        applied = 1;
+      }
+    } catch (e) { err = (e && e.message) ? e.message : String(e); }
+
+    if (err) { pushChat("system", "Freigabe fehlgeschlagen: " + err); return; }
+
+    await sb.from("crm_agent_runs").update({
+      status: "done", approved_at: new Date().toISOString(), applied_at: new Date().toISOString()
+    }).eq("id", runId);
+    pushChat("agent", "Freigegeben — " + applied + (applied === 1 ? " Eintrag" : " Einträge") + " übernommen.");
+    await refreshRuns();
+  }
+
+  // Anzeigename eines Agenten: bevorzugt aus dem Katalog (gilt damit auch
+  // fuer selbst angelegte Agenten), sonst ein lesbarer Fallback.
+  var RUN_LABEL_FALLBACK = {
+    find_leads: "Lead-Suche", qualify_leads: "Bewertung",
+    lead_qualify: "Bewertung", find_contacts: "Ansprechpartner",
+    choose_campaign: "Kampagne"
+  };
+  function runLabel(key) {
+    var a = CATALOG.filter(function (x) { return x.agent_key === key; })[0];
+    if (a && a.name) return a.name;
+    return RUN_LABEL_FALLBACK[key] || key;
+  }
+
   function runStatus(s) {
     return s === "queued" ? "Wartet" : s === "running" ? "Läuft" : s === "done" ? "Fertig"
+      : s === "awaiting_approval" ? "Freigabe nötig"
       : s === "error" ? "Fehler" : s === "discarded" ? "Verworfen" : s;
   }
 
   // Play auf einer Kachel: je nach Agent unterschiedlicher Start
   async function startRun(agentKey) {
     if (!canWrite || !ACTIVE) return;
-    if (agentKey === "qualify_leads") return startQualify();
+    if (agentKey === "qualify_leads") return startQualify("qualify_leads");
+    if (agentKey === "find_contacts") return startQualify("find_contacts");
     if (agentKey === "find_leads") return openCriteria();
   }
 
-  async function startQualify() {
+  var LEAD_PICK_MODE = "qualify_leads";
+  async function startQualify(mode) {
+    LEAD_PICK_MODE = mode || "qualify_leads";
     var open = B.lcOpen().map(function (s) { return s[0]; });   // lead..negotiation
     var res = await sb.from("v_crm_institution_stage").select("*");
     OPEN_LEADS = data(res).filter(function (i) { return open.indexOf(i.lifecycle_stage) >= 0; });
@@ -734,26 +818,30 @@
     closeLeadModal();
 
     $("run-card").style.display = "";
-    $("run-title").textContent = "Auftrag · Bewertung " + inst.name;
+    $("run-title").textContent = "Auftrag · " + (LEAD_PICK_MODE === "find_contacts" ? "Ansprechpartner " : "Bewertung ") + inst.name;
     $("run-chat").innerHTML = "";
     $("run-result").style.display = "none"; $("run-result").innerHTML = "";
 
-    var agentRow = ACTIVE_AGENTS.map(function (ea) { return agentById(ea.agent_id); }).filter(function (a) { return a && a.agent_key === "qualify_leads"; })[0];
+    var wantKey = LEAD_PICK_MODE;
+    var agentRow = ACTIVE_AGENTS.map(function (ea) { return agentById(ea.agent_id); }).filter(function (a) { return a && a.agent_key === wantKey; })[0];
     var input = {
       employeeName: ACTIVE.name, employeeDescription: ACTIVE.description,
       memory: ACTIVE_MEM.map(function (m) { return m.content; }),
       institution: {
         id: institutionId, name: inst.name, city: inst.city, state: inst.state,
-        type: inst.type, website: inst.website, stage: inst.lifecycle_stage
+        type: inst.type, website: inst.website, stage: inst.lifecycle_stage,
+        postal_code: inst.postal_code
       }
     };
     var runIns = await sb.from("crm_agent_runs").insert({
-      employee_id: ACTIVE.id, agent_id: agentRow ? agentRow.id : null, agent_key: "qualify_leads",
+      employee_id: ACTIVE.id, agent_id: agentRow ? agentRow.id : null, agent_key: wantKey,
       institution_id: institutionId, status: "queued", input: input
     }).select("id").single();
 
     if (runIns.error) { pushChat("system", "Auftrag konnte nicht eingereiht werden: " + runIns.error.message); return; }
-    pushChat("agent", ACTIVE.name + " bewertet „" + inst.name + "\" im Hintergrund. Das Ergebnis erscheint automatisch an der Schule, sobald ich fertig bin.");
+    pushChat("agent", ACTIVE.name + (wantKey === "find_contacts"
+      ? " sucht Ansprechpartner für „" + inst.name + "\" im Hintergrund."
+      : " bewertet „" + inst.name + "\" im Hintergrund. Das Ergebnis erscheint automatisch an der Schule, sobald ich fertig bin."));
     pushChat("system", "Der Auftrag läuft. Du kannst die Seite schließen.");
     await refreshRuns();
   }

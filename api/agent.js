@@ -290,6 +290,18 @@ KEINE Aufgaben, keine Inhalte, keine Bilder – nur diese Outline. Halte dich ku
   }
 
   // ================================================================
+  // AGENT: Ansprechpartner suchen (find_contacts)
+  // Sucht per Websuche auf der Schulwebsite nach Schulleitung,
+  // Digitalisierungs-/IT-Koordination und Sekretariat.
+  // Namen NUR mit Beleg-URL; ohne Quelle bleibt die Rolle stehen.
+  // Erwartet: { agentType:"find_contacts", institution:{...},
+  //             existingContacts:[...], employeeName, ... }
+  // ================================================================
+  if (agentType === 'find_contacts') {
+    return handleFindContacts(req, res, ANTHROPIC_API_KEY);
+  }
+
+  // ================================================================
   // SONDERFALL: Lernreisen-Generator (journey_builder)
   // Eigener Zweig – nutzt ein stärkeres Modell und viele Tokens und gibt
   // ein journey-Objekt zurück (NICHT message/ui_updates). Der bestehende
@@ -1094,15 +1106,27 @@ Struktur:
      "name": string,             // offizieller Schulname
      "school_type": string,      // Schulform, wenn erkennbar
      "city": string,
+     "state": string,            // Bundesland, wenn erkennbar (z. B. "Rheinland-Pfalz")
      "postal_code": string,      // wenn auffindbar, sonst ""
      "street": string,           // wenn auffindbar, sonst ""
      "website": string,          // echte URL der Schule
      "source_url": string,       // Beleg: wo du die Schule gefunden hast (Pflicht)
-     "why": string               // 1 Satz: warum passender Lead
+     "why": string,              // 1 Satz: warum passender Lead
+     "contacts": [               // Ansprechpartner. WICHTIGE REGELN:
+       {                         // - role IMMER (Funktion, z. B. "Schulleitung", "Sekretariat", "IT-Beauftragte/r")
+         "role": string,         // - name NUR wenn durch eine echte Quelle belegt, sonst ""
+         "name": string,         // - bevorzugt allgemeine Schul-/Sekretariats-E-Mail, keine erfundenen Personenadressen
+         "email": string,        // - source_url PFLICHT, wenn ein name gesetzt ist (Beleg fuer die Person)
+         "phone": string,
+         "source_url": string
+       }
+     ]
    }
  ],
  "narration": [string, ...]      // 3-6 kurze Ich-Sätze zum Suchverlauf (freundlich)
 }
+Kontakt-Regeln strikt beachten: Erfinde NIEMALS Personennamen. Wenn du keinen belegten Namen
+findest, gib nur die Funktion (role) und ggf. die allgemeine Schul-E-Mail an. Das ist voellig ok.
 Gib höchstens ${maxLeads} Schulen zurück. Lieber wenige gut belegte als viele unsichere.`;
 
   const critText = critLines.length ? critLines.join('\n') : '(keine spezifischen Kriterien — schlage sinnvolle Leads vor)';
@@ -1170,18 +1194,37 @@ Gib höchstens ${maxLeads} Schulen zurück. Lieber wenige gut belegte als viele 
     // Normalisieren + harte Beleg-Pflicht: ohne source_url kein Lead
     const arr = x => Array.isArray(x) ? x.filter(v => v != null) : [];
     const isUrl = s => typeof s === 'string' && /^https?:\/\/.+/i.test(s.trim());
+    // Kontakte säubern: role immer; name NUR mit Beleg-URL (DSGVO/Erfindungsschutz)
+    const cleanContacts = function (raw) {
+      return arr(raw).map(function (c) {
+        var name = String((c && c.name) || '').trim();
+        var srcUrl = String((c && c.source_url) || '').trim();
+        // Name nur behalten, wenn belegt; sonst verwerfen (Rolle bleibt)
+        if (name && !isUrl(srcUrl)) name = '';
+        return {
+          role: String((c && c.role) || '').trim(),
+          name: name,
+          email: String((c && c.email) || '').trim(),
+          phone: String((c && c.phone) || '').trim(),
+          source_url: isUrl(srcUrl) ? srcUrl.trim() : ''
+        };
+      }).filter(function (c) { return c.role || c.name || c.email; })   // leere Einträge raus
+        .slice(0, 8);
+    };
     let leads = arr(parsed.leads).map(function (x) {
       return {
         name: String(x.name || '').trim(),
         school_type: String(x.school_type || '').trim(),
         city: String(x.city || '').trim(),
+        state: String(x.state || '').trim(),
         postal_code: String(x.postal_code || '').trim(),
         street: String(x.street || '').trim(),
         website: String(x.website || '').trim(),
         source_url: String(x.source_url || '').trim(),
-        why: String(x.why || '').trim()
+        why: String(x.why || '').trim(),
+        contacts: cleanContacts(x.contacts)
       };
-    }).filter(function (x) { return x.name && isUrl(x.source_url); });   // Beleg-Pflicht
+    }).filter(function (x) { return x.name && isUrl(x.source_url); });   // Beleg-Pflicht (Schule)
 
     // Dubletten gegen existing (name|plz, case-insensitiv) raus
     const existKeys = {};
@@ -1234,5 +1277,165 @@ Gib höchstens ${maxLeads} Schulen zurück. Lieber wenige gut belegte als viele 
   } catch (err) {
     console.error('find_leads Fehler:', err);
     return res.status(500).json({ error: 'Unerwarteter Fehler bei der Lead-Suche.' });
+  }
+}
+
+// ================================================================
+// AGENT-HANDLER: Ansprechpartner suchen (find_contacts)
+// Sucht gezielt auf der Website EINER Schule nach Ansprechpartnern.
+// Personennamen sind heikel: NUR mit Beleg-URL uebernehmen, sonst
+// bleibt nur die Funktion stehen. Keine erfundenen Namen.
+// ================================================================
+async function handleFindContacts(req, res, ANTHROPIC_API_KEY) {
+  const b = req.body || {};
+  const inst = b.institution || {};
+  if (!inst.name) return res.status(400).json({ error: 'Keine Institution übergeben.' });
+
+  const empName = (b.employeeName || 'Der Sales-Agent').toString().slice(0, 120);
+  const empDesc = (b.employeeDescription || '').toString().slice(0, 2000);
+  const existing = Array.isArray(b.existingContacts) ? b.existingContacts.slice(0, 50) : [];
+
+  const SYSTEM = `Du bist ${empName}, ein virtueller Sales-Agent für die Lernplattform TONI.
+${empDesc ? 'Deine Persönlichkeit/Kompetenz: ' + empDesc : ''}
+
+Aufgabe: Finde die Ansprechpartner EINER bestimmten Schule.
+Besonders wichtig sind: Schulleitung, stellvertretende Schulleitung,
+Digitalisierungs-/IT-Koordination (oft "Medienkoordinator", "IT-Beauftragter",
+"Digitalbeauftragte"), sowie das Sekretariat.
+
+Nutze IMMER die Websuche. Suche gezielt auf der Website der Schule
+(Impressum, "Kollegium", "Schulleitung", "Ansprechpartner", "Kontakt", "Team").
+
+STRIKTE REGELN zu Personendaten:
+- Erfinde NIEMALS Personennamen. Wenn du keinen belegten Namen findest,
+  gib nur die Funktion (role) an — das ist voellig in Ordnung.
+- Ein "name" darf nur gesetzt werden, wenn du ihn auf einer konkreten,
+  aufrufbaren Seite gefunden hast. Diese URL gehoert in "source_url".
+- Bevorzugte E-Mail: die allgemeine Schul-/Sekretariatsadresse. Persoenliche
+  Adressen nur, wenn sie oeffentlich auf der Schulseite stehen.
+- Keine privaten Adressen, keine Telefonnummern von Privatanschluessen.
+
+Gib deine ENDGUELTIGE Antwort als EIN JSON-Objekt aus — kein Markdown,
+keine Code-Fences, kein Text davor/danach. Nur ASCII-Satzzeichen.
+
+Struktur:
+{
+ "contacts": [
+   {
+     "role": string,        // Funktion, PFLICHT (z. B. "Schulleitung")
+     "name": string,        // nur wenn belegt, sonst ""
+     "email": string,       // wenn oeffentlich auffindbar, sonst ""
+     "phone": string,
+     "source_url": string,  // PFLICHT wenn name gesetzt ist
+     "is_decision_maker": boolean,   // Schulleitung = true
+     "note": string         // 1 kurzer Satz, warum relevant
+   }
+ ],
+ "narration": [string, ...]   // 3-5 kurze Ich-Saetze zum Suchverlauf
+}
+Hoechstens 6 Ansprechpartner. Lieber wenige belegte als viele unsichere.`;
+
+  const exclude = existing.length
+    ? `\n\nDiese Ansprechpartner sind bereits bekannt (nicht erneut vorschlagen):\n${existing.map(String).join('\n')}`
+    : '';
+  const userPrompt = `Suche die Ansprechpartner dieser Schule:
+
+Name: ${inst.name}
+${inst.city ? 'Ort: ' + inst.city : ''}
+${inst.postal_code ? 'PLZ: ' + inst.postal_code : ''}
+${inst.website ? 'Website: ' + inst.website : ''}${exclude}`;
+
+  const model = process.env.TONI_AI_FINDCONTACTS_MODEL || 'claude-sonnet-4-6';
+  let messages = [{ role: 'user', content: userPrompt }];
+  let finalText = '', totalIn = 0, totalOut = 0, searchCount = 0;
+
+  try {
+    for (let round = 0; round < 5; round++) {
+      const aiResp = await fetch('https://api.anthropic.com/v1/messages', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'x-api-key': ANTHROPIC_API_KEY, 'anthropic-version': '2023-06-01' },
+        body: JSON.stringify({
+          model, max_tokens: 2500, system: SYSTEM, messages,
+          tools: [{ type: 'web_search_20250305', name: 'web_search', max_uses: 6 }]
+        })
+      });
+      if (!aiResp.ok) {
+        const detail = await aiResp.text().catch(() => '');
+        console.error('find_contacts Claude-Fehler:', detail.slice(0, 400));
+        if (/web_search|tool/i.test(detail) && /not|disabled|permission|invalid/i.test(detail))
+          return res.status(400).json({ error: 'Die Websuche ist für diesen Account nicht aktiviert.' });
+        return res.status(502).json({ error: 'KI-Dienst nicht erreichbar.' });
+      }
+      const data = await aiResp.json();
+      if (data.usage) { totalIn += data.usage.input_tokens || 0; totalOut += data.usage.output_tokens || 0; }
+      (data.content || []).forEach(bl => { if (bl && bl.type === 'server_tool_use' && bl.name === 'web_search') searchCount++; });
+      const txt = (data.content || []).map(bl => (bl && bl.type === 'text' ? bl.text : '')).join('');
+      if (txt) finalText = txt;
+      if (data.stop_reason === 'pause_turn') { messages.push({ role: 'assistant', content: data.content }); continue; }
+      break;
+    }
+
+    let text = finalText.trim().replace(/^```(?:json)?/i, '').replace(/```$/i, '').trim();
+    const f = text.indexOf('{'), l = text.lastIndexOf('}');
+    if (f !== -1 && l !== -1) text = text.slice(f, l + 1);
+    let parsed;
+    try { parsed = JSON.parse(text); }
+    catch (e) {
+      try { parsed = JSON.parse(text.replace(/[\u0000-\u0008\u000B\u000C\u000E-\u001F]/g, '')); }
+      catch (e2) { return res.status(422).json({ error: 'Die Ergebnisse waren kein gültiges JSON.' }); }
+    }
+
+    const arr = x => Array.isArray(x) ? x.filter(v => v != null) : [];
+    const isUrl = s => typeof s === 'string' && /^https?:\/\/.+/i.test(s.trim());
+    const contacts = arr(parsed.contacts).map(function (c) {
+      let name = String((c && c.name) || '').trim();
+      const src = String((c && c.source_url) || '').trim();
+      // Name nur mit Beleg (DSGVO + Erfindungsschutz)
+      if (name && !isUrl(src)) name = '';
+      return {
+        role: String((c && c.role) || '').trim(),
+        name: name,
+        email: String((c && c.email) || '').trim(),
+        phone: String((c && c.phone) || '').trim(),
+        source_url: isUrl(src) ? src.trim() : '',
+        is_decision_maker: !!(c && c.is_decision_maker),
+        note: String((c && c.note) || '').trim()
+      };
+    }).filter(function (c) { return c.role || c.name || c.email; }).slice(0, 6);
+
+    const narration = arr(parsed.narration).map(String).slice(0, 5);
+    const chat = [];
+    chat.push({ role: 'agent', content: 'Ich sehe mir die Website von „' + inst.name + '" an …' });
+    narration.forEach(n => chat.push({ role: 'agent', content: n }));
+    const named = contacts.filter(c => c.name).length;
+    chat.push({ role: 'agent', content: contacts.length
+      ? ('Ich habe ' + contacts.length + ' Ansprechpartner gefunden, davon ' + named + ' mit belegtem Namen.')
+      : 'Ich konnte keine Ansprechpartner belegen.' });
+
+    const usdToEur = await getUsdToEur();
+    const p = AI_PRICING[model] || { in: 0, out: 0 };
+    const cost_usd = Number((totalIn * p.in + totalOut * p.out + searchCount * 0.01).toFixed(5));
+    const cost_eur = (usdToEur != null) ? Number((cost_usd * usdToEur).toFixed(5)) : null;
+
+    try {
+      const SUPABASE_URL = process.env.SUPABASE_URL, SERVICE_ROLE_KEY = process.env.SUPABASE_SERVICE_ROLE_KEY;
+      if (SUPABASE_URL && SERVICE_ROLE_KEY) {
+        await fetch(`${SUPABASE_URL}/rest/v1/ai_usage_log`, {
+          method: 'POST',
+          headers: { apikey: SERVICE_ROLE_KEY, Authorization: `Bearer ${SERVICE_ROLE_KEY}`, 'Content-Type': 'application/json', Prefer: 'return=minimal' },
+          body: JSON.stringify({ agent: 'find_contacts', model, input_tokens: totalIn, output_tokens: totalOut,
+            cost_usd, cost_eur, employee_id: b.employeeId || null })
+        });
+      }
+    } catch (e) { console.error('find_contacts Kostenlog (ignoriert):', e && e.message); }
+
+    return res.status(200).json({
+      result: { contacts: contacts, institution_id: inst.id, institution_name: inst.name },
+      chat,
+      usage: { input_tokens: totalIn, output_tokens: totalOut, searches: searchCount, cost_usd, cost_eur }
+    });
+  } catch (err) {
+    console.error('find_contacts Fehler:', err);
+    return res.status(500).json({ error: 'Unerwarteter Fehler bei der Kontaktsuche.' });
   }
 }

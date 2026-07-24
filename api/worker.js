@@ -86,7 +86,7 @@ async function saveChat(runId, chat) {
 // --- Job-Typen -------------------------------------------------
 
 // find_leads: Agent rufen, Treffer in crm_query schreiben
-async function runFindLeads(job, ANTHROPIC_API_KEY) {
+async function runFindLeads(job, ANTHROPIC_API_KEY, needsApproval) {
   const input = job.input || {};
   const existing = await loadExisting();
   const payload = {
@@ -122,6 +122,12 @@ async function runFindLeads(job, ANTHROPIC_API_KEY) {
       found_by: job.employee_id || null, run_id: job.id, dedup_key: key
     });
   });
+  if (needsApproval) {
+    // Freigabe nötig: nichts schreiben, Rohdaten zur Bestätigung ablegen
+    await parkForApproval(job, { kind: 'query_rows', rows: rows },
+      { found: leads.length, pending: rows.length });
+    return { parked: true };
+  }
   if (rows.length) {
     await sb('crm_query', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify(rows) });
   }
@@ -130,7 +136,7 @@ async function runFindLeads(job, ANTHROPIC_API_KEY) {
 
 // lead_qualify: Agent rufen, Ergebnis an die Schule schreiben (auto-apply,
 // da im Hintergrund niemand "Übernehmen" klickt). Bewertung ist reversibel.
-async function runLeadQualify(job, ANTHROPIC_API_KEY) {
+async function runLeadQualify(job, ANTHROPIC_API_KEY, needsApproval) {
   const input = job.input || {};
 
   // Geplanter Auftrag ohne feste Schule: die naechsten noch unbewerteten
@@ -156,7 +162,7 @@ async function runLeadQualify(job, ANTHROPIC_API_KEY) {
       try {
         await qualifyOne(job, {
           id: inst.id, name: inst.name, city: inst.city, stage: t.lifecycle_stage
-        });
+        }, needsApproval);
         rated++;
       } catch (e) { console.error('qualify (geplant) fehlgeschlagen:', e && e.message); }
     }
@@ -164,12 +170,125 @@ async function runLeadQualify(job, ANTHROPIC_API_KEY) {
   }
 
   if (!input.institution) throw new Error('lead_qualify: keine institution im input');
-  const out = await qualifyOne(job, input.institution);
+  const out = await qualifyOne(job, input.institution, needsApproval);
   return out;
 }
 
-// Eine einzelne Schule bewerten und das Ergebnis anschreiben
-async function qualifyOne(job, institution) {
+// find_contacts: Ansprechpartner einer Schule suchen und anlegen.
+// Vermerkt, WER sie gefunden hat; verified bleibt false bis zur Prüfung.
+async function runFindContacts(job, ANTHROPIC_API_KEY, needsApproval) {
+  const input = job.input || {};
+  let institution = input.institution;
+
+  // Geplanter Auftrag ohne feste Schule: Leads ohne Ansprechpartner nehmen
+  if (!institution && input.mode === 'missing_contacts') {
+    const limit = Math.max(1, Math.min(10, Number(input.maxItems) || 5));
+    let picked = [];
+    try {
+      const r = await sb(`crm_institution_details?select=institution_id&limit=${limit * 4}`, {});
+      if (r.ok) {
+        const cand = await r.json();
+        for (const c of cand) {
+          const rc = await sb(`crm_contacts?select=id&institution_id=eq.${c.institution_id}&limit=1`, {});
+          const has = rc.ok ? (await rc.json()).length > 0 : true;
+          if (!has) picked.push(c.institution_id);
+          if (picked.length >= limit) break;
+        }
+      }
+    } catch (e) {}
+    if (!picked.length) return { result: { searched: 0, note: 'alle Leads haben Kontakte' }, usage: {} };
+
+    let total = 0;
+    for (const instId of picked) {
+      try {
+        const ri = await sb(`institutions?select=id,name,city,postal_code&id=eq.${instId}`, {});
+        const arr = ri.ok ? await ri.json() : [];
+        if (!arr[0]) continue;
+        const r = await contactsForOne(job, arr[0], needsApproval);
+        total += (r && r.added) || 0;
+      } catch (e) { console.error('find_contacts (geplant):', e && e.message); }
+    }
+    return { result: { contacts_added: total, institutions: picked.length }, usage: {} };
+  }
+
+  if (!institution) throw new Error('find_contacts: keine institution im input');
+  const out = await contactsForOne(job, institution, needsApproval);
+  if (out && out.parked) return { parked: true };
+  return { result: { contacts_added: out.added, institution_name: institution.name }, usage: out.usage || {} };
+}
+
+// Kontakte für EINE Schule suchen und (falls erlaubt) anlegen
+async function contactsForOne(job, institution, needsApproval) {
+  const input = job.input || {};
+
+  // Website + bereits bekannte Kontakte nachladen
+  let website = institution.website || null;
+  if (!website) {
+    try {
+      const rd = await sb(`crm_institution_details?select=website&institution_id=eq.${institution.id}`, {});
+      if (rd.ok) { const d = await rd.json(); if (d && d[0]) website = d[0].website; }
+    } catch (e) {}
+  }
+  let existingContacts = [];
+  try {
+    const rc = await sb(`crm_contacts?select=first_name,last_name,role&institution_id=eq.${institution.id}`, {});
+    if (rc.ok) existingContacts = (await rc.json()).map(c =>
+      [c.first_name, c.last_name].filter(Boolean).join(' ') + (c.role ? ' (' + c.role + ')' : ''));
+  } catch (e) {}
+
+  const payload = {
+    agentType: 'find_contacts',
+    employeeId: job.employee_id,
+    employeeName: input.employeeName, employeeDescription: input.employeeDescription,
+    institution: {
+      id: institution.id, name: institution.name, city: institution.city,
+      postal_code: institution.postal_code, website: website
+    },
+    existingContacts
+  };
+  const resp = await fetch(agentEndpoint(), {
+    method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
+  });
+  if (!resp.ok) {
+    const t = await resp.text().catch(() => '');
+    throw new Error(`agent find_contacts: ${resp.status} ${t.slice(0, 200)}`);
+  }
+  const out = await resp.json();
+  await saveChat(job.id, out.chat);
+
+  const found = (out.result && out.result.contacts) || [];
+  if (!found.length) return { added: 0, usage: out.usage || {} };
+
+  const rows = found.map(c => {
+    const parts = (c.name || '').trim().split(/\s+/);
+    const last = parts.length > 1 ? parts.pop() : (parts[0] || '');
+    const first = parts.join(' ');
+    return {
+      institution_id: institution.id,
+      first_name: first || null, last_name: last || null,
+      role: c.role || null, email: c.email || null, phone: c.phone || null,
+      is_decision_maker: !!c.is_decision_maker,
+      source: 'public_website', source_url: c.source_url || null,
+      consent_status: 'unknown', do_not_contact: false,
+      // Herkunft: wer hat gefunden
+      found_by_employee: job.employee_id || null,
+      found_at: new Date().toISOString(),
+      found_run_id: job.id,
+      verified: false
+    };
+  });
+
+  if (needsApproval) {
+    await parkForApproval(job, { kind: 'contacts', institution_id: institution.id,
+      institution_name: institution.name, rows: rows },
+      { found: rows.length, institution_name: institution.name });
+    return { parked: true };
+  }
+
+  await sb('crm_contacts', { method: 'POST', headers: { Prefer: 'return=minimal' }, body: JSON.stringify(rows) });
+  return { added: rows.length, usage: out.usage || {} };
+}
+async function qualifyOne(job, institution, needsApproval) {
   const input = job.input || {};
   const payload = {
     agentType: 'lead_qualify',
@@ -189,13 +308,21 @@ async function qualifyOne(job, institution) {
 
   const r = out.result || {};
   const instId = institution.id;
+  const qual = {
+    lead_score: r.lead_score, toni_fit: r.toni_fit, confidence: r.confidence,
+    identified_needs: r.identified_needs, likely_objections: r.likely_objections,
+    digital_signals: r.digital_signals
+  };
+  const assess = { customer_summary: r.customer_summary, main_risk: r.main_risk, recommended_actions: r.recommended_actions };
+
+  if (needsApproval) {
+    await parkForApproval(job,
+      { kind: 'qualification', institution_id: instId, institution_name: institution.name, qualification: qual, assessment: assess },
+      { lead_score: r.lead_score, toni_fit: r.toni_fit, institution_name: institution.name });
+    return { parked: true };
+  }
+
   if (instId) {
-    const qual = {
-      lead_score: r.lead_score, toni_fit: r.toni_fit, confidence: r.confidence,
-      identified_needs: r.identified_needs, likely_objections: r.likely_objections,
-      digital_signals: r.digital_signals
-    };
-    const assess = { customer_summary: r.customer_summary, main_risk: r.main_risk, recommended_actions: r.recommended_actions };
     await sb(`crm_institution_details?institution_id=eq.${instId}`, {
       method: 'PATCH', headers: { Prefer: 'return=minimal' },
       body: JSON.stringify({
@@ -208,17 +335,52 @@ async function qualifyOne(job, institution) {
   return { result: r, usage: out.usage || {} };
 }
 
+// Autonomiestufe des Agenten zu einem Job ermitteln.
+// 'approval' => Ergebnis wird NICHT direkt angewendet, sondern zur
+// Freigabe abgelegt. 'autonomous'/'rule_based' => wie bisher.
+async function agentAutonomy(job) {
+  // Zeitplan/Frontend liefern agent_id; sonst über agent_key nachschlagen
+  try {
+    if (job.agent_id) {
+      const r = await sb(`crm_agents?select=autonomy&id=eq.${job.agent_id}`, {});
+      if (r.ok) { const a = await r.json(); if (a && a[0]) return a[0].autonomy; }
+    }
+    if (job.agent_key) {
+      const r2 = await sb(`crm_agents?select=autonomy&agent_key=eq.${encodeURIComponent(job.agent_key)}`, {});
+      if (r2.ok) { const a2 = await r2.json(); if (a2 && a2[0]) return a2[0].autonomy; }
+    }
+  } catch (e) { /* im Zweifel wie bisher weiterarbeiten */ }
+  return null;
+}
+
+// Ergebnis zur Freigabe ablegen statt anzuwenden
+async function parkForApproval(job, payload, summary) {
+  await finishRun(job.id, {
+    status: 'awaiting_approval',
+    pending_payload: payload,
+    result: summary || {},
+    finished_at: new Date().toISOString()
+  });
+}
+
 async function processJob(job, ANTHROPIC_API_KEY) {
   try {
     const key = job.agent_key;
+    const autonomy = await agentAutonomy(job);
+    const needsApproval = (autonomy === 'approval');
     let res;
     // Katalog-Schlüssel ist 'qualify_leads'; 'lead_qualify' (agentType) wird
     // aus Toleranz ebenfalls akzeptiert, damit Alt-Aufträge nicht scheitern.
-    if (key === 'find_leads') res = await runFindLeads(job, ANTHROPIC_API_KEY);
-    else if (key === 'qualify_leads' || key === 'lead_qualify') res = await runLeadQualify(job, ANTHROPIC_API_KEY);
+    if (key === 'find_leads') res = await runFindLeads(job, ANTHROPIC_API_KEY, needsApproval);
+    else if (key === 'qualify_leads' || key === 'lead_qualify') res = await runLeadQualify(job, ANTHROPIC_API_KEY, needsApproval);
+    else if (key === 'find_contacts') res = await runFindContacts(job, ANTHROPIC_API_KEY, needsApproval);
     else throw new Error(`unbekannter agent_key: ${key}`);
 
-    await finishRun(job.id, { status: 'done', result: res.result || {}, finished_at: new Date().toISOString() });
+    // Wenn der Agent das Ergebnis zur Freigabe geparkt hat, ist der Lauf
+    // bereits auf 'awaiting_approval' gesetzt worden.
+    if (res && res.parked) return { id: job.id, ok: true, parked: true };
+
+    await finishRun(job.id, { status: 'done', result: (res && res.result) || {}, finished_at: new Date().toISOString() });
     return { id: job.id, ok: true };
   } catch (e) {
     await finishRun(job.id, { status: 'error', error_text: String(e && e.message || e).slice(0, 500), finished_at: new Date().toISOString() });

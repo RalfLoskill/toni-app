@@ -32,7 +32,7 @@
     var r = await Promise.all([
       sb.from("institutions").select("id,name,city,postal_code,street").eq("id", ID).single(),
       sb.from("crm_institution_details").select("*").eq("institution_id", ID).maybeSingle(),
-      sb.from("crm_contacts").select("*").eq("institution_id", ID).order("is_primary_contact", { ascending: false }),
+      sb.from("v_crm_contacts_provenance").select("*").eq("institution_id", ID).order("is_primary_contact", { ascending: false }),
       sb.from("crm_subscriptions").select("*").eq("institution_id", ID).order("created_at", { ascending: false }).limit(1),
       sb.from("v_crm_institution_usage").select("*").eq("institution_id", ID).maybeSingle(),
       sb.from("crm_activities").select("*").eq("institution_id", ID).order("created_at", { ascending: false }).limit(20)
@@ -256,16 +256,48 @@
           '" style="background:' + B.consentColor(cs) + '"></span>');
       }
       if (c.do_not_contact) tags.push('<span class="pill high">Gesperrt</span>');
+      // Von einem Agenten gefunden? -> Herkunft + Verifizierung anzeigen
+      var prov = "";
+      if (c.found_by_employee || c.found_at) {
+        var who = c.found_by_name ? B.esc(c.found_by_name) : "einem Agenten";
+        prov = '<div class="con-prov">gefunden von ' + who +
+          (c.found_at ? ' · ' + B.ddmm(c.found_at) : "") +
+          (c.source_url ? ' · <a href="' + B.esc(c.source_url) + '" target="_blank" rel="noopener">Beleg ↗</a>' : "") +
+          '</div>';
+      }
+      if (c.verified) {
+        tags.push('<span class="pill ok" title="Von einem Menschen geprüft">✓ Verifiziert</span>');
+      } else if (c.found_by_employee) {
+        tags.push('<span class="pill warn">Ungeprüft</span>');
+      }
+      var verifyBtn = (canDel && !c.verified && c.found_by_employee)
+        ? ' <button class="con-verify" data-id="' + c.id + '" title="Als geprüft markieren">✓</button>' : "";
       return '<div class="row"><div class="main"><div class="t">' + B.esc(name) +
         (c.role ? ' · <span style="color:var(--muted);font-weight:400">' + B.esc(c.role) + '</span>' : "") + '</div>' +
-        '<div class="s">' + B.esc([c.email, c.phone].filter(Boolean).join(" · ") || "—") + '</div></div>' +
-        tags.join(" ") +
+        '<div class="s">' + B.esc([c.email, c.phone].filter(Boolean).join(" · ") || "—") + '</div>' +
+        prov + '</div>' +
+        tags.join(" ") + verifyBtn +
         (canDel ? ' <button class="con-del" data-id="' + c.id + '" title="Ansprechpartner löschen" aria-label="Löschen">×</button>' : "") +
         '</div>';
     }).join("");
     Array.prototype.forEach.call($("contacts").querySelectorAll(".con-del"), function (btn) {
       btn.addEventListener("click", function () { deleteContact(btn.getAttribute("data-id")); });
     });
+    Array.prototype.forEach.call($("contacts").querySelectorAll(".con-verify"), function (btn) {
+      btn.addEventListener("click", function () { verifyContact(btn.getAttribute("data-id")); });
+    });
+  }
+
+  // Ansprechpartner als geprüft markieren (Mensch bestätigt die Agentendaten)
+  async function verifyContact(cid) {
+    if (!B.canWriteCustomers(ROLE)) return;
+    var u = null;
+    try { var g = await sb.auth.getUser(); u = g && g.data && g.data.user ? g.data.user.id : null; } catch (e) {}
+    var res = await sb.from("crm_contacts").update({
+      verified: true, verified_at: new Date().toISOString(), verified_by: u
+    }).eq("id", cid);
+    if (res.error) { console.warn(res.error.message); return; }
+    await refreshAll();
   }
 
   async function deleteContact(cid) {

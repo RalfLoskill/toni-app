@@ -447,3 +447,17 @@ input[readonly]{background:#f7f8fb;color:var(--muted);cursor:not-allowed}
 .sched-when{color:var(--ink)}
 .sched-next{color:var(--muted);font-size:12px;margin-left:auto}
 .sched-row .btn{flex:0 0 auto}
+
+/* Freigabe-Zeilen in der Aufträge-Liste */
+.run-st.awaiting_approval{background:#fef3c7;color:#b45309}
+.run-row.approval{background:#fffbeb;border:1px solid #fde68a}
+.run-actions{display:inline-flex;gap:6px;margin-left:8px;flex:0 0 auto}
+
+/* Herkunft/Verifizierung bei Ansprechpartnern */
+.con-prov{font-size:11px;color:var(--muted);margin-top:3px}
+.con-prov a{color:var(--accent);font-weight:600}
+.con-verify{border:1px solid var(--good);background:#dcfce7;color:var(--good);
+  border-radius:6px;width:26px;height:26px;cursor:pointer;font-weight:700;flex:0 0 auto}
+.con-verify:hover{background:#bbf7d0}
+.pill.ok{background:#dcfce7;color:var(--good)}
+.pill.warn{background:#fef3c7;color:#b45309}
