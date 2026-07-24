@@ -3,8 +3,8 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Aktionen · Toni Business Center</title>
-<link rel="stylesheet" href="business.css?v=15">
+<title>Agenten · Toni Business Center</title>
+<link rel="stylesheet" href="business.css?v=17">
 </head>
 <body>
 
@@ -29,7 +29,7 @@
 <div class="bc-wrap" id="bc-app" style="display:none">
   <div class="bc-head">
     <div>
-      <h1>Aktionen</h1>
+      <h1>Agenten</h1>
       <div class="sub">Die Fähigkeiten (Agenten), die Mitarbeiter ausführen können</div>
     </div>
     <div style="display:flex;align-items:center;gap:10px">
@@ -42,7 +42,7 @@
 
   <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;gap:10px;flex-wrap:wrap">
     <p class="agents-hint" id="agents-hint"></p>
-    <button class="btn" id="agent-new" style="display:none">+ Neue Aktion</button>
+    <button class="btn" id="agent-new" style="display:none">+ Neuer Agent</button>
   </div>
 
   <div id="agents-grid" class="agents-grid">
@@ -53,12 +53,12 @@
 <!-- Modal: Agent bearbeiten / neu -->
 <div class="modal-back" id="ag-modal" style="display:none">
   <div class="modal">
-    <h3 id="ag-modal-title">Aktion bearbeiten</h3>
+    <h3 id="ag-modal-title">Agent bearbeiten</h3>
 
     <div class="field" id="ag-key-wrap">
       <label>Technischer Schlüssel</label>
       <input id="ag-key" type="text" placeholder="z. B. find_leads">
-      <div class="field-hint" id="ag-key-hint">Verbindet die Aktion mit dem Programmcode. Nach dem Anlegen nicht mehr änderbar.</div>
+      <div class="field-hint" id="ag-key-hint">Verbindet den Agenten mit dem Programmcode. Nach dem Anlegen nicht mehr änderbar.</div>
     </div>
 
     <div class="field-row">
@@ -67,7 +67,7 @@
     </div>
 
     <div class="field"><label>Beschreibung</label>
-      <textarea id="ag-desc" placeholder="Was diese Aktion tut …"></textarea></div>
+      <textarea id="ag-desc" placeholder="Was dieser Agent tut …"></textarea></div>
 
     <div class="field-row">
       <div class="field"><label>Autonomie</label>
@@ -83,7 +83,7 @@
     <label style="font-size:13px;display:flex;align-items:center;gap:8px;margin-bottom:8px">
       <input id="ag-active" type="checkbox" style="width:auto"> Aktiv (zuordenbar &amp; ausführbar)</label>
     <div class="ag-dev-note" id="ag-dev-note" style="display:none">
-      Neue Aktionen laufen erst, wenn der zugehörige Programmcode existiert. Bis dahin als „inaktiv“ lassen.
+      Neue Agenten laufen erst, wenn der zugehörige Programmcode existiert. Bis dahin als „inaktiv“ lassen.
     </div>
 
     <div id="ag-msg" class="login-msg"></div>
@@ -96,7 +96,7 @@
 
 <script src="/api/config"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="business_common.js?v=10"></script>
-<script src="business_agents.js?v=1"></script>
+<script src="business_common.js?v=11"></script>
+<script src="business_agents.js?v=2"></script>
 </body>
 </html>

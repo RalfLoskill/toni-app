@@ -178,7 +178,7 @@ window.BC = (function () {
                  ["business_query.html", "Query"],
                  ["business_institutions.html", "Institutionen"], ["business_map.html", "Karte"],
                  ["business_employees.html", "Mitarbeiter"],
-                 ["business_agents.html", "Aktionen"]];
+                 ["business_agents.html", "Agenten"]];
     return items.map(function (it) {
       var on = it[0] === active;
       return '<a href="' + it[0] + '" class="bc-nav-link' + (on ? " on" : "") + '">' + it[1] + '</a>';

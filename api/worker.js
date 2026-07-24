@@ -132,12 +132,50 @@ async function runFindLeads(job, ANTHROPIC_API_KEY) {
 // da im Hintergrund niemand "Übernehmen" klickt). Bewertung ist reversibel.
 async function runLeadQualify(job, ANTHROPIC_API_KEY) {
   const input = job.input || {};
+
+  // Geplanter Auftrag ohne feste Schule: die naechsten noch unbewerteten
+  // Leads holen und der Reihe nach bewerten (max. maxItems).
+  if (!input.institution && input.mode === 'unrated') {
+    const limit = Math.max(1, Math.min(25, Number(input.maxItems) || 10));
+    let targets = [];
+    try {
+      const r = await sb(`crm_institution_details?select=institution_id,lifecycle_stage&ai_assessed_at=is.null&limit=${limit}`, {});
+      if (r.ok) targets = await r.json();
+    } catch (e) {}
+    if (!targets.length) return { result: { rated: 0, note: 'keine unbewerteten Leads' }, usage: {} };
+
+    let rated = 0;
+    for (const t of targets) {
+      // Stammdaten der Schule nachladen
+      let inst = null;
+      try {
+        const ri = await sb(`institutions?select=id,name,city&id=eq.${t.institution_id}`, {});
+        if (ri.ok) { const arr = await ri.json(); inst = arr && arr[0]; }
+      } catch (e) {}
+      if (!inst) continue;
+      try {
+        await qualifyOne(job, {
+          id: inst.id, name: inst.name, city: inst.city, stage: t.lifecycle_stage
+        });
+        rated++;
+      } catch (e) { console.error('qualify (geplant) fehlgeschlagen:', e && e.message); }
+    }
+    return { result: { rated: rated }, usage: {} };
+  }
+
   if (!input.institution) throw new Error('lead_qualify: keine institution im input');
+  const out = await qualifyOne(job, input.institution);
+  return out;
+}
+
+// Eine einzelne Schule bewerten und das Ergebnis anschreiben
+async function qualifyOne(job, institution) {
+  const input = job.input || {};
   const payload = {
     agentType: 'lead_qualify',
     employeeId: job.employee_id,
     employeeName: input.employeeName, employeeDescription: input.employeeDescription,
-    memory: input.memory || [], institution: input.institution
+    memory: input.memory || [], institution: institution
   };
   const resp = await fetch(agentEndpoint(), {
     method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload)
@@ -150,7 +188,7 @@ async function runLeadQualify(job, ANTHROPIC_API_KEY) {
   await saveChat(job.id, out.chat);
 
   const r = out.result || {};
-  const instId = input.institution.id;
+  const instId = institution.id;
   if (instId) {
     const qual = {
       lead_score: r.lead_score, toni_fit: r.toni_fit, confidence: r.confidence,

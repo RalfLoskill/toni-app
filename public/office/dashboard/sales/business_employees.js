@@ -78,9 +78,12 @@
     renderEmployeeList();
     renderProfile(ACTIVE);
     resetRunCard();
+    stopRunsPolling(); RUNS_OPEN_KEYS = [];
     await refreshAgentsAndMemory();
     await loadCosts();
     await refreshRuns();
+    await refreshSchedules();
+    var sn = $("sched-new"); if (sn) sn.style.display = canWrite ? "" : "none";
   }
 
   async function refreshAgentsAndMemory() {
@@ -306,6 +309,13 @@
     var ca = $("crit-add"); if (ca) ca.addEventListener("click", addCustomCriterion);
     var cn = $("crit-new"); if (cn) cn.addEventListener("keydown", function (e) { if (e.key === "Enter") addCustomCriterion(); });
     var cm = $("crit-modal"); if (cm) cm.addEventListener("click", function (e) { if (e.target === cm) closeCriteria(); });
+    var sn = $("sched-new"); if (sn) sn.addEventListener("click", function () { openSchedule(null); });
+    var scc = $("sc-cancel"); if (scc) scc.addEventListener("click", closeSchedule);
+    var scs = $("sc-save"); if (scs) scs.addEventListener("click", saveSchedule);
+    var scd = $("sc-delete"); if (scd) scd.addEventListener("click", deleteSchedule);
+    var scr = $("sc-repeat"); if (scr) scr.addEventListener("change", syncScheduleFields);
+    var sca = $("sc-agent"); if (sca) sca.addEventListener("change", syncScheduleFields);
+    var scm = $("sched-modal"); if (scm) scm.addEventListener("click", function (e) { if (e.target === scm) closeSchedule(); });
     var lm = $("lead-modal"); if (lm) lm.addEventListener("click", function (e) { if (e.target === lm) closeLeadModal(); });
     var ad = $("apply-discard"); if (ad) ad.addEventListener("click", discardResult);
     var ac = $("apply-confirm"); if (ac) ac.addEventListener("click", applyResult);
@@ -366,14 +376,31 @@
 
   // Aufträge/Läufe des Mitarbeiters mit Status anzeigen (queued/running/done/error).
   // So sieht man, was im Hintergrund passiert — auch nach Neuladen der Seite.
+  // Aufträge automatisch nachladen, solange welche offen sind.
+  // Kein Dauerpolling: der Timer stoppt, sobald nichts mehr wartet/läuft.
+  var RUNS_TIMER = null;
+  function stopRunsPolling() { if (RUNS_TIMER) { clearInterval(RUNS_TIMER); RUNS_TIMER = null; } }
+  function ensureRunsPolling(hasOpen) {
+    if (hasOpen && !RUNS_TIMER) {
+      RUNS_TIMER = setInterval(function () { refreshRuns(); }, 10000);   // alle 10 s
+    } else if (!hasOpen) {
+      stopRunsPolling();
+    }
+  }
+
   async function refreshRuns() {
-    if (!ACTIVE) return;
+    if (!ACTIVE) { stopRunsPolling(); return; }
     var res = await sb.from("crm_agent_runs").select("*")
       .eq("employee_id", ACTIVE.id).order("created_at", { ascending: false }).limit(8);
     var runs = data(res);
     var box = $("runs-list"); if (!box) return;
-    if (!runs.length) { box.innerHTML = B.empty("Noch keine Aufträge."); return; }
+    if (!runs.length) { box.innerHTML = B.empty("Noch keine Aufträge."); stopRunsPolling(); return; }
+
+    var hasOpen = false;
+    var prevOpen = RUNS_OPEN_KEYS;
+    var openKeys = [];
     box.innerHTML = runs.map(function (r) {
+      if (r.status === "queued" || r.status === "running") { hasOpen = true; openKeys.push(r.id); }
       var label = r.agent_key === "find_leads" ? "Lead-Suche" : (r.agent_key === "qualify_leads" ? "Bewertung" : r.agent_key);
       var st = runStatus(r.status);
       var when = B.ddmm(r.created_at);
@@ -390,7 +417,177 @@
         '<span class="run-st ' + r.status + '">' + st + '</span>' +
         (extra ? '<span class="run-extra">' + extra + '</span>' : "") + '</div>';
     }).join("");
+
+    // Ein Auftrag, der eben noch offen war, ist jetzt fertig -> Kosten neu laden
+    var finished = prevOpen.filter(function (id) { return openKeys.indexOf(id) < 0; });
+    RUNS_OPEN_KEYS = openKeys;
+    if (finished.length) { try { await loadCosts(); } catch (e) {} }
+
+    ensureRunsPolling(hasOpen);
   }
+  var RUNS_OPEN_KEYS = [];
+
+  // ============================================================
+  // Zeitpläne: wiederkehrende Aufträge je Mitarbeiter
+  // ============================================================
+  var SCHEDULES = [], SC_EDIT = null;
+  var WD = ["Sonntag", "Montag", "Dienstag", "Mittwoch", "Donnerstag", "Freitag", "Samstag"];
+
+  async function refreshSchedules() {
+    if (!ACTIVE) return;
+    var res = await sb.from("crm_schedules").select("*")
+      .eq("employee_id", ACTIVE.id).order("created_at", { ascending: true });
+    SCHEDULES = data(res);
+    renderSchedules();
+  }
+
+  function schedText(s) {
+    var t = (s.time_of_day || "").slice(0, 5);
+    if (s.repeat_mode === "once") return "einmalig · " + (s.run_at ? B.ddmm(s.run_at) + " " + hhmm(s.run_at) : "–");
+    if (s.repeat_mode === "daily") return "täglich · " + t + " Uhr";
+    if (s.repeat_mode === "weekly") return "wöchentlich · " + (WD[s.weekday] || "?") + " " + t + " Uhr";
+    if (s.repeat_mode === "monthly") return "monatlich · am " + s.day_of_month + ". " + t + " Uhr";
+    return s.repeat_mode;
+  }
+  function hhmm(iso) {
+    try { var d = new Date(iso); return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0"); }
+    catch (e) { return ""; }
+  }
+  function agentLabel(key) {
+    var a = CATALOG.filter(function (x) { return x.agent_key === key; })[0];
+    return a ? a.name : key;
+  }
+
+  function renderSchedules() {
+    var box = $("sched-list"); if (!box) return;
+    if (!SCHEDULES.length) { box.innerHTML = B.empty("Keine Zeitpläne. Aufträge laufen nur, wenn du sie startest."); return; }
+    box.innerHTML = SCHEDULES.map(function (s) {
+      var next = s.is_active && s.next_run_at
+        ? ("nächster: " + B.ddmm(s.next_run_at) + " " + hhmm(s.next_run_at))
+        : (s.is_active ? "kein Termin" : "pausiert");
+      return '<div class="sched-row' + (s.is_active ? "" : " off") + '" data-id="' + s.id + '">' +
+        '<span class="sched-agent">' + B.esc(agentLabel(s.agent_key)) + '</span>' +
+        '<span class="sched-when">' + B.esc(schedText(s)) + '</span>' +
+        '<span class="sched-next">' + B.esc(next) + '</span>' +
+        (canWrite ? '<button class="btn ghost sm sched-edit" data-id="' + s.id + '">Ändern</button>' : "") +
+        '</div>';
+    }).join("");
+    if (canWrite) {
+      Array.prototype.forEach.call(box.querySelectorAll(".sched-edit"), function (b) {
+        b.addEventListener("click", function () { openSchedule(b.getAttribute("data-id")); });
+      });
+    }
+  }
+
+  function openSchedule(id) {
+    SC_EDIT = id ? SCHEDULES.filter(function (s) { return s.id === id; })[0] : null;
+    var isNew = !SC_EDIT;
+    $("sched-title").textContent = isNew ? "Neuer Zeitplan" : "Zeitplan ändern";
+    $("sc-delete").style.display = isNew ? "none" : "";
+
+    // Agentenauswahl: nur die, die diesem Mitarbeiter zugeordnet sind
+    var opts = ACTIVE_AGENTS.map(function (ea) { return agentById(ea.agent_id); })
+      .filter(Boolean)
+      .map(function (a) {
+        var sel = SC_EDIT && SC_EDIT.agent_key === a.agent_key ? " selected" : "";
+        return '<option value="' + B.esc(a.agent_key) + '"' + sel + '>' + B.esc(a.name) + '</option>';
+      }).join("");
+    $("sc-agent").innerHTML = opts || '<option value="">Kein Agent zugeordnet</option>';
+
+    $("sc-repeat").value = SC_EDIT ? SC_EDIT.repeat_mode : "weekly";
+    $("sc-weekday").value = SC_EDIT && SC_EDIT.weekday != null ? String(SC_EDIT.weekday) : "1";
+    $("sc-dom").value = SC_EDIT && SC_EDIT.day_of_month != null ? SC_EDIT.day_of_month : 1;
+    $("sc-time").value = SC_EDIT && SC_EDIT.time_of_day ? SC_EDIT.time_of_day.slice(0, 5) : "08:00";
+    $("sc-runat").value = SC_EDIT && SC_EDIT.run_at ? toLocalInput(SC_EDIT.run_at) : "";
+    $("sc-active").checked = SC_EDIT ? SC_EDIT.is_active : true;
+    var inp = (SC_EDIT && SC_EDIT.input) || {};
+    $("sc-criteria").value = inp.freeText || "";
+
+    syncScheduleFields();
+    scmsg("");
+    $("sched-modal").style.display = "flex";
+  }
+  function closeSchedule() { $("sched-modal").style.display = "none"; SC_EDIT = null; }
+
+  function toLocalInput(iso) {
+    try {
+      var d = new Date(iso);
+      return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0")
+        + "T" + String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+    } catch (e) { return ""; }
+  }
+
+  // Felder je nach Wiederholung und Agent ein-/ausblenden
+  function syncScheduleFields() {
+    var m = $("sc-repeat").value;
+    $("sc-wrap-weekday").style.display = (m === "weekly") ? "" : "none";
+    $("sc-wrap-dom").style.display     = (m === "monthly") ? "" : "none";
+    $("sc-wrap-time").style.display    = (m === "once") ? "none" : "";
+    $("sc-wrap-once").style.display    = (m === "once") ? "" : "none";
+    var key = $("sc-agent").value;
+    $("sc-opts-find").style.display    = (key === "find_leads") ? "" : "none";
+    $("sc-opts-qualify").style.display = (key === "qualify_leads") ? "" : "none";
+  }
+
+  async function saveSchedule() {
+    if (!canWrite || !ACTIVE) return;
+    var key = $("sc-agent").value;
+    if (!key) { scmsg("Diesem Mitarbeiter ist kein Agent zugeordnet.", "err"); return; }
+    var mode = $("sc-repeat").value;
+
+    var agentRow = CATALOG.filter(function (a) { return a.agent_key === key; })[0];
+    var input = {
+      employeeName: ACTIVE.name, employeeDescription: ACTIVE.description,
+      memory: ACTIVE_MEM.map(function (m) { return m.content; })
+    };
+    if (key === "find_leads") {
+      input.criteria = {};
+      input.freeText = ($("sc-criteria").value || "").trim();
+      input.maxLeads = 10;
+    } else if (key === "qualify_leads") {
+      input.mode = "unrated";   // beim Lauf: noch unbewertete Leads nehmen
+      input.maxItems = 10;
+    }
+
+    var row = {
+      employee_id: ACTIVE.id, agent_id: agentRow ? agentRow.id : null, agent_key: key,
+      input: input, repeat_mode: mode, is_active: $("sc-active").checked,
+      run_at: null, time_of_day: null, weekday: null, day_of_month: null
+    };
+    if (mode === "once") {
+      var v = $("sc-runat").value;
+      if (!v) { scmsg("Bitte einen Zeitpunkt wählen.", "err"); return; }
+      row.run_at = new Date(v).toISOString();
+    } else {
+      var t = $("sc-time").value || "08:00";
+      row.time_of_day = t.length === 5 ? (t + ":00") : t;
+      if (mode === "weekly") row.weekday = parseInt($("sc-weekday").value, 10);
+      if (mode === "monthly") {
+        var dom = parseInt($("sc-dom").value, 10) || 1;
+        row.day_of_month = Math.max(1, Math.min(28, dom));
+      }
+    }
+
+    $("sc-save").disabled = true; scmsg("Speichern …");
+    var res = SC_EDIT
+      ? await sb.from("crm_schedules").update(row).eq("id", SC_EDIT.id)
+      : await sb.from("crm_schedules").insert(row);
+    $("sc-save").disabled = false;
+    if (res.error) { scmsg("Fehler: " + res.error.message, "err"); return; }
+    closeSchedule();
+    await refreshSchedules();
+  }
+
+  async function deleteSchedule() {
+    if (!SC_EDIT || !canWrite) return;
+    if (!window.confirm("Diesen Zeitplan löschen?")) return;
+    var res = await sb.from("crm_schedules").delete().eq("id", SC_EDIT.id);
+    if (res.error) { scmsg("Fehler: " + res.error.message, "err"); return; }
+    closeSchedule();
+    await refreshSchedules();
+  }
+
+  function scmsg(t, type) { var m = $("sc-msg"); if (m) { m.textContent = t; m.className = "login-msg " + (type || ""); } }
   function runStatus(s) {
     return s === "queued" ? "Wartet" : s === "running" ? "Läuft" : s === "done" ? "Fertig"
       : s === "error" ? "Fehler" : s === "discarded" ? "Verworfen" : s;

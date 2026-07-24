@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Mitarbeiter · Toni Business Center</title>
-<link rel="stylesheet" href="business.css?v=16">
+<link rel="stylesheet" href="business.css?v=17">
 </head>
 <body>
 
@@ -100,6 +100,15 @@
           </div>
         </div>
 
+        <!-- Zeitpläne (wiederkehrende Aufträge) -->
+        <div class="card" style="margin-top:16px">
+          <h2>Zeitpläne <span class="muted-empty" style="padding:0;font-size:12px;font-weight:400">· starten Aufträge automatisch</span>
+            <span class="spacer" style="flex:1"></span>
+            <button class="btn ghost sm" id="sched-new" style="display:none">+ Zeitplan</button>
+          </h2>
+          <div id="sched-list" class="sched-list"></div>
+        </div>
+
         <!-- Aufträge / Läufe (Status, browser-unabhängig) -->
         <div class="card" style="margin-top:16px">
           <h2>Aufträge <span class="muted-empty" style="padding:0;font-size:12px;font-weight:400">· laufen im Hintergrund</span></h2>
@@ -182,9 +191,66 @@
   </div>
 </div>
 
+<!-- Modal: Zeitplan anlegen/bearbeiten -->
+<div class="modal-back" id="sched-modal" style="display:none">
+  <div class="modal">
+    <h3 id="sched-title">Zeitplan</h3>
+
+    <div class="field"><label>Agent</label>
+      <select id="sc-agent"></select></div>
+
+    <div class="field"><label>Wiederholung</label>
+      <select id="sc-repeat">
+        <option value="once">Einmalig</option>
+        <option value="daily">Täglich</option>
+        <option value="weekly" selected>Wöchentlich</option>
+        <option value="monthly">Monatlich</option>
+      </select></div>
+
+    <div class="field-row">
+      <div class="field" id="sc-wrap-weekday"><label>Wochentag</label>
+        <select id="sc-weekday">
+          <option value="1">Montag</option><option value="2">Dienstag</option>
+          <option value="3">Mittwoch</option><option value="4">Donnerstag</option>
+          <option value="5">Freitag</option><option value="6">Samstag</option>
+          <option value="0">Sonntag</option>
+        </select></div>
+      <div class="field" id="sc-wrap-dom" style="display:none"><label>Tag im Monat</label>
+        <input id="sc-dom" type="number" min="1" max="28" value="1"></div>
+      <div class="field" id="sc-wrap-time"><label>Uhrzeit</label>
+        <input id="sc-time" type="time" value="08:00"></div>
+    </div>
+
+    <div class="field" id="sc-wrap-once" style="display:none"><label>Zeitpunkt</label>
+      <input id="sc-runat" type="datetime-local"></div>
+
+    <!-- agentenspezifische Optionen -->
+    <div id="sc-opts-find" style="display:none">
+      <div class="field"><label>Suchkriterien (Freitext)</label>
+        <textarea id="sc-criteria" placeholder="z. B. Berufsbildende Schulen in Rheinland-Pfalz, Umkreis Trier"></textarea>
+        <div class="field-hint">Wird bei jedem Lauf als Vorgabe verwendet.</div></div>
+    </div>
+    <div id="sc-opts-qualify" style="display:none">
+      <div class="field-hint" style="margin-bottom:10px">
+        Bewertet bei jedem Lauf die noch nicht bewerteten Leads (max. 10 pro Lauf).
+      </div>
+    </div>
+
+    <label style="font-size:13px;display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <input id="sc-active" type="checkbox" checked style="width:auto"> Aktiv</label>
+
+    <div id="sc-msg" class="login-msg"></div>
+    <div class="modal-actions">
+      <button class="btn ghost" id="sc-delete" style="display:none;margin-right:auto">Löschen</button>
+      <button class="btn ghost" id="sc-cancel">Abbrechen</button>
+      <button class="btn" id="sc-save">Speichern</button>
+    </div>
+  </div>
+</div>
+
 <script src="/api/config"></script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="business_common.js?v=10"></script>
-<script src="business_employees.js?v=7"></script>
+<script src="business_common.js?v=11"></script>
+<script src="business_employees.js?v=8"></script>
 </body>
 </html>

@@ -7,8 +7,12 @@
   ],
   "crons": [
     {
-      "path": "/api/worker?key=toni-xyz-7hK2p9mXq4vB",
+      "path": "/api/worker?key=DEIN_SECRET",
       "schedule": "* * * * *"
+    },
+    {
+      "path": "/api/schedule?key=DEIN_SECRET",
+      "schedule": "*/5 * * * *"
     }
   ]
 }
