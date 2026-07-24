@@ -483,8 +483,9 @@
     var box = $("sched-list"); if (!box) return;
     if (!SCHEDULES.length) { box.innerHTML = B.empty("Keine Zeitpläne. Aufträge laufen nur, wenn du sie startest."); return; }
     box.innerHTML = SCHEDULES.map(function (s) {
+      var overdue = s.is_active && s.next_run_at && (new Date(s.next_run_at) < new Date());
       var next = s.is_active && s.next_run_at
-        ? ("nächster: " + B.ddmm(s.next_run_at) + " " + hhmm(s.next_run_at))
+        ? ((overdue ? "überfällig — läuft gleich: " : "nächster: ") + B.ddmm(s.next_run_at) + " " + hhmm(s.next_run_at))
         : (s.is_active ? "kein Termin" : "pausiert");
       return '<div class="sched-row' + (s.is_active ? "" : " off") + '" data-id="' + s.id + '">' +
         '<span class="sched-agent">' + B.esc(agentLabel(s.agent_key)) + '</span>' +
